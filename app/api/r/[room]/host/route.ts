@@ -1,0 +1,264 @@
+import { NextRequest, NextResponse } from "next/server";
+import { archiveRoom, getRoom } from "@/lib/rooms";
+import { requireCapability, type Capability } from "@/lib/auth";
+import { suggestClusters } from "@/lib/cluster";
+import { getServerModule } from "@/lib/modules/registry.server";
+import { getTemplate } from "@/lib/templates";
+import { critiqueSession, reviseSession, suggestSession } from "@/lib/design";
+import type { PhaseInstance } from "@/lib/types";
+import {
+  addContent,
+  createPattern,
+  deleteContent,
+  deletePattern,
+  deleteSubmission,
+  dispatchAction,
+  endSession,
+  getState,
+  reassign,
+  renamePattern,
+  reorderPatterns,
+  setMode,
+  setPhase,
+  setPhases,
+  setReadaroundIndex,
+  setTimer,
+  updateContent,
+  updateSubmission,
+} from "@/lib/store";
+import type { ContentType, ModeId } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+// AI commands (suggest/critique/revise/generate) can run for tens of seconds;
+// give them real headroom rather than the platform's short default.
+export const maxDuration = 60;
+
+// Which capability each command needs.
+const COMMAND_CAP: Record<string, Capability> = {
+  setMode: "advance",
+  setPhases: "configure",
+  // Launching a vetted built-in template is a normal facilitator action; only
+  // arbitrary custom phase-config (setPhases) needs the admin "configure" cap.
+  setTemplate: "advance",
+  // Setup-phase AI assist (read-only — proposes/critiques, never applies).
+  suggestSession: "advance",
+  critiqueSession: "advance",
+  reviseSession: "advance",
+  setPhase: "advance",
+  setTimer: "timer",
+  addContent: "inject",
+  updateContent: "inject",
+  deleteContent: "inject",
+  createPattern: "curate",
+  renamePattern: "curate",
+  reorderPatterns: "curate",
+  deletePattern: "curate",
+  updateSubmission: "curate",
+  deleteSubmission: "curate",
+  reassign: "reassign",
+  readaroundNext: "readaround",
+  cluster: "cluster",
+  // Facilitator-driven module actions (AI generate/promote, spectrogram stage,
+  // consult round, lightning next, open-space placement, …).
+  moduleAction: "advance",
+  archive: "end",
+  end: "end",
+};
+
+// POST /api/r/[room]/host { command, code, ...args }
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { room: string } },
+) {
+  const room = params.room;
+  if (!(await getRoom(room)))
+    return NextResponse.json({ error: "No such room" }, { status: 404 });
+
+  let body: Record<string, unknown> & { command?: string; code?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+
+  const command = body.command;
+  if (!command || !(command in COMMAND_CAP))
+    return NextResponse.json({ error: "Unknown command" }, { status: 400 });
+
+  const { ok, role } = await requireCapability(
+    room,
+    body.code,
+    COMMAND_CAP[command],
+  );
+  if (!ok)
+    return NextResponse.json(
+      { error: role ? "Not permitted for your role" : "Forbidden" },
+      { status: 403 },
+    );
+
+  const a = body as Record<string, any>;
+  switch (command) {
+    case "setMode":
+      return NextResponse.json({ ok: true, state: await setMode(a.mode as ModeId, room) });
+    case "setPhases": {
+      const phases = (a.phases ?? []) as PhaseInstance[];
+      if (!Array.isArray(phases) || phases.length === 0)
+        return NextResponse.json({ error: "No phases" }, { status: 400 });
+      // Validate every phase against its module's schema (the zod payoff).
+      for (const p of phases) {
+        const mod = getServerModule(p.moduleId);
+        if (!mod)
+          return NextResponse.json(
+            { error: `Unknown module: ${p.moduleId}` },
+            { status: 400 },
+          );
+        const parsed = mod.schema.safeParse(p.config);
+        if (!parsed.success)
+          return NextResponse.json(
+            { error: `Invalid config for "${p.id}" (${p.moduleId})` },
+            { status: 400 },
+          );
+      }
+      return NextResponse.json({
+        ok: true,
+        state: await setPhases(phases, a.sessionName ?? "Custom session", room),
+      });
+    }
+    case "setTemplate": {
+      const t = getTemplate(String(a.templateId ?? ""));
+      if (!t)
+        return NextResponse.json({ error: "Unknown template" }, { status: 400 });
+      return NextResponse.json({
+        ok: true,
+        state: await setPhases(t.phases, t.name, room),
+      });
+    }
+    case "suggestSession": {
+      const goal = String(a.goal ?? "").trim();
+      if (!goal) return NextResponse.json({ error: "Describe a goal first." }, { status: 400 });
+      const roomRec = await getRoom(room);
+      const r = await suggestSession(
+        goal,
+        roomRec?.topic ?? "",
+        typeof a.minutes === "number" ? a.minutes : undefined,
+        typeof a.headcount === "number" ? a.headcount : undefined,
+      );
+      if (!r.ok) return NextResponse.json({ error: r.reason ?? "Couldn't suggest" }, { status: 502 });
+      return NextResponse.json({ ok: true, suggestion: r.suggestion });
+    }
+    case "critiqueSession": {
+      const phases = (a.phases ?? []) as { id: string; moduleId: string; config: Record<string, unknown> }[];
+      if (!Array.isArray(phases) || phases.length === 0)
+        return NextResponse.json({ error: "No phases to critique." }, { status: 400 });
+      const roomRec = await getRoom(room);
+      const r = await critiqueSession(phases, roomRec?.topic ?? "");
+      if (!r.ok) return NextResponse.json({ error: r.reason ?? "Couldn't critique" }, { status: 502 });
+      return NextResponse.json({ ok: true, critique: r.critique });
+    }
+    case "reviseSession": {
+      const phases = (a.phases ?? []) as { id: string; moduleId: string; config: Record<string, unknown> }[];
+      if (!Array.isArray(phases) || phases.length === 0)
+        return NextResponse.json({ error: "No phases to revise." }, { status: 400 });
+      const issues = Array.isArray(a.issues)
+        ? (a.issues as unknown[]).filter((x): x is string => typeof x === "string")
+        : [];
+      const roomRec = await getRoom(room);
+      const r = await reviseSession(
+        phases,
+        String(a.goal ?? ""),
+        roomRec?.topic ?? "",
+        issues,
+        typeof a.minutes === "number" ? a.minutes : undefined,
+      );
+      if (!r.ok) return NextResponse.json({ error: r.reason ?? "Couldn't revise" }, { status: 502 });
+      return NextResponse.json({ ok: true, suggestion: r.suggestion });
+    }
+    case "setPhase":
+      return NextResponse.json({ ok: true, state: await setPhase(a.phaseId, room) });
+    case "setTimer":
+      return NextResponse.json({ ok: true, state: await setTimer(a.endsAt ?? null, room) });
+    case "addContent":
+      return NextResponse.json({
+        ok: true,
+        item: await addContent(a.type as ContentType, a.title ?? "", a.body ?? "", a.target ?? "now", room),
+      });
+    case "updateContent": {
+      const patch: Record<string, unknown> = {};
+      for (const k of ["title", "body", "visible", "queued"])
+        if (k in a) patch[k] = a[k];
+      await updateContent(a.id, patch, room);
+      return NextResponse.json({ ok: true });
+    }
+    case "deleteContent":
+      await deleteContent(a.id, room);
+      return NextResponse.json({ ok: true });
+    case "createPattern":
+      return NextResponse.json({
+        ok: true,
+        pattern: await createPattern(a.name ?? "", a.submissionIds ?? [], room),
+      });
+    case "renamePattern":
+      await renamePattern(a.id, a.name, room);
+      return NextResponse.json({ ok: true });
+    case "reorderPatterns":
+      await reorderPatterns(a.orderedIds ?? [], room);
+      return NextResponse.json({ ok: true });
+    case "deletePattern":
+      await deletePattern(a.id, room);
+      return NextResponse.json({ ok: true });
+    case "updateSubmission": {
+      const patch: Record<string, unknown> = {};
+      for (const k of ["text", "tag"]) if (k in a) patch[k] = a[k];
+      await updateSubmission(a.id, patch, room);
+      return NextResponse.json({ ok: true });
+    }
+    case "deleteSubmission":
+      await deleteSubmission(a.id, room);
+      return NextResponse.json({ ok: true });
+    case "reassign":
+      await reassign(a.token, a.kind, a.value ?? null, room);
+      return NextResponse.json({ ok: true });
+    case "readaroundNext": {
+      const state = await getState(room);
+      const dir = a.dir === -1 ? -1 : 1;
+      return NextResponse.json({
+        ok: true,
+        state: await setReadaroundIndex(state.readaroundIndex + dir, room),
+      });
+    }
+    case "cluster": {
+      const res = await suggestClusters(room);
+      if (!res.ok)
+        return NextResponse.json({ error: "Cluster failed" }, { status: res.status });
+      return NextResponse.json({ clusters: res.clusters });
+    }
+    case "moduleAction": {
+      // Dispatch a module action with the host's resolved role, so modules can
+      // gate facilitator-only actions (generate, promote, nextRound, …) on role.
+      const result = await dispatchAction(
+        room,
+        {
+          type: String(a.actionType ?? ""),
+          payload: (a.payload ?? {}) as Record<string, unknown>,
+          token: "__host__",
+        },
+        role ?? "facilitator",
+      );
+      return NextResponse.json(
+        { ok: result.ok, reason: result.reason },
+        { status: result.status },
+      );
+    }
+    case "archive": {
+      const archive = await archiveRoom(room);
+      await endSession(room);
+      return NextResponse.json({ ok: true, archive });
+    }
+    case "end":
+      await endSession(room);
+      return NextResponse.json({ ok: true });
+    default:
+      return NextResponse.json({ error: "Unknown command" }, { status: 400 });
+  }
+}
