@@ -1,0 +1,24 @@
+# Dependencies
+/node_modules
+
+# Next.js build output
+/.next
+/out
+
+# Test coverage
+/coverage
+
+# TypeScript incremental build info
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment: NEVER commit real secrets. .env.example is the only tracked env file.
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel
+
+# OS
+.DS_Store
