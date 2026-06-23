@@ -59,6 +59,7 @@ import { emptychairRenderers } from "./defs/emptychair.client";
 import { issuemapRenderers } from "./defs/issuemap.client";
 import { promptrelayRenderers } from "./defs/promptrelay.client";
 import { builderRenderers } from "./defs/builder.client";
+import { mediaRenderers } from "./defs/media.client";
 
 // RendererProps/Renderer and the shared feedback helpers now live in
 // ./render-kit so per-module files can import the same contract.
@@ -1125,6 +1126,7 @@ export const CLIENT_MODULES: Record<ModuleKind, ClientModule> = {
   content: {
     renderers: { participant: ContentRenderer, projector: ContentProjector },
   },
+  media: { renderers: mediaRenderers },
   capture: {
     renderers: { participant: CaptureRenderer, facilitator: CaptureFacilitator },
   },

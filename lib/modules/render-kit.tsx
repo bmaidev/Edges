@@ -23,6 +23,10 @@ export interface RendererProps {
   }) => Promise<boolean>;
   // for the "new content" pulse + capture toast
   pulse?: boolean;
+  // Authenticated file upload, provided only to facilitator renderers by the
+  // host console (the file goes to the room-scoped Blob endpoint). Returns the
+  // public URL, or null on failure. Undefined for surfaces that can't upload.
+  upload?: (file: File) => Promise<string | null>;
 }
 
 export type Renderer = (props: RendererProps) => JSX.Element;

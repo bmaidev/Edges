@@ -205,7 +205,9 @@ export function HostConsole({
                   and reassigning are reserved for the lead facilitator.
                 </p>
               )}
-              {hasModuleControls && <ModuleControlPanel state={s} cmd={cmd} />}
+              {hasModuleControls && (
+                <ModuleControlPanel state={s} cmd={cmd} apiBase={apiBase} code={code} />
+              )}
               {hasResults && <ResultsPanel state={s} />}
               {isAllocate && <AllocationsPanel state={s} cmd={cmd} />}
               {isReadaround && <ReadAroundControls state={s} cmd={cmd} />}
@@ -309,7 +311,17 @@ function ResultsPanel({ state }: { state: FacilitatorState }) {
 // needs/equity dashboards). The module's facilitator renderer drives its own
 // buttons; `act` routes them through the host `moduleAction` command, which
 // dispatches to the module with the host's resolved role.
-function ModuleControlPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
+function ModuleControlPanel({
+  state,
+  cmd,
+  apiBase,
+  code,
+}: {
+  state: FacilitatorState;
+  cmd: Cmd;
+  apiBase: string;
+  code: string;
+}) {
   const R = state.moduleId
     ? getClientRenderer(state.moduleId, "facilitator")
     : null;
@@ -321,6 +333,23 @@ function ModuleControlPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd 
     });
     return res.ok;
   };
+  // Authenticated file upload for modules that need it (e.g. media slides). Goes
+  // to the room-scoped Blob endpoint, gated by the facilitator's own passcode.
+  const upload = async (file: File): Promise<string | null> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await fetch(
+        `${apiBase}/upload?code=${encodeURIComponent(code)}`,
+        { method: "POST", body: fd },
+      );
+      if (!res.ok) return null;
+      const j = (await res.json()) as { url?: string };
+      return j.url ?? null;
+    } catch {
+      return null;
+    }
+  };
   return (
     <Panel title="Module controls">
       <div className="rounded-xl border border-border bg-surface p-3">
@@ -330,6 +359,7 @@ function ModuleControlPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd 
           handle=""
           phaseId={state.phaseId ?? ""}
           act={act}
+          upload={upload}
         />
       </div>
     </Panel>

@@ -15,7 +15,7 @@ interface BuilderPhase {
 // Palette grouped into scannable categories (the registry is flat; this is just
 // a presentation order). Any module not listed falls into "More".
 const CATEGORIES: { label: string; kinds: ModuleKind[] }[] = [
-  { label: "Structure", kinds: ["lobby", "content", "close"] },
+  { label: "Structure", kinds: ["lobby", "content", "media", "close"] },
   { label: "Capture & surface", kinds: ["capture", "prework", "readaround"] },
   {
     label: "Group & dialogue",

@@ -3,6 +3,7 @@
 export type Primitive =
   | "lobby"
   | "content"
+  | "media"
   | "capture"
   | "allocate"
   | "coordinator"
