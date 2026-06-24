@@ -149,7 +149,7 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
       canvas.height = viewport.height;
       const cctx = canvas.getContext("2d");
       if (!cctx) continue;
-      await page.render({ canvas, canvasContext: cctx, viewport }).promise;
+      await page.render({ canvasContext: cctx, viewport }).promise;
       const blob = await new Promise<Blob | null>((r) =>
         canvas.toBlob(r, "image/jpeg", 0.85),
       );
