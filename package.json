@@ -5,13 +5,13 @@
   "description": "A calm, privacy-first, multi-room facilitation platform. Named facilitation methods are configured chains of a few irreducible interaction primitives.",
   "license": "MIT",
   "author": "Black Mountain AI",
-  "homepage": "https://github.com/blackmountainai/edges#readme",
+  "homepage": "https://github.com/bmaidev/Edges#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/blackmountainai/edges.git"
+    "url": "https://github.com/bmaidev/Edges.git"
   },
   "bugs": {
-    "url": "https://github.com/blackmountainai/edges/issues"
+    "url": "https://github.com/bmaidev/Edges/issues"
   },
   "keywords": [
     "facilitation",
