@@ -336,7 +336,12 @@ function AutoForm({
                     onChange={(e) => set(f.key, e.target.value || undefined)}
                     className={inputCls}
                   >
-                    <option value="">— none —</option>
+                    {/* Blank means different things per module: optional source
+                        modules read EVERY earlier contribution; required ones
+                        need a specific phase chosen. */}
+                    <option value="">
+                      {f.optional ? "All contributions so far" : "Select a phase…"}
+                    </option>
                     {earlierPhases.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.id} · {SERVER_MODULES[p.moduleId]?.meta.name}
@@ -344,11 +349,13 @@ function AutoForm({
                       </option>
                     ))}
                   </select>
-                  {earlierPhases.length === 0 && (
-                    <span className="text-[11px] text-muted">
-                      Add a capture/pre-work phase before this one to feed it.
-                    </span>
-                  )}
+                  <span className="text-[11px] text-muted">
+                    {f.optional
+                      ? "Leave on “All contributions so far” to analyse everything, or pick one phase to focus."
+                      : earlierPhases.length === 0
+                        ? "Add a capture/pre-work phase before this one to feed it."
+                        : "Choose which earlier phase this reads from."}
+                  </span>
                 </FieldRow>
               );
             default:
