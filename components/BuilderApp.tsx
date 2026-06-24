@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { z } from "zod";
 import { Button } from "@/components/ui";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
 import { TEMPLATES } from "@/lib/templates";
@@ -9,7 +10,8 @@ import type { ModuleKind } from "@/lib/types";
 interface BuilderPhase {
   id: string;
   moduleId: ModuleKind;
-  configText: string; // edited as JSON; parsed + schema-validated on launch
+  config: Record<string, unknown>; // edited via form fields; schema-validated
+  advanced?: boolean; // show the raw-JSON editor for this phase
 }
 
 // Palette grouped into scannable categories (the registry is flat; this is just
@@ -33,10 +35,20 @@ const CATEGORIES: { label: string; kinds: ModuleKind[] }[] = [
   { label: "Analytics", kinds: ["equity"] },
 ];
 
+// Modules whose output a later phase can consume via sourcePhaseId. Used to rank
+// the "Takes input from" dropdown so producers surface first.
+const PRODUCERS = new Set<ModuleKind>(["capture", "prework", "qna", "brainwrite"]);
+
+// ---- zod introspection -----------------------------------------------------
+// The form is generated from each module's zod schema. We detect a handful of
+// field shapes and render a widget for each; anything we don't recognise stays
+// editable through the per-phase Advanced (JSON) toggle, so no config is ever
+// un-editable even if a schema uses an exotic type.
+
 // Unwrap optional/default/nullable wrappers to the inner zod type.
 function unwrap(zt: any): any {
   let t = zt;
-  for (let i = 0; i < 5 && t?._def; i++) {
+  for (let i = 0; i < 6 && t?._def; i++) {
     const inner = t._def.innerType ?? t._def.schema;
     if (inner) t = inner;
     else break;
@@ -44,51 +56,349 @@ function unwrap(zt: any): any {
   return t;
 }
 
-// Schema-driven field hints: required vs optional, with enum options where they
-// exist. Falls back to defaultConfig keys if zod introspection isn't available.
-function fieldHints(moduleId: ModuleKind): { required: string[]; optional: string[] } {
+function isOptional(zt: any): boolean {
+  try {
+    return typeof zt.isOptional === "function" ? zt.isOptional() : false;
+  } catch {
+    return false;
+  }
+}
+
+// Enum option values, tolerant of zod version differences.
+function enumValues(inner: any): string[] | null {
+  const v =
+    inner?.options ??
+    inner?._def?.values ??
+    (inner?._def?.entries ? Object.values(inner._def.entries) : null);
+  return Array.isArray(v) ? (v as string[]) : null;
+}
+
+type FieldKind =
+  | "text"
+  | "textarea"
+  | "number"
+  | "boolean"
+  | "enum"
+  | "stringList"
+  | "enumList"
+  | "source"
+  | "unsupported";
+
+interface FieldInfo {
+  key: string;
+  kind: FieldKind;
+  optional: boolean;
+  enums?: string[];
+}
+
+const LONG_TEXT =
+  /prompt|message|body|desc|question|instruction|statement|placeholder|headline|tagline|heading|note/i;
+
+function describeField(key: string, zt: any): FieldInfo {
+  const optional = isOptional(zt);
+  // sourcePhaseId is a plain string in the schema, but semantically a link to
+  // an earlier phase — render it as a dropdown.
+  if (key === "sourcePhaseId") return { key, kind: "source", optional };
+  try {
+    const inner = unwrap(zt);
+    if (inner instanceof z.ZodEnum)
+      return { key, kind: "enum", optional, enums: enumValues(inner) ?? [] };
+    if (inner instanceof z.ZodBoolean) return { key, kind: "boolean", optional };
+    if (inner instanceof z.ZodNumber) return { key, kind: "number", optional };
+    if (inner instanceof z.ZodString)
+      return { key, kind: LONG_TEXT.test(key) ? "textarea" : "text", optional };
+    if (inner instanceof z.ZodArray) {
+      const el = unwrap(inner._def?.type ?? inner._def?.element ?? inner.element);
+      if (el instanceof z.ZodString) return { key, kind: "stringList", optional };
+      if (el instanceof z.ZodEnum)
+        return { key, kind: "enumList", optional, enums: enumValues(el) ?? [] };
+    }
+  } catch {
+    /* fall through to unsupported */
+  }
+  return { key, kind: "unsupported", optional };
+}
+
+function schemaFields(moduleId: ModuleKind): FieldInfo[] | null {
   try {
     const schema = SERVER_MODULES[moduleId].schema as any;
     const shape = schema.shape ?? schema._def?.shape?.();
-    if (shape) {
-      const required: string[] = [];
-      const optional: string[] = [];
-      for (const [k, raw] of Object.entries(shape)) {
-        const zt = raw as any;
-        const inner = unwrap(zt);
-        const enumVals = inner?._def?.values;
-        const label = Array.isArray(enumVals) ? `${k} (${enumVals.join(" | ")})` : k;
-        if (typeof zt.isOptional === "function" ? zt.isOptional() : false)
-          optional.push(label);
-        else required.push(label);
-      }
-      return { required, optional };
-    }
+    if (!shape) return null;
+    return Object.entries(shape).map(([k, zt]) => describeField(k, zt as any));
   } catch {
-    /* fall through */
+    return null;
   }
-  const dc = SERVER_MODULES[moduleId].defaultConfig as Record<string, unknown>;
-  return { required: Object.keys(dc), optional: [] };
 }
 
-// Live JSON + zod-schema validation, naming the offending field.
+// camelCase / snake → "Sentence case", with a few nicer labels.
+function humanize(key: string): string {
+  if (key === "sourcePhaseId") return "Takes input from";
+  const spaced = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]/g, " ")
+    .trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function validateConfig(
   moduleId: ModuleKind,
-  text: string,
+  config: unknown,
 ): { ok: boolean; msg?: string } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return { ok: false, msg: "Invalid JSON — check quotes, commas, brackets." };
-  }
-  const r = SERVER_MODULES[moduleId].schema.safeParse(parsed);
+  const r = SERVER_MODULES[moduleId].schema.safeParse(config);
   if (r.success) return { ok: true };
   const issue = r.error.issues[0];
-  return {
-    ok: false,
-    msg: `${issue.path.join(".") || "config"}: ${issue.message}`,
-  };
+  return { ok: false, msg: `${issue.path.join(".") || "config"}: ${issue.message}` };
+}
+
+// ---- form field widgets ----------------------------------------------------
+
+const inputCls =
+  "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none";
+
+function FieldRow({
+  label,
+  optional,
+  children,
+}: {
+  label: string;
+  optional: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-white/80">
+        {label}
+        {!optional && <span className="text-accent"> *</span>}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function AutoForm({
+  moduleId,
+  config,
+  onChange,
+  earlierPhases,
+}: {
+  moduleId: ModuleKind;
+  config: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  earlierPhases: { id: string; moduleId: ModuleKind }[];
+}) {
+  const fields = schemaFields(moduleId);
+  if (!fields) {
+    return (
+      <p className="text-xs text-muted">
+        This module&apos;s settings can&apos;t be shown as a form — use Advanced
+        (JSON) below.
+      </p>
+    );
+  }
+
+  function set(key: string, value: unknown) {
+    const next = { ...config };
+    if (value === undefined || value === "") delete next[key];
+    else next[key] = value;
+    onChange(next);
+  }
+
+  const unsupported = fields.filter((f) => f.kind === "unsupported").map((f) => f.key);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {fields
+        .filter((f) => f.kind !== "unsupported")
+        .map((f) => {
+          const label = humanize(f.key);
+          const val = config[f.key];
+          switch (f.kind) {
+            case "textarea":
+              return (
+                <FieldRow key={f.key} label={label} optional={f.optional}>
+                  <textarea
+                    value={(val as string) ?? ""}
+                    onChange={(e) => set(f.key, e.target.value)}
+                    rows={3}
+                    className={inputCls}
+                  />
+                </FieldRow>
+              );
+            case "text":
+              return (
+                <FieldRow key={f.key} label={label} optional={f.optional}>
+                  <input
+                    value={(val as string) ?? ""}
+                    onChange={(e) => set(f.key, e.target.value)}
+                    className={inputCls}
+                  />
+                </FieldRow>
+              );
+            case "number":
+              return (
+                <FieldRow key={f.key} label={label} optional={f.optional}>
+                  <input
+                    type="number"
+                    value={val === undefined || val === null ? "" : (val as number)}
+                    onChange={(e) =>
+                      set(f.key, e.target.value === "" ? undefined : Number(e.target.value))
+                    }
+                    className={inputCls}
+                  />
+                </FieldRow>
+              );
+            case "boolean":
+              return (
+                <label key={f.key} className="flex items-center gap-2 text-sm text-white/80">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(val)}
+                    onChange={(e) => set(f.key, e.target.checked)}
+                    className="h-4 w-4 accent-[var(--c-accent)]"
+                  />
+                  {label}
+                </label>
+              );
+            case "enum":
+              return (
+                <FieldRow key={f.key} label={label} optional={f.optional}>
+                  <select
+                    value={(val as string) ?? ""}
+                    onChange={(e) => set(f.key, e.target.value || undefined)}
+                    className={inputCls}
+                  >
+                    {f.optional && <option value="">— none —</option>}
+                    {(f.enums ?? []).map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </FieldRow>
+              );
+            case "enumList": {
+              const arr = Array.isArray(val) ? (val as string[]) : [];
+              return (
+                <FieldRow key={f.key} label={label} optional={f.optional}>
+                  <div className="flex flex-wrap gap-2">
+                    {(f.enums ?? []).map((o) => {
+                      const on = arr.includes(o);
+                      return (
+                        <button
+                          key={o}
+                          type="button"
+                          onClick={() =>
+                            set(
+                              f.key,
+                              on ? arr.filter((x) => x !== o) : [...arr, o],
+                            )
+                          }
+                          className={`rounded-lg border px-2.5 py-1 text-xs ${
+                            on
+                              ? "border-accent bg-accent/10 text-accent"
+                              : "border-border bg-surface text-white/70"
+                          }`}
+                        >
+                          {o}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </FieldRow>
+              );
+            }
+            case "stringList": {
+              const arr = Array.isArray(val) ? (val as string[]) : [];
+              return (
+                <FieldRow key={f.key} label={`${label} (one per line)`} optional={f.optional}>
+                  <textarea
+                    value={arr.join("\n")}
+                    onChange={(e) =>
+                      set(
+                        f.key,
+                        e.target.value
+                          .split("\n")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                      )
+                    }
+                    rows={3}
+                    className={inputCls}
+                  />
+                </FieldRow>
+              );
+            }
+            case "source":
+              return (
+                <FieldRow key={f.key} label={label} optional={f.optional}>
+                  <select
+                    value={(val as string) ?? ""}
+                    onChange={(e) => set(f.key, e.target.value || undefined)}
+                    className={inputCls}
+                  >
+                    <option value="">— none —</option>
+                    {earlierPhases.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.id} · {SERVER_MODULES[p.moduleId]?.meta.name}
+                        {PRODUCERS.has(p.moduleId) ? " ✓" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {earlierPhases.length === 0 && (
+                    <span className="text-[11px] text-muted">
+                      Add a capture/pre-work phase before this one to feed it.
+                    </span>
+                  )}
+                </FieldRow>
+              );
+            default:
+              return null;
+          }
+        })}
+      {unsupported.length > 0 && (
+        <p className="text-[11px] text-muted">
+          Edit in Advanced (JSON): {unsupported.join(", ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Raw-JSON editor (the "advanced view"). Holds its own draft so invalid JSON can
+// be typed without losing it; commits up to the phase on every valid parse.
+function AdvancedJson({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+}) {
+  const [draft, setDraft] = useState(() => JSON.stringify(config, null, 2));
+  const [err, setErr] = useState<string | null>(null);
+  function edit(text: string) {
+    setDraft(text);
+    try {
+      const parsed = JSON.parse(text);
+      setErr(null);
+      onChange(parsed);
+    } catch {
+      setErr("Invalid JSON — check quotes, commas, brackets.");
+    }
+  }
+  return (
+    <div className="mt-2 flex flex-col gap-1">
+      <textarea
+        value={draft}
+        onChange={(e) => edit(e.target.value)}
+        spellCheck={false}
+        rows={draft.split("\n").length + 1}
+        className={`w-full rounded-lg border bg-bg p-2 font-mono text-xs focus:outline-none ${
+          err ? "border-[#5a2a2a]" : "border-border focus:border-accent"
+        }`}
+      />
+      {err && <p className="text-xs text-[#ff8a8a]">{err}</p>}
+    </div>
+  );
 }
 
 // Admin session builder: compose a custom phase sequence from any module, edit
@@ -109,7 +419,6 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
 
   const phaseIds = useMemo(() => phases.map((p) => p.id), [phases]);
 
-  // Load an AI-proposed/revised session into the editor.
   function loadSuggestion(sg: {
     sessionName?: string;
     rationale?: string;
@@ -121,20 +430,14 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       (sg.phases ?? []).map((p) => ({
         id: p.id,
         moduleId: p.moduleId,
-        configText: JSON.stringify(p.config, null, 2),
+        config: (p.config ?? {}) as Record<string, unknown>,
       })),
     );
   }
 
-  // Current phases parsed for the AI endpoints.
+  // Current phases for the AI endpoints (config is already an object).
   function parsedPhases() {
-    return phases.map((p) => {
-      try {
-        return { id: p.id, moduleId: p.moduleId, config: JSON.parse(p.configText) };
-      } catch {
-        return { id: p.id, moduleId: p.moduleId, config: {} };
-      }
-    });
+    return phases.map((p) => ({ id: p.id, moduleId: p.moduleId, config: p.config }));
   }
 
   async function suggest() {
@@ -167,7 +470,6 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
     }
   }
 
-  // Feed the critique's issues back to the AI and load the revised design.
   async function applyFixes() {
     if (phases.length === 0 || !code.trim()) return;
     setAiBusy("revise");
@@ -230,7 +532,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       {
         id: `${moduleId}-${n}`,
         moduleId,
-        configText: JSON.stringify(mod.defaultConfig, null, 2),
+        config: { ...(mod.defaultConfig as Record<string, unknown>) },
       },
     ]);
   }
@@ -242,7 +544,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       t.phases.map((p) => ({
         id: p.id,
         moduleId: p.moduleId,
-        configText: JSON.stringify(p.config, null, 2),
+        config: { ...(p.config as Record<string, unknown>) },
       })),
     );
   }
@@ -256,21 +558,16 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   function remove(i: number) {
     setPhases(phases.filter((_, idx) => idx !== i));
   }
-  function editConfig(i: number, text: string) {
-    setPhases(phases.map((p, idx) => (idx === i ? { ...p, configText: text } : p)));
+  function setConfig(i: number, config: Record<string, unknown>) {
+    setPhases(phases.map((p, idx) => (idx === i ? { ...p, config } : p)));
+  }
+  function toggleAdvanced(i: number) {
+    setPhases(phases.map((p, idx) => (idx === i ? { ...p, advanced: !p.advanced } : p)));
   }
 
   async function launch() {
     setMsg(null);
-    const parsed: { id: string; moduleId: ModuleKind; config: unknown }[] = [];
-    for (const p of phases) {
-      try {
-        parsed.push({ id: p.id, moduleId: p.moduleId, config: JSON.parse(p.configText) });
-      } catch {
-        setMsg(`Phase "${p.id}" has invalid JSON.`);
-        return;
-      }
-    }
+    const parsed = phases.map((p) => ({ id: p.id, moduleId: p.moduleId, config: p.config }));
     const res = await fetch(`${apiBase}/host`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -446,19 +743,14 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
         Sequence ({phases.length})
       </h2>
-      {phaseIds.length > 0 && (
-        <p className="mt-1 text-xs text-muted">
-          Phase ids (use for <code>sourcePhaseId</code>): {phaseIds.join(", ")}
-        </p>
-      )}
       {phases.length === 0 ? (
         <p className="mt-2 text-sm text-muted">Add modules above to build the flow.</p>
       ) : (
         <div className="mt-2 flex flex-col gap-3">
           {phases.map((p, i) => {
             const mod = SERVER_MODULES[p.moduleId];
-            const valid = validateConfig(p.moduleId, p.configText);
-            const hints = fieldHints(p.moduleId);
+            const valid = validateConfig(p.moduleId, p.config);
+            const earlierPhases = phases.slice(0, i).map((q) => ({ id: q.id, moduleId: q.moduleId }));
             return (
               <div key={i} className="rounded-xl border border-border bg-surface p-3">
                 <div className="flex items-center justify-between">
@@ -473,29 +765,29 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-muted">{mod.meta.description}</p>
-                <p className="mt-1 text-xs text-muted">
-                  <span className="text-white/70">Required:</span>{" "}
-                  {hints.required.join(", ") || "—"}
-                  {hints.optional.length > 0 && (
-                    <>
-                      {" · "}
-                      <span className="text-white/70">Optional:</span>{" "}
-                      {hints.optional.join(", ")}
-                    </>
+
+                <div className="mt-3">
+                  {p.advanced ? (
+                    <AdvancedJson config={p.config} onChange={(c) => setConfig(i, c)} />
+                  ) : (
+                    <AutoForm
+                      moduleId={p.moduleId}
+                      config={p.config}
+                      onChange={(c) => setConfig(i, c)}
+                      earlierPhases={earlierPhases}
+                    />
                   )}
-                </p>
-                <textarea
-                  value={p.configText}
-                  onChange={(e) => editConfig(i, e.target.value)}
-                  spellCheck={false}
-                  rows={p.configText.split("\n").length + 1}
-                  className={`mt-2 w-full rounded-lg border bg-bg p-2 font-mono text-xs focus:outline-none ${
-                    valid.ok ? "border-border focus:border-accent" : "border-[#5a2a2a]"
-                  }`}
-                />
-                {!valid.ok && (
-                  <p className="mt-1 text-xs text-[#ff8a8a]">{valid.msg}</p>
-                )}
+                </div>
+
+                <div className="mt-2 flex items-center justify-between">
+                  <button
+                    onClick={() => toggleAdvanced(i)}
+                    className="text-xs text-muted underline decoration-dotted hover:text-white/80"
+                  >
+                    {p.advanced ? "▾ Hide JSON — back to form" : "▸ Advanced (JSON)"}
+                  </button>
+                  {!valid.ok && <span className="text-xs text-[#ff8a8a]">{valid.msg}</span>}
+                </div>
               </div>
             );
           })}
@@ -507,7 +799,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           onClick={launch}
           disabled={
             phases.length === 0 ||
-            phases.some((p) => !validateConfig(p.moduleId, p.configText).ok)
+            phases.some((p) => !validateConfig(p.moduleId, p.config).ok)
           }
         >
           Launch into room
