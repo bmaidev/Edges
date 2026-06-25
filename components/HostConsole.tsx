@@ -573,6 +573,16 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
 
+  // Content is only seen by the room during a phase that DISPLAYS content — a
+  // "Content display" phase, or a module configured to show reference material.
+  // Outside those, pushed content stays hidden. Surfacing this is the whole
+  // point: it's the thing facilitators can't otherwise tell.
+  const cfg = state.config as { showContentTypes?: unknown[] } | null;
+  const isContentPhase = state.moduleId === "content";
+  const phaseShowsReference = Array.isArray(cfg?.showContentTypes);
+  const phaseShowsContent = isContentPhase || phaseShowsReference;
+  const phaseLabel = (state.config?.label as string) ?? state.moduleId ?? "this phase";
+
   async function push(target: "now" | "queue" | "hold") {
     if (!title.trim() && !body.trim()) return;
     await cmd("addContent", { type, title, body, target });
@@ -586,9 +596,33 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   }
 
   return (
-    <Panel title="Inject content">
+    <Panel title="Room content">
+      <p className="text-xs leading-relaxed text-muted">
+        Share reference material — a prompt, a case, a note — onto the room&apos;s
+        screens (participants&apos; phones and the projector). It only appears
+        during a phase that <em>displays</em> content; in other phases it stays
+        hidden until you show it.
+      </p>
+
+      {/* Will what I push right now actually be seen? The crux of the confusion. */}
+      <div
+        className={`rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+          phaseShowsContent
+            ? "border-accent/40 bg-accent/10 text-accent"
+            : "border-[#5a4a2a] bg-[#5a4a2a]/20 text-[#ffd9a0]"
+        }`}
+      >
+        {isContentPhase ? (
+          <>✓ &ldquo;{phaseLabel}&rdquo; is a content phase — anything you <b>show now</b> appears on the room&apos;s screens immediately.</>
+        ) : phaseShowsReference ? (
+          <>✓ &ldquo;{phaseLabel}&rdquo; shows reference material — pushed items appear as reference alongside the activity.</>
+        ) : (
+          <>⚠ &ldquo;{phaseLabel}&rdquo; doesn&apos;t display content, so pushing now won&apos;t be visible to anyone yet. <b>Queue</b> it for the next phase, or <b>hold</b> it — then show it once you reach a Content phase.</>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => setOpen((o) => !o)}>{open ? "Close" : "Add to room"}</Button>
+        <Button onClick={() => setOpen((o) => !o)}>{open ? "Close" : "Add content"}</Button>
         <Button variant="ghost" onClick={loadStarter}>
           Load starter library
         </Button>
@@ -616,14 +650,20 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
           />
           <VoiceTextarea value={body} onChange={setBody} placeholder="Body (type or dictate)…" />
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => push("now")}>Push now</Button>
+            <Button onClick={() => push("now")}>Show now</Button>
             <Button variant="ghost" onClick={() => push("queue")}>
               Queue for next phase
             </Button>
             <Button variant="ghost" onClick={() => push("hold")}>
-              Hold privately
+              Hold (private)
             </Button>
           </div>
+          <p className="text-[11px] leading-relaxed text-muted">
+            <b>Show now</b> — goes live this phase (only visible if this phase
+            displays content). <b>Queue</b> — appears automatically when you
+            advance to the next phase. <b>Hold</b> — saved to the list below,
+            shown to no one until you press <em>show</em>.
+          </p>
         </div>
       )}
       <div className="flex flex-col gap-2">
