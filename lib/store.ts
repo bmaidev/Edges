@@ -686,6 +686,10 @@ async function buildContext(
   roomId: string,
   role: Role,
   token: string | null,
+  // The just-written state, passed by command handlers so the response reflects
+  // the write WITHOUT a read-back (eventually-consistent stores can serve a stale
+  // read right after a write). When omitted, read the live state as usual.
+  stateOverride?: SessionState,
 ): Promise<{
   ctx: ModuleContext | null;
   state: SessionState;
@@ -696,7 +700,7 @@ async function buildContext(
 }> {
   const [state, content, participants, patterns, submissions] =
     await Promise.all([
-      getState(roomId),
+      stateOverride ? Promise.resolve(stateOverride) : getState(roomId),
       listContent(roomId),
       listParticipants(roomId),
       listPatterns(roomId),
@@ -731,9 +735,10 @@ export async function getPublicState(
   token: string | null = null,
   roomId: string = DEFAULT_ROOM_ID,
   role: Role = "participant",
+  stateOverride?: SessionState,
 ): Promise<PublicState> {
   const { ctx, state, participants, visible, patterns, me } =
-    await buildContext(roomId, role, token);
+    await buildContext(roomId, role, token, stateOverride);
 
   const mode = getMode(state.mode);
   const phase = resolveActive(state);
@@ -857,9 +862,10 @@ export async function dispatchAction(
 
 export async function getFacilitatorState(
   roomId: string = DEFAULT_ROOM_ID,
+  stateOverride?: SessionState,
 ): Promise<FacilitatorState> {
   const [pub, submissions, participants, allContent] = await Promise.all([
-    getPublicState(null, roomId, "facilitator"),
+    getPublicState(null, roomId, "facilitator", stateOverride),
     listSubmissions(roomId),
     listParticipants(roomId),
     listContent(roomId),

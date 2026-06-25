@@ -128,5 +128,21 @@ export function usePolledState<
     [],
   );
 
-  return { state, error, refresh, refreshUntil };
+  // Apply an authoritative state the server returned from a write (a command
+  // response built from the just-written state). Goes through the same monotonic
+  // rev guard, so it shows instantly AND a later stale read (rev < this) is then
+  // ignored — making navigation correct even on an eventually-consistent store.
+  const apply = useCallback((next: T) => {
+    const rev =
+      typeof (next as { rev?: unknown }).rev === "number"
+        ? (next as { rev: number }).rev
+        : null;
+    if (rev !== null && rev < lastRevRef.current) return;
+    if (rev !== null) lastRevRef.current = Math.max(lastRevRef.current, rev);
+    appliedRef.current = seqRef.current;
+    setState(next);
+    setError(false);
+  }, []);
+
+  return { state, error, refresh, refreshUntil, apply };
 }

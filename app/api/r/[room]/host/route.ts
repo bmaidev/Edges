@@ -14,6 +14,7 @@ import {
   deleteSubmission,
   dispatchAction,
   endSession,
+  getFacilitatorState,
   getState,
   reassign,
   renamePattern,
@@ -26,10 +27,25 @@ import {
   updateContent,
   updateSubmission,
 } from "@/lib/store";
-import type { ContentType, ModeId } from "@/lib/types";
+import type { ContentType, ModeId, Role, SessionState } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Build the SAME payload the /state poll returns, but from the just-written
+// state (no read-back). Lets the client apply a navigation result instantly and
+// correctly even on an eventually-consistent store that would serve a stale read
+// immediately after the write.
+async function navState(room: string, written: SessionState, role: Role) {
+  const roomRec = await getRoom(room);
+  const t = roomRec?.theme;
+  const branding =
+    t && (t.logoUrl || t.headline || t.tagline)
+      ? { logoUrl: t.logoUrl, headline: t.headline, tagline: t.tagline }
+      : null;
+  const state = await getFacilitatorState(room, written);
+  return { ...state, topic: roomRec?.topic || state.topic, role, branding };
+}
 // AI commands (suggest/critique/revise/generate) can run for tens of seconds;
 // give them real headroom rather than the platform's short default.
 export const maxDuration = 60;
@@ -100,7 +116,10 @@ export async function POST(
   const a = body as Record<string, any>;
   switch (command) {
     case "setMode":
-      return NextResponse.json({ ok: true, state: await setMode(a.mode as ModeId, room) });
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setMode(a.mode as ModeId, room), role ?? "facilitator"),
+      });
     case "setPhases": {
       const phases = (a.phases ?? []) as PhaseInstance[];
       if (!Array.isArray(phases) || phases.length === 0)
@@ -122,7 +141,11 @@ export async function POST(
       }
       return NextResponse.json({
         ok: true,
-        state: await setPhases(phases, a.sessionName ?? "Custom session", room),
+        state: await navState(
+          room,
+          await setPhases(phases, a.sessionName ?? "Custom session", room),
+          role ?? "facilitator",
+        ),
       });
     }
     case "setTemplate": {
@@ -131,7 +154,7 @@ export async function POST(
         return NextResponse.json({ error: "Unknown template" }, { status: 400 });
       return NextResponse.json({
         ok: true,
-        state: await setPhases(t.phases, t.name, room),
+        state: await navState(room, await setPhases(t.phases, t.name, room), role ?? "facilitator"),
       });
     }
     case "suggestSession": {
@@ -175,9 +198,15 @@ export async function POST(
       return NextResponse.json({ ok: true, suggestion: r.suggestion });
     }
     case "setPhase":
-      return NextResponse.json({ ok: true, state: await setPhase(a.phaseId, room) });
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setPhase(a.phaseId, room), role ?? "facilitator"),
+      });
     case "setTimer":
-      return NextResponse.json({ ok: true, state: await setTimer(a.endsAt ?? null, room) });
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setTimer(a.endsAt ?? null, room), role ?? "facilitator"),
+      });
     case "addContent":
       return NextResponse.json({
         ok: true,
@@ -224,7 +253,11 @@ export async function POST(
       const dir = a.dir === -1 ? -1 : 1;
       return NextResponse.json({
         ok: true,
-        state: await setReadaroundIndex(state.readaroundIndex + dir, room),
+        state: await navState(
+          room,
+          await setReadaroundIndex(state.readaroundIndex + dir, room),
+          role ?? "facilitator",
+        ),
       });
     }
     case "cluster": {
