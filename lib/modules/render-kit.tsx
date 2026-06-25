@@ -92,8 +92,12 @@ export function useSyncedState<T>(initial: T, dep: string): [T, (v: T) => void] 
   return [val, setVal];
 }
 
-// Bottom-fixed primary action bar (use when a renderer needs a submit button
-// pinned above the phone's safe area; pad the scroll area with pb-28).
+// Primary action bar pinned to the bottom of the screen. Uses `sticky` (not
+// `fixed`) so it stays IN the layout flow: it never floats over the content, and
+// — critically on mobile — it rides with the page when the soft keyboard opens
+// instead of detaching and covering the form. It's the last child of the screen
+// column, so flex pushes it to the bottom; `sticky bottom-0` keeps it there
+// while longer content scrolls underneath it.
 export function StickyAction({
   label,
   onClick,
@@ -104,7 +108,7 @@ export function StickyAction({
   disabled?: boolean;
 }) {
   return (
-    <div className="safe-bottom animate-fadeInUp fixed inset-x-0 bottom-0 mx-auto w-full max-w-md border-t border-border bg-bg/95 px-6 pt-4 shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.55)] backdrop-blur">
+    <div className="safe-bottom sticky bottom-0 z-10 mt-auto border-t border-border bg-bg/95 px-6 pt-4 shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.55)] backdrop-blur">
       <Button className="w-full" onClick={onClick} disabled={disabled}>
         {label}
       </Button>

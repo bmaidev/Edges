@@ -173,7 +173,7 @@ const BuilderParticipant: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-5 p-6 pb-6">
         <p className="text-lg font-medium leading-snug">Prototype builder</p>
 
         {v.brief.trim() && (

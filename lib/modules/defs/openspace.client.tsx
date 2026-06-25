@@ -42,7 +42,7 @@ const OpenspaceParticipant: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-4 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-4 p-6 pb-6">
         <p className="text-lg font-medium leading-snug">Propose a topic</p>
         <input
           value={title}

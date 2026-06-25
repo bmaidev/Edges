@@ -98,7 +98,7 @@ const RedistributeParticipant: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-5 p-6 pb-6">
         <p className="text-sm uppercase tracking-wide text-muted">{f.intro}</p>
         <blockquote className="rounded-xl border border-accent/50 bg-accent/10 p-4 text-lg leading-relaxed text-white/95">
           {v.assignedCard.text}

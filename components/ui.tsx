@@ -35,7 +35,7 @@ export function PhaseBar({ label }: { label: string }) {
 
 export function Screen({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col">
+    <main className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col">
       {children}
     </main>
   );

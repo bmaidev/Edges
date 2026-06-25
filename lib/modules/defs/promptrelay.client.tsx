@@ -42,7 +42,7 @@ const PromptRelayParticipant: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-5 p-6 pb-6">
         <div className="flex flex-col gap-1">
           <p className="text-xs uppercase tracking-wide text-muted">
             The room is building one prompt together

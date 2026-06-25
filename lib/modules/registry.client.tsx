@@ -181,7 +181,7 @@ const CaptureRenderer: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-5 p-6 pb-6">
         {v.activeConstraint && (
           <p className="animate-fadeInUp rounded-lg border border-accent bg-accent/10 px-3 py-2 text-sm text-accent">
             New constraint: {v.activeConstraint}
@@ -694,7 +694,7 @@ const RankRenderer: Renderer = ({ view, act }) => {
   }
   return (
     <>
-      <div className="flex flex-1 flex-col gap-4 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-4 p-6 pb-6">
         {v.prompt && <p className="text-lg font-medium leading-snug">{v.prompt}</p>}
         <div className="flex flex-col gap-2">
           {order.map((item, i) => (
@@ -764,7 +764,7 @@ const ScaleRenderer: Renderer = ({ view, act }) => {
   const hi = v.labels?.[1] ?? String(v.max);
   return (
     <>
-      <div className="flex flex-1 flex-col gap-6 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-6 p-6 pb-6">
         {v.statements.map((st, i) => (
           <div key={i} className="flex flex-col gap-2">
             <p id={`scale-st-${i}`} className="text-base">
@@ -1010,7 +1010,7 @@ const MatrixRenderer: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-5 p-6 pb-6">
         <p className="text-lg font-medium leading-snug">{v.prompt}</p>
         <input
           value={text}

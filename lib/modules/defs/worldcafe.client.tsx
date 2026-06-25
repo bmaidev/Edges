@@ -62,7 +62,7 @@ const WorldCafeParticipant: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-5 p-6 pb-6">
         <RoundBanner label={`Round ${v.round + 1}`} active={v.isHost} />
 
         {v.isHost ? (

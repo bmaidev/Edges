@@ -61,7 +61,7 @@ const OneTwoFourParticipant: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-5 p-6 pb-6">
         <div className="flex flex-col gap-2">
           <RoundBanner label={`Step ${v.round + 1} of 4`} active />
           <h2 className="text-2xl font-semibold leading-tight text-white/90">

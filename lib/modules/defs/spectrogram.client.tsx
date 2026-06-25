@@ -105,7 +105,7 @@ const SpectrogramRenderer: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-6 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-6 p-6 pb-6">
         <p id="spectro-statement" className="text-lg font-medium leading-snug">
           {v.statement}
         </p>

@@ -47,7 +47,7 @@ const PreworkParticipant: Renderer = ({ view, act }) => {
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 p-6 pb-28">
+      <div className="flex flex-1 flex-col gap-5 p-6 pb-6">
         {pv.brief && (
           <div className="rounded-xl border border-border bg-surface px-4 py-3">
             <p className="mb-1 text-xs uppercase tracking-wide text-muted">
