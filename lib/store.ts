@@ -761,17 +761,27 @@ export async function getPublicState(
   if (ctx && moduleId) {
     const mod = getServerModule(moduleId);
     if (mod) {
-      const data = await mod.computeView(ctx);
-      view = { moduleId, data };
-      // Project legacy fields the facilitator console still reads.
-      if (moduleId === "allocate") {
-        const d = data as { kind: "lens" | "side"; counts: Record<string, number>; mine: string | null };
-        allocation = { kind: d.kind, counts: d.counts, mine: d.mine };
-      } else if (moduleId === "coordinator") {
-        const d = data as { kind: "lens-triad" | "pair"; members?: string[] };
-        coordinator = { kind: d.kind, members: d.members };
-      } else if (moduleId === "readaround") {
-        readaround = data as PublicState["readaround"];
+      // A throwing computeView must never 500 the whole /state poll — that would
+      // freeze every screen (and trap the facilitator on the broken phase, unable
+      // to advance past it). Degrade to a null view; the sequence + controls still
+      // return, so the room can move on. Content-free log (never view data).
+      try {
+        const data = await mod.computeView(ctx);
+        view = { moduleId, data };
+        // Project legacy fields the facilitator console still reads.
+        if (moduleId === "allocate") {
+          const d = data as { kind: "lens" | "side"; counts: Record<string, number>; mine: string | null };
+          allocation = { kind: d.kind, counts: d.counts, mine: d.mine };
+        } else if (moduleId === "coordinator") {
+          const d = data as { kind: "lens-triad" | "pair"; members?: string[] };
+          coordinator = { kind: d.kind, members: d.members };
+        } else if (moduleId === "readaround") {
+          readaround = data as PublicState["readaround"];
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "error";
+        console.error(`[computeView] ${moduleId} failed: ${msg}`);
+        view = { moduleId, data: null };
       }
     }
   }

@@ -6,6 +6,7 @@ import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
 import { Button, InlineEdit, Modal } from "@/components/ui";
 import { getClientRenderer } from "@/lib/modules/registry.client";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MODES, STARTER_LIBRARY } from "@/lib/modes";
 import { TEMPLATES } from "@/lib/templates";
 import type {
@@ -259,7 +260,13 @@ function PreviewPanel({ state }: { state: FacilitatorState }) {
             // renderer's `fixed` submit bar stays INSIDE the phone frame instead of
             // floating over the whole host screen.
             <div className="pointer-events-none relative max-h-[460px] transform-gpu overflow-y-auto">
-              <P view={state.view.data} token="" handle="" phaseId={state.phaseId ?? ""} act={noop} />
+              <ErrorBoundary
+                label={`preview-participant:${state.moduleId}`}
+                resetKey={state.phaseId ?? ""}
+                fallback={<p className="p-4 text-sm text-muted">Preview unavailable.</p>}
+              >
+                <P view={state.view.data} token="" handle="" phaseId={state.phaseId ?? ""} act={noop} />
+              </ErrorBoundary>
             </div>
           ) : (
             <p className="p-4 text-sm text-muted">
@@ -275,7 +282,13 @@ function PreviewPanel({ state }: { state: FacilitatorState }) {
           </p>
           <div className="overflow-hidden rounded-xl border border-border bg-bg text-sm [&_*]:!text-sm">
             <div className="pointer-events-none relative max-h-[360px] transform-gpu overflow-y-auto">
-              <J view={state.view.data} token="" handle="" phaseId={state.phaseId ?? ""} act={noop} />
+              <ErrorBoundary
+                label={`preview-projector:${state.moduleId}`}
+                resetKey={state.phaseId ?? ""}
+                fallback={<p className="p-4 text-sm text-muted">Preview unavailable.</p>}
+              >
+                <J view={state.view.data} token="" handle="" phaseId={state.phaseId ?? ""} act={noop} />
+              </ErrorBoundary>
             </div>
           </div>
         </div>
@@ -295,13 +308,19 @@ function ResultsPanel({ state }: { state: FacilitatorState }) {
   return (
     <Panel title="Live results (what you'd project)">
       <div className="rounded-xl border border-border bg-surface p-2 text-sm [&_*]:!text-base">
-        <R
-          view={state.view.data}
-          token=""
-          handle=""
-          phaseId={state.phaseId ?? ""}
-          act={async () => false}
-        />
+        <ErrorBoundary
+          label={`results:${state.moduleId}`}
+          resetKey={state.phaseId ?? ""}
+          fallback={<p className="text-sm text-muted">Results unavailable for this phase.</p>}
+        >
+          <R
+            view={state.view.data}
+            token=""
+            handle=""
+            phaseId={state.phaseId ?? ""}
+            act={async () => false}
+          />
+        </ErrorBoundary>
       </div>
     </Panel>
   );
@@ -353,14 +372,24 @@ function ModuleControlPanel({
   return (
     <Panel title="Module controls">
       <div className="rounded-xl border border-border bg-surface p-3">
-        <R
-          view={state.view.data}
-          token="__host__"
-          handle=""
-          phaseId={state.phaseId ?? ""}
-          act={act}
-          upload={upload}
-        />
+        <ErrorBoundary
+          label={`controls:${state.moduleId}`}
+          resetKey={state.phaseId ?? ""}
+          fallback={
+            <p className="text-sm text-muted">
+              This phase&apos;s controls hit a snag — use Advance above to move on.
+            </p>
+          }
+        >
+          <R
+            view={state.view.data}
+            token="__host__"
+            handle=""
+            phaseId={state.phaseId ?? ""}
+            act={act}
+            upload={upload}
+          />
+        </ErrorBoundary>
       </div>
     </Panel>
   );
