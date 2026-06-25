@@ -28,6 +28,144 @@ const close: PhaseInstance = {
 
 export const TEMPLATES: SessionTemplate[] = [
   {
+    id: "blue-sky",
+    name: "Blue Sky",
+    description:
+      "Unconstrained, aspirational ideation: if budget, time, and politics vanished, what would we do? Dream wide, hear it all, then mark what excites us.",
+    tag: "diverge",
+    phases: [
+      lobby,
+      {
+        id: "bluesky-ideas",
+        moduleId: "capture",
+        config: {
+          label: "Blue-sky ideas",
+          prompt:
+            "Imagine every constraint is gone — budget, time, headcount, politics. What would we do? Go big and specific.",
+          placeholder: "If anything were possible, we'd…",
+          timerSeconds: 360,
+          multiSubmit: true,
+          anonymity: "anonymous",
+        },
+      },
+      {
+        id: "bluesky-read",
+        moduleId: "readaround",
+        config: {
+          label: "Hear the possibilities",
+          readaround: { source: "submissions", sourcePhaseId: "bluesky-ideas" },
+        },
+      },
+      {
+        id: "bluesky-score",
+        moduleId: "scale",
+        config: {
+          label: "Which pull at you?",
+          statements: [
+            "These ideas genuinely excite me",
+            "There's a real seed here worth pursuing",
+          ],
+          min: 1,
+          max: 5,
+          labels: ["not really", "absolutely"],
+        },
+      },
+      close,
+    ],
+  },
+  {
+    id: "black-sky",
+    name: "Black Sky",
+    description:
+      "Worst-case / catastrophic thinking: picture the most damaging way this goes wrong, surface the causes anonymously, then weigh how likely and how bad.",
+    tag: "decide",
+    phases: [
+      lobby,
+      {
+        id: "blacksky-fail",
+        moduleId: "capture",
+        config: {
+          label: "The catastrophe",
+          prompt:
+            "It's the worst-case scenario — this didn't just fail, it failed badly and publicly. What happened, and what was the root cause no one wanted to name?",
+          placeholder: "The thing that took it down was…",
+          timerSeconds: 360,
+          multiSubmit: true,
+          anonymity: "anonymous",
+        },
+      },
+      {
+        id: "blacksky-read",
+        moduleId: "readaround",
+        config: {
+          label: "Face the failures",
+          readaround: { source: "submissions", sourcePhaseId: "blacksky-fail" },
+        },
+      },
+      {
+        id: "blacksky-rank",
+        moduleId: "scale",
+        config: {
+          label: "How likely / how damaging?",
+          statements: [
+            "This failure mode is realistically likely",
+            "We are doing far too little to prevent it",
+          ],
+          min: 1,
+          max: 5,
+          labels: ["not at all", "very much"],
+        },
+      },
+      close,
+    ],
+  },
+  {
+    id: "greyscale",
+    name: "Greyscale",
+    description:
+      "Resist black-and-white: name the tensions where both sides have a point, then place yourself honestly on the spectrum instead of taking a side.",
+    tag: "reflect",
+    phases: [
+      lobby,
+      {
+        id: "grey-tensions",
+        moduleId: "capture",
+        config: {
+          label: "The grey areas",
+          prompt:
+            "Where is this genuinely NOT black-and-white? Name a tension where both sides have a legitimate point.",
+          placeholder: "It's not simply X or Y — because…",
+          timerSeconds: 300,
+          multiSubmit: true,
+          anonymity: "anonymous",
+        },
+      },
+      {
+        id: "grey-read",
+        moduleId: "readaround",
+        config: {
+          label: "Sit with the tensions",
+          readaround: { source: "submissions", sourcePhaseId: "grey-tensions" },
+        },
+      },
+      {
+        id: "grey-spectrum",
+        moduleId: "scale",
+        config: {
+          label: "Where do you actually sit?",
+          statements: [
+            "I lean toward caution here",
+            "I lean toward boldness here",
+          ],
+          min: 1,
+          max: 7,
+          labels: ["strongly one side", "strongly the other"],
+        },
+      },
+      close,
+    ],
+  },
+  {
     id: "pre-mortem",
     name: "Pre-Mortem",
     description:
