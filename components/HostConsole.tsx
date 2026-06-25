@@ -59,7 +59,7 @@ export function HostConsole({
   const [cmdError, setCmdError] = useState<string | null>(null);
   type Tab = "run" | "preview" | "content" | "patterns" | "session";
   const [tab, setTab] = useState<Tab>("run");
-  const { state, refresh } = usePolledState<FacilitatorState & { role?: Role }>({
+  const { state, refresh, refreshUntil } = usePolledState<FacilitatorState & { role?: Role }>({
     code: code || undefined,
     endpoint: `${apiBase}/state`,
     streamEndpoint: `${apiBase}/stream`,
@@ -95,9 +95,13 @@ export function HostConsole({
           setCmdError(d.error ?? "That action didn't go through.");
           setTimeout(() => setCmdError(null), 4000);
         } else {
-          // Reflect the change immediately instead of waiting up to 2s for the
-          // next poll (and avoid a stale poll briefly showing the old phase).
-          refresh();
+          // Reflect the change as soon as it's actually visible. Nav commands
+          // return the new state; re-poll until that rev lands so a lagging KV
+          // read replica can't bounce the console back to the old phase.
+          const d = await res.clone().json().catch(() => null);
+          const newRev = d?.state?.rev;
+          if (typeof newRev === "number") refreshUntil(newRev);
+          else refresh();
         }
         return res;
       } catch {
@@ -108,7 +112,7 @@ export function HostConsole({
         clearTimeout(timer);
       }
     },
-    [apiBase, code, refresh],
+    [apiBase, code, refresh, refreshUntil],
   );
 
   if (!authed) {

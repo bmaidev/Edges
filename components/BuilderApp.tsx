@@ -585,7 +585,11 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       setMsg(null);
     } else {
       const d = await res.json().catch(() => ({}));
-      setMsg(d.error ?? "Launch failed (admin passcode required).");
+      if (res.status === 403)
+        setMsg(
+          "Not saved — launching a custom build needs the room's ADMIN passcode (the one you entered can't configure sessions). Enter the admin passcode above and launch again.",
+        );
+      else setMsg(d.error ?? `Launch failed (${res.status}).`);
     }
   }
 
@@ -624,9 +628,14 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           type="password"
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="Admin or facilitator passcode (needed for AI design + to launch)"
+          placeholder="Admin passcode (required to launch a custom build)"
           className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
+        <p className="text-xs text-muted">
+          Launching a custom session needs the room&apos;s{" "}
+          <span className="text-accent">admin</span> passcode. (Facilitators can
+          launch built-in templates from the host console.)
+        </p>
       </div>
 
       <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
@@ -811,8 +820,12 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         >
           Launch into room
         </Button>
-        {msg && <span className="text-sm text-[#ff8a8a]">{msg}</span>}
       </div>
+      {msg && (
+        <p className="mt-3 rounded-lg border border-[#5a2a2a] bg-[#5a2a2a]/30 px-3 py-2 text-sm text-[#ffd7d7]">
+          {msg}
+        </p>
+      )}
     </main>
   );
 }

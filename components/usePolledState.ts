@@ -30,7 +30,7 @@ export function usePolledState<
   const [error, setError] = useState(false);
   const optsRef = useRef(opts);
   optsRef.current = opts;
-  const pollRef = useRef<() => void>(() => {});
+  const pollRef = useRef<() => Promise<void> | void>(() => {});
 
   // Monotonic request sequencing — drop responses older than the newest applied.
   const seqRef = useRef(0);
@@ -109,5 +109,24 @@ export function usePolledState<
   // instead of waiting up to 2s for the next tick.
   const refresh = useCallback(() => pollRef.current(), []);
 
-  return { state, error, refresh };
+  // After a write that returns a new rev, re-poll rapidly until that rev is
+  // actually visible. KV read replicas can lag a beat behind a write, so a
+  // single immediate refresh often reads the PRE-write state and the action
+  // (e.g. Advance) looks dead. Bounded so a missed write can't spin forever; the
+  // 2s interval poll remains the backstop. The monotonic rev guard means a stale
+  // read in between is simply ignored.
+  const refreshUntil = useCallback(
+    async (minRev: number, timeoutMs = 4000) => {
+      if (!Number.isFinite(minRev)) return pollRef.current();
+      const start = Date.now();
+      while (lastRevRef.current < minRev && Date.now() - start < timeoutMs) {
+        await pollRef.current();
+        if (lastRevRef.current >= minRev) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    },
+    [],
+  );
+
+  return { state, error, refresh, refreshUntil };
 }
