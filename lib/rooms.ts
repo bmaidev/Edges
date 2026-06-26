@@ -7,6 +7,12 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { ModeId, PhaseInstance, Role, SessionReport } from "./types";
+import {
+  normalizeSlug,
+  slugReasonMessage,
+  validateSlug,
+  type SlugReason,
+} from "./slug";
 
 const KV_URL =
   process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "";
@@ -18,6 +24,9 @@ const useKv = Boolean(KV_URL && KV_TOKEN);
 interface DurableBackend {
   get<T>(key: string): Promise<T | null>;
   set<T>(key: string, value: T): Promise<void>;
+  // A4 — atomic claim: write ONLY if the key is absent. Returns true if we won
+  // the key. Used to reserve a room slug without a check-then-set TOCTOU race.
+  setNX<T>(key: string, value: T): Promise<boolean>;
   del(key: string): Promise<void>;
 }
 
@@ -31,6 +40,10 @@ if (useKv) {
     },
     async set<T>(key: string, value: T) {
       await client.set(key, value); // no `ex` — durable
+    },
+    async setNX<T>(key: string, value: T) {
+      // @vercel/kv set with NX returns "OK" on a win, null if the key existed.
+      return (await client.set(key, value, { nx: true })) === "OK";
     },
     async del(key: string) {
       await client.del(key);
@@ -46,6 +59,13 @@ if (useKv) {
     },
     async set<T>(key: string, value: T) {
       mem.set(key, value);
+    },
+    async setNX<T>(key: string, value: T) {
+      // Synchronous check-and-set within one microtask → atomic in single-
+      // threaded JS (concurrent callers run sequentially, so the first wins).
+      if (mem.has(key)) return false;
+      mem.set(key, value);
+      return true;
     },
     async del(key: string) {
       mem.delete(key);
@@ -140,6 +160,42 @@ function randomSlug(): string {
   return `${w}-${n}`;
 }
 
+// A4 — a chosen slug failed validation (empty/too short/reserved/bad charset).
+export class SlugError extends Error {
+  constructor(public reason: SlugReason) {
+    super(slugReasonMessage(reason));
+    this.name = "SlugError";
+  }
+}
+// A4 — a valid but already-claimed slug; carries a free suggestion.
+export class SlugTakenError extends Error {
+  constructor(public suggestion: string) {
+    super("That room address is taken.");
+    this.name = "SlugTakenError";
+  }
+}
+
+// Find the next free `${base}-N` (base-2, base-3, …) — for collision suggestions.
+async function suggestNextFreeSlug(base: string): Promise<string> {
+  for (let n = 2; n < 1000; n++) {
+    const candidate = normalizeSlug(`${base}-${n}`);
+    if (!(await db.get<Room>(roomKey(candidate)))) return candidate;
+  }
+  return randomSlug(); // pathological fallback
+}
+
+// Availability check for the live "is this address free?" affordance.
+export async function slugAvailable(
+  desired: string,
+): Promise<{ available: boolean; slug: string; reason?: SlugReason; suggestion?: string }> {
+  const slug = normalizeSlug(desired);
+  const v = validateSlug(slug);
+  if (!v.ok) return { available: false, slug, reason: v.reason };
+  if (await db.get<Room>(roomKey(slug)))
+    return { available: false, slug, suggestion: await suggestNextFreeSlug(slug) };
+  return { available: true, slug };
+}
+
 function randomPasscode(prefix: string): string {
   return `${prefix}-${randomBytes(4).toString("hex")}`; // e.g. fac-1a2b3c4d
 }
@@ -154,21 +210,18 @@ export async function createRoom(
   name: string,
   topic: string,
   templateId: string | null = null,
+  // A4 — an optional memorable slug the facilitator chose. Validated + claimed
+  // atomically; throws SlugError (invalid) / SlugTakenError (taken). When omitted,
+  // a random `word-xxxx` slug is claimed (the prior behaviour).
+  desiredSlug?: string | null,
 ): Promise<RoomCreated> {
-  // Find a free slug.
-  let slug = randomSlug();
-  for (let i = 0; i < 5 && (await db.get<Room>(roomKey(slug))); i++) {
-    slug = randomSlug();
-  }
-
   const passcodes = {
     admin: randomPasscode("adm"),
     facilitator: randomPasscode("fac"),
     cohost: randomPasscode("co"),
     projector: randomPasscode("scr"),
   };
-
-  const room: Room = {
+  const mkRoom = (slug: string): Room => ({
     slug,
     name: name.trim().slice(0, 120) || "Untitled room",
     topic: topic.trim().slice(0, 200),
@@ -181,9 +234,25 @@ export async function createRoom(
       cohost: sha256(passcodes.cohost),
       projector: sha256(passcodes.projector),
     },
-  };
+  });
 
-  await db.set(roomKey(slug), room);
+  let slug: string;
+  if (desiredSlug != null && desiredSlug.trim() !== "") {
+    // Chosen slug: validate, then claim atomically (no check-then-set race).
+    slug = normalizeSlug(desiredSlug);
+    const v = validateSlug(slug);
+    if (!v.ok) throw new SlugError(v.reason!);
+    const won = await db.setNX(roomKey(slug), mkRoom(slug));
+    if (!won) throw new SlugTakenError(await suggestNextFreeSlug(slug));
+  } else {
+    // Random slug: keep claiming fresh ones until one is free.
+    slug = randomSlug();
+    for (let i = 0; i < 8 && !(await db.setNX(roomKey(slug), mkRoom(slug))); i++) {
+      slug = randomSlug();
+    }
+  }
+
+  const room = (await db.get<Room>(roomKey(slug)))!;
   const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
   if (!index.includes(slug)) {
     index.push(slug);
