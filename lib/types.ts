@@ -346,6 +346,10 @@ export interface PublicState {
   // C2 nudge — the timestamp of the most recent "nudge the room" on the active
   // gather phase, so a participant who hasn't answered can re-pulse the prompt.
   nudgedAt?: number | null;
+  // D1 — honest per-phase attribution regime for the participant's response
+  // ("named" / "facilitators-only" / "none"). Transport-only, recomputed each
+  // request (can't drift); never overclaims anonymity.
+  attribution?: import("./modules/attribution").Attribution;
 }
 
 // C2 — content-free participation signal. Every value is an integer count; no

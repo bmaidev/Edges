@@ -6,12 +6,12 @@ export const STRINGS = {
   subtitle: "A live workshop companion",
 
   joinBody:
-    "This companion helps the room surface what it's thinking, in real time. You'll write or dictate short notes during the session. The facilitators see raw notes; everyone else sees only the patterns or aggregates. Nothing is kept beyond the session.",
+    "This companion helps the room surface what it's thinking, in real time. You'll write or dictate short notes during the session. The facilitators see raw notes; the room sees only patterns or aggregates. Each phase shows whether your response is named or facilitators-only.",
 
   lobby: "We'll begin shortly.",
 
   privacyLine:
-    "Nothing here is recorded beyond this session. Your raw notes are seen only by the facilitators, never other participants. Your handle is whatever you like — or stay anonymous. All data is deleted when the session ends.",
+    "No account needed. The facilitators see your raw notes; other participants never do. Pick a handle or stay anonymous. After the session a handle-free recap is available for 24 hours, then all data is deleted.",
 
   faceToFace: "Now talk face-to-face. The app waits.",
 
