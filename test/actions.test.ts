@@ -119,6 +119,22 @@ describe("role scoping + lifecycle", () => {
     expect((await getPublicState(null, room, "projector")).actionItems).toBeNull();
   });
 
+  it("promote: the projector gets the board only when promoted", async () => {
+    const room = "f2-promote";
+    await seed(room);
+    await mutateActionItems({ kind: "add", text: "Book the venue" }, room);
+    // not promoted → projector sees nothing
+    expect((await getPublicState(null, room, "projector")).actionItems).toBeNull();
+    await mutateActionItems({ kind: "promote", on: true }, room);
+    const proj = await getPublicState(null, room, "projector");
+    expect(proj.actionItems?.length).toBe(1);
+    expect(proj.actionItemsPromoted).toBe(true);
+    // participants still never see it mid-session
+    expect((await getPublicState("a", room, "participant")).actionItems).toBeNull();
+    await mutateActionItems({ kind: "promote", on: false }, room);
+    expect((await getPublicState(null, room, "projector")).actionItems).toBeNull();
+  });
+
   it("roomSignature changes when the register changes (SSE ticks)", async () => {
     const room = "f2-sig";
     await seed(room);

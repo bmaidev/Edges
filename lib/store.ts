@@ -435,7 +435,8 @@ export type ActionItemOp =
   | { kind: "add"; text: string; ownerName?: string; due?: string }
   | { kind: "update"; id: string; text?: string; ownerName?: string; due?: string }
   | { kind: "setStatus"; id: string; status: import("./types").ActionItemStatus }
-  | { kind: "remove"; id: string };
+  | { kind: "remove"; id: string }
+  | { kind: "promote"; on: boolean }; // F2 — show/hide the board on the projector
 
 export async function mutateActionItems(
   op: ActionItemOp,
@@ -443,6 +444,8 @@ export async function mutateActionItems(
 ): Promise<SessionState> {
   const apply = async () => {
       const state = await getState(roomId);
+      if (op.kind === "promote")
+        return writeState({ ...state, actionItemsPromoted: op.on }, roomId);
       const items = [...(state.actionItems ?? [])];
       const now = Date.now();
       if (op.kind === "add") {
@@ -1264,12 +1267,18 @@ export async function getPublicState(
     clusterAssistAvailable: clusterAssistAvailable(),
     participation,
     nudgedAt,
-    // F2 — the register is facilitator-tier only for now (participants/projector
-    // get null; a participant "your items" surface is a scoped follow).
+    // F2 — facilitator tier gets the register; the projector gets it only when
+    // the facilitator promotes it (the live commitment board); participants get
+    // it in their end-of-session recap, not mid-session.
     actionItems:
-      role === "participant" || role === "projector"
+      role === "participant"
         ? null
-        : state.actionItems ?? [],
+        : role === "projector"
+          ? state.actionItemsPromoted
+            ? state.actionItems ?? []
+            : null
+          : state.actionItems ?? [],
+    actionItemsPromoted: Boolean(state.actionItemsPromoted),
     takeaway,
   };
 }
@@ -1302,8 +1311,9 @@ export async function roomSignature(
     contentVersion(visible),
     Object.keys(votes).length,
     words.length,
-    // F2 — tick the stream when the action-item register changes.
+    // F2 — tick the stream when the register changes or is promoted/hidden.
     (state.actionItems ?? []).map((a) => `${a.id}:${a.status}`).join(","),
+    state.actionItemsPromoted ? "1" : "",
   ].join("|");
 }
 

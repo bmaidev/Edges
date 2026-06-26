@@ -109,6 +109,25 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
         </span>
       </div>
       <div className="flex flex-1 flex-col overflow-y-auto">
+        {/* F2 — the live commitment board, when the facilitator promotes it. */}
+        {!state.ended && state.actionItems && state.actionItems.length > 0 && (
+          <div className="border-b-2 border-accent/40 bg-accent/5 px-10 py-5">
+            <p className="text-sm uppercase tracking-wide text-accent">Our commitments</p>
+            <ul className="mt-2 grid gap-1.5 text-2xl text-white/90 sm:grid-cols-2">
+              {state.actionItems.map((a, i) => (
+                <li key={i} className="flex items-baseline gap-2">
+                  <span className={a.status === "done" ? "text-accent" : "text-muted"}>
+                    {a.status === "done" ? "✓" : "•"}
+                  </span>
+                  <span className={a.status === "done" ? "text-muted line-through" : ""}>
+                    {a.text}
+                    {a.ownerName ? <span className="text-muted"> — {a.ownerName}</span> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {state.ended ? (
           state.takeaway && joinUrl ? (
             // F3 — let the room keep their recap on the way out.
