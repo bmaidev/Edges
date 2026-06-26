@@ -361,6 +361,13 @@ export interface RoomArchive {
   content: { type: string; title: string; body: string }[];
   participantCount: number;
   report?: SessionReport | null; // AI synthesis of the whole session
+  // F2 — the captured action-item register (verbatim), carried into the handover.
+  actionItems?: {
+    text: string;
+    ownerName?: string;
+    due?: string;
+    status: "open" | "done";
+  }[];
 }
 
 // Generate a whole-session report from all submissions + curated patterns.
@@ -489,6 +496,12 @@ async function composeArchive(slug: string): Promise<RoomArchive | null> {
     content: fs.allContent.map((c) => ({ type: c.type, title: c.title, body: c.body })),
     participantCount: fs.participantCount,
     report,
+    actionItems: (fs.actionItems ?? []).map((a) => ({
+      text: a.text,
+      ownerName: a.ownerName,
+      due: a.due,
+      status: a.status,
+    })),
   };
 }
 

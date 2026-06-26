@@ -25,6 +25,14 @@ export function reportToMarkdown(a: RoomArchive): string {
   list("Decisions", r?.decisions);
   list("Open tensions", r?.tensions);
   list("Next steps", r?.nextSteps);
+  if (a.actionItems?.length) {
+    out.push("## Action items");
+    for (const it of a.actionItems) {
+      const meta = [it.ownerName, it.due ? `due ${it.due}` : null].filter(Boolean).join(", ");
+      out.push(`- [${it.status === "done" ? "x" : " "}] ${it.text}${meta ? ` (${meta})` : ""}`);
+    }
+    out.push("");
+  }
   if (a.patterns.length) {
     out.push("## Patterns", a.patterns.map((p) => `- ${p.name}`).join("\n"), "");
   }
