@@ -7,6 +7,7 @@ import { useChime } from "@/components/useChime";
 import { useConnection, type ConnState } from "@/components/useConnection";
 import { ConnectionStrip } from "@/components/ConnectionStrip";
 import { useResilientAct } from "@/components/useOfflineQueue";
+import { AttributionChip } from "@/components/AttributionChip";
 import { TakeawayScreen } from "@/components/TakeawayScreen";
 import { Button, Screen } from "@/components/ui";
 import { getClientRenderer } from "@/lib/modules/registry.client";
@@ -285,6 +286,7 @@ function PhaseScreen({
     <Screen>
       <ConnectionStrip conn={conn} />
       <StatusBar state={state} />
+      <AttributionChip attribution={state.attribution} handle={handle} />
       <ErrorBoundary
         label={`participant:${state.moduleId ?? "?"}`}
         resetKey={`${state.phaseId}:${state.rev}`}

@@ -17,6 +17,7 @@ import {
   hasRunsheet,
   stripRunsheet,
 } from "./modules/runsheet";
+import { resolveAttribution } from "./modules/attribution";
 import {
   PROJECTOR_FLOOR,
   computeParticipationSignal,
@@ -1236,6 +1237,13 @@ export async function getPublicState(
     }
   }
 
+  // D1 — honest per-phase attribution (cheap map lookup; outside the computeView
+  // try so a throwing module never strands the indicator).
+  const attribution = resolveAttribution(
+    moduleId,
+    moduleId ? getServerModule(moduleId)?.capabilities.gatherSource ?? "none" : "none",
+  );
+
   // C2 nudge — read the active gather phase's nudge marker so the participant can
   // re-pulse. Only on gather phases (one cheap read), never elsewhere.
   let nudgedAt: number | null = null;
@@ -1294,6 +1302,7 @@ export async function getPublicState(
     clusterAssistAvailable: clusterAssistAvailable(),
     participation,
     nudgedAt,
+    attribution,
     // F2 — facilitator tier gets the register; the projector gets it only when
     // the facilitator promotes it (the live commitment board); participants get
     // it in their end-of-session recap, not mid-session.
