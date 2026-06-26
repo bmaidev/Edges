@@ -603,6 +603,18 @@ export async function readHeartbeats(
   return backend.hgetall<number>(roomKeys(roomId).seen);
 }
 
+// H1 — idempotency for the offline submit queue. A client tags each send with a
+// stable `dedupeId`; `claimAction` setNX's it (true only the FIRST time). So a
+// send that actually reached the server but whose response was lost — then gets
+// replayed from the queue on reconnect — is recognised and skipped, never
+// double-applied (critical for non-idempotent submissions). 1h TTL is ample.
+export async function claimAction(
+  roomId: string,
+  dedupeId: string,
+): Promise<boolean> {
+  return backend.setNX(`${roomKeys(roomId).seen}:dedup:${dedupeId}`, 1, 3600);
+}
+
 // ---- Submissions (Redis list: atomic RPUSH append) ------------------------
 
 export async function listSubmissions(

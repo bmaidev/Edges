@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dispatchAction, touchParticipant } from "@/lib/store";
+import { claimAction, dispatchAction, touchParticipant } from "@/lib/store";
 import { getRoom } from "@/lib/rooms";
 import type { ModuleAction } from "@/lib/modules/types";
 
@@ -24,6 +24,14 @@ export async function POST(
   }
   if (!body || typeof body.type !== "string")
     return NextResponse.json({ error: "Missing action type" }, { status: 400 });
+
+  // H1 — idempotent replay: if this send was already processed (a queued retry of
+  // a send whose response was lost), acknowledge it without re-applying.
+  const dedupeId = (body as { dedupeId?: unknown }).dedupeId;
+  if (typeof dedupeId === "string" && dedupeId) {
+    const fresh = await claimAction(params.room, dedupeId);
+    if (!fresh) return NextResponse.json({ ok: true, deduped: true });
+  }
 
   // H1 — acting is liveness: refresh the heartbeat so room-health reflects
   // people who are engaging but between polls. Fire-and-forget, throttled.

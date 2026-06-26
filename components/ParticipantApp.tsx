@@ -6,6 +6,7 @@ import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
 import { useConnection, type ConnState } from "@/components/useConnection";
 import { ConnectionStrip } from "@/components/ConnectionStrip";
+import { useResilientAct } from "@/components/useOfflineQueue";
 import { TakeawayScreen } from "@/components/TakeawayScreen";
 import { Button, Screen } from "@/components/ui";
 import { getClientRenderer } from "@/lib/modules/registry.client";
@@ -238,7 +239,7 @@ function PhaseScreen({
   apiBase: string;
   conn: ConnState;
 }) {
-  const act = useAct(apiBase, token, handle);
+  const { act, pending } = useResilientAct(apiBase, token, handle, state.phaseId ?? "");
   const pulse = useContentPulse(state.contentVersion);
   // C2 — re-pulse the prompt when the facilitator nudges the room (nudgedAt is a
   // rising timestamp, so it triggers the same gentle pulse as new content).
@@ -263,7 +264,7 @@ function PhaseScreen({
       : "Look up at the screen.";
     return (
       <Screen>
-        <ConnectionStrip conn={conn} />
+        <ConnectionStrip conn={conn} pending={pending} />
         <div className="flex flex-1 flex-col items-center justify-center gap-8 p-8 text-center animate-riseIn">
           <div className="relative h-16 w-16">
             <div className="absolute inset-0 rounded-full bg-accent/30 blur-xl animate-pulseSoft" />
@@ -303,31 +304,6 @@ function PhaseScreen({
 
 // Returns whether the write landed (true/false), retrying once. Renderers use
 // this to confirm honestly rather than assuming success.
-function useAct(apiBase: string, token: string, handle: string) {
-  return useCallback(
-    async (action: { type: string; payload?: Record<string, unknown> }) => {
-      const post = () =>
-        fetch(`${apiBase}/action`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...action, token, handle }),
-        });
-      try {
-        const res = await post();
-        if (res.ok) return true;
-      } catch {
-        // fall through to one retry
-      }
-      try {
-        const res = await post();
-        return res.ok;
-      } catch {
-        return false;
-      }
-    },
-    [apiBase, token, handle],
-  );
-}
 
 function useContentPulse(version: number): boolean {
   const [pulse, setPulse] = useState(false);
