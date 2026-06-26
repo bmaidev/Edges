@@ -17,6 +17,7 @@ import {
   useSyncedState,
 } from "./render-kit";
 import type { ClientModule, Renderer } from "./render-kit";
+import { countCopy } from "./lobby-copy";
 import type {
   AllocateView,
   CaptureView,
@@ -68,18 +69,13 @@ import { mediaRenderers } from "./defs/media.client";
 
 const LobbyRenderer: Renderer = ({ view }) => {
   const v = view as LobbyView;
-  const present = v.present ?? 0;
-  const here =
-    present <= 1
-      ? "You're first — others are arriving"
-      : `${present} here so far`;
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 p-8 text-center">
       <div className="h-16 w-16 rounded-full bg-accent animate-pulseSoft" />
       <p className="max-w-xs text-lg leading-relaxed text-white/90">{v.message}</p>
       <p className="flex items-center gap-2 text-sm text-muted">
         <span className="inline-block h-2 w-2 animate-pulseSoft rounded-full bg-accent" />
-        {here}
+        {countCopy(v.present ?? 0)}
       </p>
     </div>
   );
