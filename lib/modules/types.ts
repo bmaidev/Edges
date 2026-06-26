@@ -116,6 +116,12 @@ export interface ModuleServerDef<Config = Record<string, unknown>> {
   defaultConfig: Config;
   defaultVisibility: Record<Role, Visibility>;
   capabilities: ModuleCapabilities;
+  // D4 — called once when this module's phase becomes active (the setPhase /
+  // launch path), BEFORE any computeView. Rotation modules use it to snapshot
+  // the roster into a frozen cohort so a later mid-session join can't reshuffle
+  // seated groups. Best-effort and idempotent: it must tolerate being called
+  // more than once and never block the phase advance if it throws.
+  onEnter?(ctx: ModuleContext): Promise<void> | void;
   // Compute the role-scoped view payload for the active phase.
   computeView(ctx: ModuleContext): Promise<unknown> | unknown;
   // Validate + apply a participant action. Omit for display-only modules.

@@ -17,6 +17,7 @@
 // and computeView never writes. handleAction recomputes the SAME way.
 
 import { z } from "zod";
+import { COHORT_KEY, readCohort } from "../groups";
 import type {
   ModuleContext,
   ModuleServerDef,
@@ -127,11 +128,25 @@ function sortedTokens(ctx: ModuleContext): string[] {
     .sort();
 }
 
+// D4 — the voter ordering that drives card assignment. Once scoring opens (round
+// 0→1) the voter set is FROZEN into the cohort, so a latecomer joining mid-pass
+// can't shift the sorted order and reshuffle who holds which card. A latecomer is
+// absent from the frozen list, so `assignFor` gives them the index-0 fallback
+// card — deterministic for them, invisible to everyone already scoring.
+function voterTokens(
+  ctx: ModuleContext,
+  votes: Record<string, unknown>,
+): string[] {
+  const frozen = readCohort(votes);
+  return frozen && frozen.length ? frozen : sortedTokens(ctx);
+}
+
 // Pure: returns the card assigned to `token` for round `round` (>=1), or null
 // if there's no card that isn't authored by the caller. We start at
 // (myIndex + round) % numCards and walk forward, skipping own-authored cards.
 function assignFor(
   ctx: ModuleContext,
+  votes: Record<string, unknown>,
   token: string | null | undefined,
   round: number,
 ): Submission | null {
@@ -139,7 +154,7 @@ function assignFor(
   const cards = ideaCards(ctx);
   if (cards.length === 0) return null;
 
-  const tokens = sortedTokens(ctx);
+  const tokens = voterTokens(ctx, votes);
   const myIndex = tokens.indexOf(token);
   // Fall back to 0 if the caller isn't in the participant list (stale token);
   // they still get a deterministic, stable card.
@@ -213,7 +228,7 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
       }
 
       // SCORING pass.
-      const assigned = assignFor(ctx, me?.token ?? null, round);
+      const assigned = assignFor(ctx, votes, me?.token ?? null, round);
       let myScoreForIt: number | null = null;
       if (me?.token && assigned) {
         const myScores = (votes[me.token] ?? {}) as Record<string, unknown>;
@@ -278,6 +293,11 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
       const votes = await ctx.store.readVotes(ctx.phase.id);
       const next = readRound(votes) + 1;
+      // D4 — scoring opens: freeze the voter set so card assignment is stable for
+      // the rest of the activity (writing is closed, so the roster won't grow with
+      // people who'll get cards). Latecomers from here on get the fallback card.
+      if (next === 1)
+        await ctx.store.castVote(ctx.phase.id, COHORT_KEY, sortedTokens(ctx));
       await ctx.store.castVote(ctx.phase.id, "__round__", next);
       return { ok: true };
     }
@@ -332,7 +352,7 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
 
       // Recompute the SAME deterministic assignment so the score lands on the
       // card the caller is actually holding this pass.
-      const assigned = assignFor(ctx, token, round);
+      const assigned = assignFor(ctx, votes, token, round);
       if (!assigned) return { ok: false, reason: "no card assigned yet" };
       const cardId = String(action.payload?.cardId ?? "");
       // Guard against a stale client: only accept a score for the held card.

@@ -113,3 +113,95 @@ export const ONE_TWO_FOUR_SIZES = [1, 2, 4, Infinity];
 export function oneTwoFourSize(round: number): number {
   return ONE_TWO_FOUR_SIZES[Math.min(round, ONE_TWO_FOUR_SIZES.length - 1)];
 }
+
+// ---- D4: cohort freeze ----------------------------------------------------
+//
+// Every grouping function above is a pure function of the TOKEN SET. That makes
+// them stable across 2s polls — but it also means that when a latecomer joins
+// mid-session the set grows and the WHOLE ROOM regroups (and positional tags
+// like `t2:r1` re-point at different people). The fix: snapshot the roster the
+// moment a rotation phase is entered into `votes["__cohort__"]`, then group from
+// that FROZEN set so seated people never move. Latecomers (live − cohort) are
+// folded in as appended extras, joining the smallest group without disturbing
+// anyone already placed.
+export const COHORT_KEY = "__cohort__";
+
+// The frozen cohort token list, or null if none has been snapshotted yet.
+export function readCohort(votes: Record<string, unknown>): string[] | null {
+  const c = votes[COHORT_KEY];
+  return Array.isArray(c) && c.every((x) => typeof x === "string")
+    ? (c as string[])
+    : null;
+}
+
+// Resolve the effective grouping set: the frozen cohort if one exists (with the
+// live latecomers split out as `extras`), else the live roster as a back-compat
+// fallback for phases entered before the freeze shipped (or with no one present
+// at entry). The cohort is returned verbatim (its frozen order is load-bearing);
+// extras are sorted for a deterministic fold-in order.
+export function cohortTokens(
+  votes: Record<string, unknown>,
+  liveTokens: string[],
+): { cohort: string[]; extras: string[] } {
+  const frozen = readCohort(votes);
+  const live = sortedTokens(liveTokens);
+  if (!frozen || frozen.length === 0) return { cohort: live, extras: [] };
+  const set = new Set(frozen);
+  return { cohort: frozen, extras: live.filter((t) => !set.has(t)) };
+}
+
+// Fold latecomers into existing groups WITHOUT disturbing seated members: each
+// extra joins the currently-smallest group (ties → lowest index). Seated tokens
+// stay byte-identical — the whole invariant of the freeze.
+export function appendExtras(groups: string[][], extras: string[]): string[][] {
+  if (extras.length === 0) return groups;
+  const out = groups.map((g) => [...g]);
+  for (const tok of extras) {
+    if (out.length === 0) {
+      out.push([tok]);
+      continue;
+    }
+    let min = 0;
+    for (let i = 1; i < out.length; i++)
+      if (out[i].length < out[min].length) min = i;
+    out[min].push(tok);
+  }
+  return out;
+}
+
+// World Café variant: extras join as TRAVELLERS at the smallest table (never as a
+// host — hosts are fixed at round 0 from the cohort).
+export function appendCafeExtras(
+  tables: { host: string | null; members: string[] }[],
+  extras: string[],
+): { host: string | null; members: string[] }[] {
+  if (extras.length === 0) return tables;
+  const out = tables.map((t) => ({ host: t.host, members: [...t.members] }));
+  for (const tok of extras) {
+    if (out.length === 0) {
+      out.push({ host: null, members: [tok] });
+      continue;
+    }
+    let min = 0;
+    for (let i = 1; i < out.length; i++)
+      if (out[i].members.length < out[min].members.length) min = i;
+    out[min].members.push(tok);
+  }
+  return out;
+}
+
+// Snapshot the current roster as the phase's cohort — idempotent: a non-empty
+// cohort is never overwritten (so re-entering a phase, or a double setPhase,
+// can't reshuffle a room that's already seated). Called from a module's onEnter.
+export async function freezeCohort(
+  store: {
+    readVotes(phaseId: string): Promise<Record<string, unknown>>;
+    castVote(phaseId: string, token: string, value: unknown): Promise<void>;
+  },
+  phaseId: string,
+  liveTokens: string[],
+): Promise<void> {
+  const votes = await store.readVotes(phaseId);
+  if (readCohort(votes)?.length) return; // already seated — leave it frozen
+  await store.castVote(phaseId, COHORT_KEY, sortedTokens(liveTokens));
+}

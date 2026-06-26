@@ -291,7 +291,7 @@ export async function setPhases(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   const state = await getState(roomId);
-  return writeState(
+  const written = await writeState(
     {
       ...state,
       mode: null,
@@ -305,6 +305,8 @@ export async function setPhases(
     },
     roomId,
   );
+  await runOnEnter(roomId, written); // D4 — freeze a rotation first-phase's cohort
+  return written;
 }
 
 // C3 — `release` is direction-aware: queued content is released ONLY on a
@@ -319,7 +321,7 @@ export async function setPhase(
 ): Promise<SessionState> {
   const state = await getState(roomId);
   if (opts.release !== false) await releaseQueuedContent(roomId);
-  return writeState(
+  const written = await writeState(
     {
       ...state,
       phaseId,
@@ -329,6 +331,8 @@ export async function setPhase(
     },
     roomId,
   );
+  await runOnEnter(roomId, written); // D4 — let the entered module freeze its cohort
+  return written;
 }
 
 // C1 — every timer mutation is a read-compute-write of the state key, so two
@@ -1143,6 +1147,24 @@ async function buildContext(
     };
   }
   return { ctx, state, participants, visible, patterns, me };
+}
+
+// D4 — fire the newly-active module's onEnter hook (cohort freeze, etc.) right
+// after a phase becomes active. Best-effort: a throwing/absent hook must never
+// block a phase advance, so it's wrapped and logged content-free. Runs at the
+// facilitator role with no identity — onEnter only needs the roster + store.
+async function runOnEnter(roomId: string, state: SessionState): Promise<void> {
+  const phase = resolveActive(state);
+  if (!phase) return;
+  const mod = getServerModule(phase.moduleId);
+  if (!mod?.onEnter) return;
+  try {
+    const { ctx } = await buildContext(roomId, "facilitator", null, state);
+    if (ctx) await mod.onEnter(ctx);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "error";
+    console.error(`[onEnter] ${phase.moduleId} failed: ${msg}`);
+  }
 }
 
 export async function getPublicState(
