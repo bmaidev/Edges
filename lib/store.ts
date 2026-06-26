@@ -43,6 +43,7 @@ import type {
   PublicState,
   Role,
   SessionState,
+  SpotlightRef,
   Submission,
   TakeawaySnapshot,
 } from "./types";
@@ -212,6 +213,7 @@ const DEFAULT_STATE: SessionState = {
   topic: SESSION_TOPIC,
   ended: false,
   actionItems: [],
+  spotlight: null, // C4 — so endSession ({...DEFAULT_STATE}) clears a spotlight for free
   rev: 0, // a real write always has rev > 0, so the fallback never wins a race
 };
 
@@ -278,6 +280,7 @@ export async function setMode(
       timerEndsAt: null,
       timerRemainingMs: null,
       readaroundIndex: 0,
+      spotlight: null, // C4 — a relaunch clears any lingering spotlight
       ended: false,
     },
     roomId,
@@ -301,6 +304,7 @@ export async function setPhases(
       timerEndsAt: null,
       timerRemainingMs: null,
       readaroundIndex: 0,
+      spotlight: null, // C4 — a relaunch clears any lingering spotlight
       ended: false,
     },
     roomId,
@@ -328,11 +332,23 @@ export async function setPhase(
       timerEndsAt: null,
       timerRemainingMs: null,
       readaroundIndex: 0,
+      spotlight: null, // C4 — advancing clears any spotlight from the prior phase
     },
     roomId,
   );
   await runOnEnter(roomId, written); // D4 — let the entered module freeze its cohort
   return written;
+}
+
+// C4 — set (or clear, with null) the spotlighted response. A read-modify-write of
+// the state key, so it rides authoritative-apply: writeState stamps a fresh
+// monotonic rev and the host route returns the just-written state (no KV read-back).
+export async function setSpotlight(
+  ref: SpotlightRef | null,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  return writeState({ ...state, spotlight: ref ?? null }, roomId);
 }
 
 // C1 — every timer mutation is a read-compute-write of the state key, so two
@@ -1113,6 +1129,7 @@ async function buildContext(
   visible: ContentItem[];
   patterns: Pattern[];
   me: Participant | null;
+  submissions: Submission[];
 }> {
   const [state, content, participants, patterns, submissions] =
     await Promise.all([
@@ -1146,7 +1163,22 @@ async function buildContext(
       store: storeFacade(roomId),
     };
   }
-  return { ctx, state, participants, visible, patterns, me };
+  return { ctx, state, participants, visible, patterns, me, submissions };
+}
+
+// C4 — resolve a spotlight ref to room-safe display text. A submission ref reads
+// the LIVE submission (a deleted one → null, so the overlay vanishes cleanly). The
+// handle is ALWAYS null: the stored submission handle is not a public-ness signal
+// (an anonymous-by-design phase still stores a real handle), so the room never
+// sees a name. A future attributed spotlight must use an explicit `literal` ref.
+function resolveSpotlight(
+  ref: SpotlightRef | null | undefined,
+  submissions: Submission[],
+): { text: string; handle: string | null } | null {
+  if (!ref) return null;
+  if (ref.kind === "literal") return { text: ref.text, handle: null };
+  const sub = submissions.find((s) => s.id === ref.id);
+  return sub ? { text: sub.text, handle: null } : null;
 }
 
 // D4 — fire the newly-active module's onEnter hook (cohort freeze, etc.) right
@@ -1173,7 +1205,7 @@ export async function getPublicState(
   role: Role = "participant",
   stateOverride?: SessionState,
 ): Promise<PublicState> {
-  const { ctx, state, participants, visible, patterns, me } =
+  const { ctx, state, participants, visible, patterns, me, submissions } =
     await buildContext(roomId, role, token, stateOverride);
 
   const mode = getMode(state.mode);
@@ -1325,6 +1357,10 @@ export async function getPublicState(
     participation,
     nudgedAt,
     attribution,
+    // C4 — the spotlighted response, resolved to room-safe text (handle always
+    // null). Shown on every surface (the projector renders it large); resolution
+    // reuses the submissions buildContext already fetched, so zero extra reads.
+    spotlight: resolveSpotlight(state.spotlight, submissions),
     // F2 — facilitator tier gets the register; the projector gets it only when
     // the facilitator promotes it (the live commitment board); participants get
     // it in their end-of-session recap, not mid-session.
@@ -1372,6 +1408,13 @@ export async function roomSignature(
     // F2 — tick the stream when the register changes or is promoted/hidden.
     (state.actionItems ?? []).map((a) => `${a.id}:${a.status}`).join(","),
     state.actionItemsPromoted ? "1" : "",
+    // C4 — tick on a spotlight set/replace/clear so the projector blooms within ~1
+    // SSE beat instead of waiting up to 2s for the next poll. Primitive token only.
+    state.spotlight
+      ? state.spotlight.kind === "submission"
+        ? `s:${state.spotlight.id}`
+        : `l:${state.spotlight.text.length}`
+      : "",
   ].join("|");
 }
 
@@ -1443,5 +1486,7 @@ export async function getFacilitatorState(
     readiness,
     runsheets,
     nextPeek,
+    // C4 — the raw ref (host-only) so the cockpit can ring the active card.
+    spotlightRef: state.spotlight ?? null,
   };
 }

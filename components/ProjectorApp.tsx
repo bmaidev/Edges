@@ -108,7 +108,13 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
           )}
         </span>
       </div>
-      <div className="flex flex-1 flex-col overflow-y-auto">
+      <div className="relative flex flex-1 flex-col overflow-y-auto">
+        {/* C4 — a spotlighted response blooms over the live module (kept mounted,
+            dimmed, behind). Outside the module ErrorBoundary so neither can take
+            the other down. Cleared by the host or any phase advance. */}
+        {!state.ended && state.spotlight && (
+          <SpotlightOverlay text={state.spotlight.text} />
+        )}
         {/* F2 — the live commitment board, when the facilitator promotes it. */}
         {!state.ended && state.actionItems && state.actionItems.length > 0 && (
           <div className="border-b-2 border-accent/40 bg-accent/5 px-10 py-5">
@@ -173,6 +179,39 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
         )}
       </div>
     </main>
+  );
+}
+
+// C4 — the spotlight bloom. Text only (never a name); the live module stays
+// mounted and dimmed behind the scrim. Long responses down-scale and soft-fade at
+// the bottom rather than overflow. A gentle rise-in honours reduce-motion (the
+// a11y-reduce-motion CSS neutralises the animation to an instant appear).
+function SpotlightOverlay({ text }: { text: string }) {
+  // Three coarse type tiers so a one-liner fills the wall and a paragraph still fits.
+  const size =
+    text.length <= 80
+      ? "text-6xl sm:text-7xl"
+      : text.length <= 200
+        ? "text-5xl sm:text-6xl"
+        : "text-3xl sm:text-4xl";
+  const long = text.length > 280;
+  return (
+    <div
+      className="absolute inset-0 z-20 flex items-center justify-center bg-bg/80 p-12 backdrop-blur-md animate-riseIn"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="relative max-h-full max-w-5xl overflow-hidden text-center">
+        <p
+          className={`font-display leading-tight text-white/95 ${size} ${long ? "max-h-[70vh] overflow-hidden" : ""}`}
+        >
+          {text}
+        </p>
+        {long && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-bg to-transparent" />
+        )}
+      </div>
+    </div>
   );
 }
 
