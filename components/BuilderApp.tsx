@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui";
 import { bootToken } from "@/lib/magicLink";
@@ -564,6 +564,93 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       })),
     );
   }
+
+  // B4 — the shared user-template library.
+  const [userDesigns, setUserDesigns] = useState<
+    { id: string; name: string; phaseCount: number }[]
+  >([]);
+  const loadDesigns = useCallback(async () => {
+    if (!code.trim()) return;
+    try {
+      const res = await fetch(`${apiBase}/designs?code=${encodeURIComponent(code)}`);
+      if (res.ok) setUserDesigns((await res.json()).designs ?? []);
+    } catch {
+      /* the launch path is the real gate */
+    }
+  }, [apiBase, code]);
+  useEffect(() => {
+    loadDesigns();
+  }, [loadDesigns]);
+
+  async function saveAsTemplate() {
+    if (phases.length === 0) return;
+    const nm = window.prompt("Name this template:", name || "My session");
+    if (!nm) return;
+    const res = await fetch(`${apiBase}/host`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "saveDesign", name: nm, phases: parsedPhases(), code }),
+    });
+    if (res.ok) {
+      setMsg(`Saved “${nm}” to your templates.`);
+      loadDesigns();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setMsg(d.error ?? "Couldn't save the template.");
+    }
+  }
+
+  async function editDesign(id: string) {
+    const res = await fetch(`${apiBase}/designs?code=${encodeURIComponent(code)}&id=${id}`);
+    if (!res.ok) return;
+    const { design } = await res.json();
+    if (!design) return;
+    setName(design.name);
+    setPhases(
+      design.phases.map((p: { id: string; moduleId: ModuleKind; config: Record<string, unknown> }) => ({
+        id: p.id,
+        moduleId: p.moduleId,
+        config: { ...p.config },
+      })),
+    );
+  }
+
+  async function removeDesign(id: string) {
+    if (!window.confirm("Delete this shared template?")) return;
+    const res = await fetch(`${apiBase}/host`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "deleteDesign", id, code }),
+    });
+    if (res.ok) loadDesigns();
+    else setMsg("Couldn't delete (needs the admin passcode).");
+  }
+
+  function exportDesign() {
+    const json = JSON.stringify({ version: 1, name, phases: parsedPhases() }, null, 2);
+    navigator.clipboard?.writeText(json).then(
+      () => setMsg("Copied this design as JSON — paste it anywhere to share."),
+      () => setMsg("Couldn't copy to the clipboard."),
+    );
+  }
+
+  function importDesign() {
+    const raw = window.prompt("Paste a design JSON to load it into the builder:");
+    if (!raw) return;
+    try {
+      const d = JSON.parse(raw) as { name?: string; phases?: unknown };
+      if (!Array.isArray(d.phases)) throw new Error("no phases");
+      if (typeof d.name === "string") setName(d.name);
+      setPhases(
+        (d.phases as { id?: string; moduleId: ModuleKind; config?: Record<string, unknown> }[]).map(
+          (p, i) => ({ id: p.id ?? `p${i + 1}`, moduleId: p.moduleId, config: { ...(p.config ?? {}) } }),
+        ),
+      );
+      setMsg("Imported — review the phases, then launch (it'll be validated).");
+    } catch {
+      setMsg("That doesn't look like a valid design JSON.");
+    }
+  }
   function move(i: number, dir: -1 | 1) {
     const t = i + dir;
     if (t < 0 || t >= phases.length) return;
@@ -745,6 +832,57 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           </button>
         ))}
       </div>
+
+      {/* B4 — the shared library of designs you've saved + share via JSON. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          onClick={saveAsTemplate}
+          disabled={phases.length === 0}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs hover:border-accent disabled:opacity-30"
+        >
+          ★ Save as template
+        </button>
+        <button
+          onClick={exportDesign}
+          disabled={phases.length === 0}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs hover:border-accent disabled:opacity-30"
+        >
+          Export JSON
+        </button>
+        <button
+          onClick={importDesign}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs hover:border-accent"
+        >
+          Import JSON
+        </button>
+      </div>
+      {userDesigns.length > 0 && (
+        <>
+          <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
+            Your templates
+          </h2>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {userDesigns.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 text-xs">
+                <button
+                  onClick={() => editDesign(d.id)}
+                  className="flex-1 rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-left hover:border-accent"
+                >
+                  {d.name}{" "}
+                  <span className="text-muted">· {d.phaseCount} phase{d.phaseCount === 1 ? "" : "s"}</span>
+                </button>
+                <button
+                  onClick={() => removeDesign(d.id)}
+                  className="text-[#ff8a8a] underline"
+                  title="Delete (admin only)"
+                >
+                  delete
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
         Add a module

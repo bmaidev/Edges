@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { archiveRoom, buildReport, getRoom, publishTakeaway, saveBlueprint } from "@/lib/rooms";
+import { archiveRoom, buildReport, checkSuperAdmin, getRoom, publishTakeaway, saveBlueprint } from "@/lib/rooms";
+import { deleteDesign, getDesign, saveDesign } from "@/lib/userTemplates";
 import { requireCapability, type Capability } from "@/lib/auth";
 import { suggestClusters } from "@/lib/cluster";
 import { getServerModule } from "@/lib/modules/registry.server";
@@ -89,6 +90,12 @@ const COMMAND_CAP: Record<string, Capability> = {
   // C4 — spotlight a response to the projector. A live nav-tier move (same as
   // setPhase): facilitator + cohost can do it; NOT the admin-only `configure`.
   spotlight: "advance",
+  // B4 — user templates. Launching a saved design is a normal nav move (advance);
+  // writing to the SHARED library (save/delete) needs `configure` AND, because the
+  // library is global, an extra super-admin check inside the handler.
+  setDesign: "advance",
+  saveDesign: "configure",
+  deleteDesign: "configure",
   addContent: "inject",
   updateContent: "inject",
   deleteContent: "inject",
@@ -192,6 +199,37 @@ export async function POST(
         ok: true,
         state: await navState(room, await setPhases(t.phases, t.name, room), role ?? "facilitator"),
       });
+    }
+    // B4 — launch a saved user template by id (no raw phases accepted here).
+    case "setDesign": {
+      const d = await getDesign(String(a.id ?? ""));
+      if (!d)
+        return NextResponse.json({ error: "Unknown template" }, { status: 400 });
+      const written = await setPhases(d.phases, d.name, room);
+      await saveBlueprint(room, { name: d.name, phases: d.phases }).catch(() => {});
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, written, role ?? "facilitator"),
+      });
+    }
+    // B4 — save the builder's current design to the SHARED library. The global
+    // scope needs the super-admin code (not just a per-room admin), or one room's
+    // admin could pollute every room's library.
+    case "saveDesign": {
+      if (!checkSuperAdmin(a.code))
+        return NextResponse.json(
+          { error: "Saving a shared template needs the admin passcode." },
+          { status: 403 },
+        );
+      const res = await saveDesign(String(a.name ?? ""), a.phases);
+      if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
+      return NextResponse.json({ ok: true, id: res.id });
+    }
+    case "deleteDesign": {
+      if (!checkSuperAdmin(a.code))
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      const ok = await deleteDesign(String(a.id ?? ""));
+      return NextResponse.json({ ok });
     }
     case "suggestSession": {
       const goal = String(a.goal ?? "").trim();

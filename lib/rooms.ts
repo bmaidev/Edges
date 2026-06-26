@@ -75,6 +75,12 @@ if (useKv) {
 
 const ROOM_INDEX_KEY = "rooms:index"; // list of room slugs
 
+// B4 — expose the durable (no-TTL) backend so the global user-template store
+// shares ONE instance (and the dev in-memory singleton), never a second backend.
+export function getDb(): DurableBackend {
+  return db;
+}
+
 // ---- Types ----------------------------------------------------------------
 
 export type RoomStatus = "draft" | "live" | "archived";
