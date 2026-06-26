@@ -15,5 +15,7 @@ export const STRINGS = {
 
   faceToFace: "Now talk face-to-face. The app waits.",
 
-  ended: "Session closed. Nothing was kept. See you next time.",
+  // Fallback end screen when no recap was published. (A published session shows
+  // the keepable recap instead — see TakeawayScreen.)
+  ended: "Session closed. Thanks for being here.",
 };

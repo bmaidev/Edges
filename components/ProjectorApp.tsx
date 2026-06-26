@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
 import { getClientRenderer } from "@/lib/modules/registry.client";
@@ -109,7 +110,25 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
       </div>
       <div className="flex flex-1 flex-col overflow-y-auto">
         {state.ended ? (
-          <Centered>Session closed.</Centered>
+          state.takeaway && joinUrl ? (
+            // F3 — let the room keep their recap on the way out.
+            <div className="flex flex-1 flex-col items-center justify-center gap-6 p-12 text-center">
+              <p className="font-display text-4xl text-white/90">
+                Take your recap with you
+              </p>
+              <span className="rounded-2xl bg-white p-4">
+                <QRCodeSVG
+                  value={`${joinUrl}/takeaway?k=${state.takeaway.token}`}
+                  size={220}
+                />
+              </span>
+              <p className="max-w-md text-xl text-muted">
+                Scan to keep the session summary — yours for 24 hours.
+              </p>
+            </div>
+          ) : (
+            <Centered>Session closed.</Centered>
+          )
         ) : Renderer && state.view ? (
           <ErrorBoundary
             label={`projector:${state.moduleId ?? "?"}`}
