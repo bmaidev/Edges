@@ -178,8 +178,17 @@ export interface TakeawaySnapshot {
     status: ActionItemStatus;
   }[];
   branding?: { logoUrl?: string; headline?: string };
+  // F3 — every contribution with its author token. SERVER-SIDE ONLY: never
+  // serialized to a client. Each participant receives only their own, resolved
+  // server-side into `yourContributions` below.
+  contributions?: { token: string; phaseLabel: string; text: string }[];
 }
-export type TakeawayPayload = TakeawaySnapshot & { token: string };
+// What actually reaches a client: the shared body WITHOUT the raw contributions,
+// plus only the caller's own contributions (resolved server-side by token).
+export type TakeawayPayload = Omit<TakeawaySnapshot, "contributions"> & {
+  token: string;
+  yourContributions?: { phaseLabel: string; text: string }[];
+};
 
 export interface SessionState {
   mode: ModeId | null;

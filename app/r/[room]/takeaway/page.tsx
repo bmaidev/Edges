@@ -29,9 +29,13 @@ export default async function TakeawayPage({
     );
   }
 
+  // F3 — the public page is the SHARED body only: strip the raw contributions
+  // (no personal token here, so no one's individual answers are shown).
+  const { contributions, ...shared } = snapshot;
+  void contributions;
   return (
     <main className="min-h-screen bg-bg py-6 text-white">
-      <TakeawayScreen takeaway={{ ...snapshot, token }} />
+      <TakeawayScreen takeaway={{ ...shared, token }} />
     </main>
   );
 }

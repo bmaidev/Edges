@@ -1238,7 +1238,22 @@ export async function getPublicState(
   let takeaway: PublicState["takeaway"] = null;
   if (state.ended && state.publishedTakeaway?.token) {
     const snap = await getTakeaway(roomId, state.publishedTakeaway.token);
-    if (snap) takeaway = { ...snap, token: state.publishedTakeaway.token };
+    if (snap) {
+      // F3 — strip the raw contributions (others' text + tokens) and hand the
+      // caller back ONLY their own, matched by their participant token.
+      const { contributions, ...shared } = snap;
+      const yourContributions =
+        token && contributions
+          ? contributions
+              .filter((c) => c.token === token)
+              .map(({ phaseLabel, text }) => ({ phaseLabel, text }))
+          : undefined;
+      takeaway = {
+        ...shared,
+        token: state.publishedTakeaway.token,
+        yourContributions,
+      };
+    }
   }
 
   return {

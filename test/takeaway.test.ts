@@ -72,14 +72,16 @@ describe("publishTakeaway", () => {
     expect(snap!.actionItems?.[0].text).toBe("Book the venue");
   });
 
-  it("the recap body is handle-free (synthesis only, no raw responses)", async () => {
+  it("the SHARED recap body is synthesis-only — no raw responses, no handles", async () => {
     const slug = "f3-handlefree";
     await seed(slug);
-    const { token } = (await publishTakeaway(slug))!;
-    const snap = await getTakeaway(slug, token);
-    const json = JSON.stringify(snap);
+    await publishTakeaway(slug);
+    // the client-facing projector body (the shared, no-personal-token surface)
+    const proj = await getPublicState(null, slug, "projector");
+    const json = JSON.stringify(proj.takeaway);
     expect(json).not.toContain("ship the thing"); // raw submission text
     expect(json).not.toContain("Ada"); // a participant handle
+    expect("contributions" in (proj.takeaway ?? {})).toBe(false); // raw array stripped
   });
 });
 
@@ -106,6 +108,56 @@ describe("getPublicState surfaces the recap to every role when ended", () => {
     const pub = await getPublicState("a", slug, "participant");
     expect(pub.ended).toBe(true);
     expect(pub.takeaway).toBeNull(); // never a half card
+  });
+});
+
+describe("F3 per-person contributions (leak gate)", () => {
+  async function seedTwo(slug: string) {
+    const { hashes } = freshPasscodes();
+    await createRoomWithSlug(slug, "Workshop", "topic", { passcodeHashes: hashes });
+    await replaceState(
+      {
+        mode: null,
+        sessionName: "Blue Sky",
+        phases: [{ id: "p1", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } }],
+        phaseId: "p1",
+        timerEndsAt: null,
+        timerRemainingMs: null,
+        readaroundIndex: 0,
+        topic: "topic",
+        ended: false,
+        actionItems: [],
+      },
+      slug,
+    );
+    await addParticipant("a", "Ada", slug);
+    await addParticipant("b", "Bo", slug);
+    await addSubmission("Ada", "ADA_ONLY_secret_idea", "p1", null, "a", slug);
+    await addSubmission("Bo", "BO_ONLY_secret_idea", "p1", null, "b", slug);
+  }
+
+  it("each participant gets ONLY their own contributions; never another's", async () => {
+    const slug = "f3-yours";
+    await seedTwo(slug);
+    await publishTakeaway(slug);
+    const ada = await getPublicState("a", slug, "participant");
+    const adaJson = JSON.stringify(ada);
+    expect(ada.takeaway?.yourContributions?.map((c) => c.text)).toEqual(["ADA_ONLY_secret_idea"]);
+    expect(adaJson).toContain("ADA_ONLY_secret_idea");
+    expect(adaJson).not.toContain("BO_ONLY_secret_idea"); // never sees Bo's
+    // the raw contributions array (with tokens + everyone's text) is never sent
+    expect("contributions" in (ada.takeaway ?? {})).toBe(false);
+  });
+
+  it("the projector / no-token caller gets NO individual contributions", async () => {
+    const slug = "f3-proj";
+    await seedTwo(slug);
+    await publishTakeaway(slug);
+    const proj = await getPublicState(null, slug, "projector");
+    const json = JSON.stringify(proj);
+    expect(proj.takeaway?.yourContributions ?? []).toEqual([]);
+    expect(json).not.toContain("ADA_ONLY_secret_idea");
+    expect(json).not.toContain("BO_ONLY_secret_idea");
   });
 });
 
