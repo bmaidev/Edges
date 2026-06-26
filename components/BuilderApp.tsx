@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui";
+import { bootToken } from "@/lib/magicLink";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
 import { TEMPLATES } from "@/lib/templates";
 import type { ModuleKind } from "@/lib/types";
@@ -413,10 +414,22 @@ function AdvancedJson({
 // (server gates setPhases behind the "configure" capability).
 export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string }) {
   const [code, setCode] = useState("");
+  const [hasToken, setHasToken] = useState(false);
   const [name, setName] = useState("Custom session");
   const [phases, setPhases] = useState<BuilderPhase[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
+
+  // A2: inherit the magic-link token (from `#k=` or the tab's remembered one) so
+  // the builder knows who you are with no passcode box. Facilitators can now
+  // launch custom sessions, so this is all the auth the builder needs.
+  useEffect(() => {
+    const t = bootToken(slug);
+    if (t) {
+      setCode(t);
+      setHasToken(true);
+    }
+  }, [slug]);
   // Setup-phase AI assist
   const [goal, setGoal] = useState("");
   const [minutes, setMinutes] = useState("");
@@ -585,9 +598,11 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       setMsg(null);
     } else {
       const d = await res.json().catch(() => ({}));
+      // A2: facilitators can now configure, so a 403 means a bad/expired link —
+      // not the old "needs the admin code" wall.
       if (res.status === 403)
         setMsg(
-          "Not saved — launching a custom build needs the room's ADMIN passcode (the one you entered can't configure sessions). Enter the admin passcode above and launch again.",
+          "Not saved — open the builder from your Facilitator link (your access may have been reset).",
         );
       else setMsg(d.error ?? `Launch failed (${res.status}).`);
     }
@@ -624,18 +639,19 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           placeholder="Session name"
           className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
-        <input
-          type="password"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="Admin passcode (required to launch a custom build)"
-          className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-        />
-        <p className="text-xs text-muted">
-          Launching a custom session needs the room&apos;s{" "}
-          <span className="text-accent">admin</span> passcode. (Facilitators can
-          launch built-in templates from the host console.)
-        </p>
+        {/* A2: when opened from a Facilitator link the token is inherited and
+            this box stays hidden — no passcode friction. Shown only as a fallback
+            (e.g. a bookmarked /build with no link). Facilitators can now launch
+            custom sessions, so there is no admin-only wall to explain. */}
+        {!hasToken && (
+          <input
+            type="password"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="Facilitator passcode (or open from your Facilitator link)"
+            className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+          />
+        )}
       </div>
 
       <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">

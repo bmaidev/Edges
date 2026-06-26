@@ -60,7 +60,9 @@ const ROOM_INDEX_KEY = "rooms:index"; // list of room slugs
 export type RoomStatus = "draft" | "live" | "archived";
 
 // The three passcode tiers a room issues. Projector is read-only (no passcode).
-export type PasscodeTier = "admin" | "facilitator" | "cohost";
+export type PasscodeTier = "admin" | "facilitator" | "cohost" | "projector";
+// Tiers that get a shareable magic link (admin is not a link — it's vestigial).
+export type ShareableTier = "facilitator" | "cohost" | "projector";
 
 export interface RoomTemplate {
   id: string;
@@ -91,13 +93,21 @@ export interface Room {
   status: RoomStatus;
   createdAt: number;
   theme?: RoomTheme;
-  // sha256 hashes of the three tier passcodes (plaintext never stored)
-  passcodeHashes: Record<PasscodeTier, string>;
+  // sha256 hashes of the tier passcodes (plaintext never stored). `projector` is
+  // optional: rooms created before the A2 projector tier lack it (minted on
+  // demand by regenerateRoleCode), so every read must guard it.
+  passcodeHashes: {
+    admin: string;
+    facilitator: string;
+    cohost: string;
+    projector?: string;
+  };
 }
 
 export interface RoomCreated {
   room: Room;
-  // plaintext passcodes — returned ONCE at creation, never persisted
+  // plaintext passcodes — returned ONCE at creation, never persisted. New rooms
+  // always include all four tiers.
   passcodes: Record<PasscodeTier, string>;
 }
 
@@ -152,6 +162,7 @@ export async function createRoom(
     admin: randomPasscode("adm"),
     facilitator: randomPasscode("fac"),
     cohost: randomPasscode("co"),
+    projector: randomPasscode("scr"),
   };
 
   const room: Room = {
@@ -165,6 +176,7 @@ export async function createRoom(
       admin: sha256(passcodes.admin),
       facilitator: sha256(passcodes.facilitator),
       cohost: sha256(passcodes.cohost),
+      projector: sha256(passcodes.projector),
     },
   };
 
@@ -190,20 +202,60 @@ export async function listRooms(): Promise<Room[]> {
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+// Serialise every room-record read-modify-write through one room-scoped lock so
+// a passcode regenerate can't be clobbered by a concurrent theme/status save
+// (the durable backend has no atomic primitive of its own). The lock auto-expires
+// (5s) and the body is a single get+set, so contention resolves in milliseconds;
+// a short retry then a last-resort unlocked run keeps a rare wedge from failing
+// an admin action.
+async function withRoomLock<T>(slug: string, fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 10; i++) {
+    const res = await withLock(slug, "room-mutate", fn, { ttlSeconds: 5 });
+    if (res.ok) return res.value;
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  return fn();
+}
+
 export async function updateRoom(
   slug: string,
-  patch: Partial<Pick<Room, "name" | "topic" | "templateId" | "status" | "theme">>,
+  patch: Partial<
+    Pick<Room, "name" | "topic" | "templateId" | "status" | "theme" | "passcodeHashes">
+  >,
 ): Promise<Room | null> {
-  const room = await getRoom(slug);
-  if (!room) return null;
-  const next = { ...room, ...patch };
-  await db.set(roomKey(slug), next);
-  return next;
+  return withRoomLock(slug, async () => {
+    const room = await getRoom(slug);
+    if (!room) return null;
+    const next = { ...room, ...patch };
+    await db.set(roomKey(slug), next);
+    return next;
+  });
+}
+
+// Rotate a single role's passcode atomically: the old link 403s, the others are
+// untouched. Returns the new plaintext code ONCE (only the hash is persisted).
+// Mints the projector hash on demand for legacy rooms that predate that tier.
+export async function regenerateRoleCode(
+  slug: string,
+  tier: ShareableTier,
+): Promise<{ code: string } | null> {
+  const prefix = tier === "facilitator" ? "fac" : tier === "cohost" ? "co" : "scr";
+  return withRoomLock(slug, async () => {
+    const room = await getRoom(slug);
+    if (!room) return null;
+    const code = randomPasscode(prefix);
+    const next: Room = {
+      ...room,
+      passcodeHashes: { ...room.passcodeHashes, [tier]: sha256(code) },
+    };
+    await db.set(roomKey(slug), next);
+    return { code };
+  });
 }
 
 // ---- Archive / reporting --------------------------------------------------
 
-import { getFacilitatorState } from "./store";
+import { getFacilitatorState, withLock } from "./store";
 import { aiAvailable, asData, capItems, generateJSON, topicLine } from "./ai";
 
 // An AI-generated whole-session synthesis, produced at archive time from every
@@ -376,5 +428,11 @@ export async function resolveRole(
   if (safeEqualHex(h, room.passcodeHashes.admin)) return "admin";
   if (safeEqualHex(h, room.passcodeHashes.facilitator)) return "facilitator";
   if (safeEqualHex(h, room.passcodeHashes.cohost)) return "cohost";
+  // Guarded: legacy rooms predate the projector tier and lack this hash.
+  if (
+    room.passcodeHashes.projector &&
+    safeEqualHex(h, room.passcodeHashes.projector)
+  )
+    return "projector";
   return null;
 }
