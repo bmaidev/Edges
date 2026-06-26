@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { archiveRoom, buildReport, getRoom, publishTakeaway } from "@/lib/rooms";
+import { archiveRoom, buildReport, getRoom, publishTakeaway, saveBlueprint } from "@/lib/rooms";
 import { requireCapability, type Capability } from "@/lib/auth";
 import { suggestClusters } from "@/lib/cluster";
 import { getServerModule } from "@/lib/modules/registry.server";
@@ -173,13 +173,15 @@ export async function POST(
             { status: 400 },
           );
       }
+      const sessionName = a.sessionName ?? "Custom session";
+      const written = await setPhases(phases, sessionName, room);
+      // A5 — mirror the launched design into a durable blueprint so it survives
+      // the 24h wipe and can be duplicated. Only on the admin setPhases path (a
+      // cohost-driven setTemplate must NOT write durable records).
+      await saveBlueprint(room, { name: sessionName, phases }).catch(() => {});
       return NextResponse.json({
         ok: true,
-        state: await navState(
-          room,
-          await setPhases(phases, a.sessionName ?? "Custom session", room),
-          role ?? "facilitator",
-        ),
+        state: await navState(room, written, role ?? "facilitator"),
       });
     }
     case "setTemplate": {
