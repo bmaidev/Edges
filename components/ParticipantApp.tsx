@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
+import { useTimerMilestones } from "@/components/useTimerMilestones";
 import { useConnection, type ConnState } from "@/components/useConnection";
 import { ConnectionStrip } from "@/components/ConnectionStrip";
 import { useResilientAct } from "@/components/useOfflineQueue";
 import { AttributionChip } from "@/components/AttributionChip";
-import { A11yProvider } from "@/components/A11yProvider";
+import { A11yProvider, useA11y } from "@/components/A11yProvider";
 import { TakeawayScreen } from "@/components/TakeawayScreen";
 import { Button, Screen } from "@/components/ui";
 import { getClientRenderer } from "@/lib/modules/registry.client";
@@ -203,6 +204,7 @@ function JoinScreen({
 function StatusBar({ state }: { state: PublicState }) {
   const label = state.config?.label ?? state.modeName ?? "Lobby";
   const chime = useChime();
+  const reduceMotion = useA11y()?.prefs.reduceMotion ?? false;
   const [expired, setExpired] = useState(false);
   const paused = state.timerEndsAt == null && state.timerRemainingMs != null;
   // Reset "time's up" whenever a fresh deadline arrives (a +time or resume),
@@ -210,14 +212,28 @@ function StatusBar({ state }: { state: PublicState }) {
   useEffect(() => {
     if (state.timerEndsAt != null) setExpired(false);
   }, [state.timerEndsAt]);
+  // C6 — room-felt milestones: a soft "warn" chime + a calm low-time tint as the
+  // clock crosses 2:00 then 0:30. Derived client-side; the chime self-swallows
+  // when audio isn't unlocked, so the tint is the guaranteed channel.
+  const onWarn = useCallback(() => chime("warn"), [chime]);
+  const level = useTimerMilestones(state.timerEndsAt, state.timerRemainingMs, onWarn);
   // C1 gate fix: show the clock when RUNNING or PAUSED (a pause writes
   // timerEndsAt:null, which previously blanked the numeral from the room).
   const hasTimer = state.timerEndsAt != null || state.timerRemainingMs != null;
+  // Low-time treatment: amber from 2:00, a gentle pulse from 0:30 (pulse only
+  // when motion is allowed; the tint always carries the signal).
+  const lowTint = !expired && level != null;
+  const pulse = !expired && level === 30 && !reduceMotion;
+  const timerColor = expired
+    ? "text-[#ff8a8a]"
+    : lowTint
+      ? "text-[#ffb454]"
+      : "text-accent";
   return (
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-bg/90 px-5 py-3 text-sm text-muted backdrop-blur">
       <span>{label}</span>
       {hasTimer && (
-        <span className={`flex items-center gap-2 font-mono ${expired ? "text-[#ff8a8a]" : "text-accent"}`}>
+        <span className={`flex items-center gap-2 font-mono ${timerColor} ${pulse ? "animate-pulseSoft" : ""}`}>
           {paused && <span className="text-[10px] uppercase tracking-wide text-muted">paused</span>}
           {expired && !paused ? (
             "Time's up"
