@@ -1,0 +1,122 @@
+import { beforeAll, describe, expect, it } from "vitest";
+import {
+  createRoomWithSlug,
+  freshPasscodes,
+  publishTakeaway,
+} from "@/lib/rooms";
+import {
+  addParticipant,
+  addSubmission,
+  createPattern,
+  getPublicState,
+  getState,
+  getTakeaway,
+  listParticipants,
+  listSubmissions,
+  mutateActionItems,
+  replaceState,
+} from "@/lib/store";
+
+// F3 — send the room a take-away. In-memory store, no AI (fallback report path).
+const ADMIN = "test-super-admin-F3";
+beforeAll(() => {
+  process.env.ADMIN_PASSCODE = ADMIN;
+});
+
+async function seed(slug: string) {
+  const { hashes } = freshPasscodes();
+  await createRoomWithSlug(slug, "Quarterly Offsite", "topic", { passcodeHashes: hashes });
+  await replaceState(
+    {
+      mode: null,
+      sessionName: "Blue Sky",
+      phases: [{ id: "p1", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } }],
+      phaseId: "p1",
+      timerEndsAt: null,
+      timerRemainingMs: null,
+      readaroundIndex: 0,
+      topic: "topic",
+      ended: false,
+      actionItems: [],
+    },
+    slug,
+  );
+  await addParticipant("a", "Ada", slug);
+  await addParticipant("b", "Bo", slug);
+  await addSubmission("Ada", "ship the thing", "p1", null, "a", slug);
+  await createPattern("Momentum", [], slug);
+  await mutateActionItems({ kind: "add", text: "Book the venue", ownerName: "Sam" }, slug);
+}
+
+describe("publishTakeaway", () => {
+  it("publishes a recap, ends the session, and wipes the live data — but keeps the recap", async () => {
+    const slug = "f3-publish";
+    await seed(slug);
+    const res = await publishTakeaway(slug);
+    expect(res?.token).toMatch(/^[0-9a-f]{32}$/); // random 16-byte hex, not a slug/token
+
+    // state is ended + records the published token (snapshot written before flip)
+    const st = await getState(slug);
+    expect(st.ended).toBe(true);
+    expect(st.publishedTakeaway?.token).toBe(res!.token);
+
+    // live data wiped...
+    expect((await listParticipants(slug)).length).toBe(0);
+    expect((await listSubmissions(slug)).length).toBe(0);
+    // ...but the recap survives.
+    const snap = await getTakeaway(slug, res!.token);
+    expect(snap).not.toBeNull();
+    expect(snap!.participantCount).toBe(2);
+    expect(snap!.submissionCount).toBe(1);
+    expect(snap!.patterns).toContain("Momentum");
+    expect(snap!.actionItems?.[0].text).toBe("Book the venue");
+  });
+
+  it("the recap body is handle-free (synthesis only, no raw responses)", async () => {
+    const slug = "f3-handlefree";
+    await seed(slug);
+    const { token } = (await publishTakeaway(slug))!;
+    const snap = await getTakeaway(slug, token);
+    const json = JSON.stringify(snap);
+    expect(json).not.toContain("ship the thing"); // raw submission text
+    expect(json).not.toContain("Ada"); // a participant handle
+  });
+});
+
+describe("getPublicState surfaces the recap to every role when ended", () => {
+  it("participant + projector get the take-away (it's handle-free)", async () => {
+    const slug = "f3-roles";
+    await seed(slug);
+    const { token } = (await publishTakeaway(slug))!;
+    const part = await getPublicState("a", slug, "participant");
+    expect(part.takeaway?.token).toBe(token);
+    expect(part.takeaway?.participantCount).toBe(2);
+    const proj = await getPublicState(null, slug, "projector");
+    expect(proj.takeaway?.token).toBe(token);
+  });
+
+  it("null-degrades to a plain ended state when the snapshot is gone", async () => {
+    const slug = "f3-null";
+    await seed(slug);
+    await publishTakeaway(slug);
+    // simulate the snapshot expiring while the ended flag remains: point state at
+    // a token with no snapshot.
+    const st = await getState(slug);
+    await replaceState({ ...st, publishedTakeaway: { token: "missing", publishedAt: 1 } }, slug);
+    const pub = await getPublicState("a", slug, "participant");
+    expect(pub.ended).toBe(true);
+    expect(pub.takeaway).toBeNull(); // never a half card
+  });
+});
+
+describe("token security", () => {
+  it("a token is room-scoped — it can't read another room's recap", async () => {
+    const a = "f3-room-a";
+    const b = "f3-room-b";
+    await seed(a);
+    await seed(b);
+    const { token } = (await publishTakeaway(a))!;
+    expect(await getTakeaway(a, token)).not.toBeNull();
+    expect(await getTakeaway(b, token)).toBeNull(); // cross-room isolation
+  });
+});

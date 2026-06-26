@@ -180,6 +180,15 @@ These are properties of how the system is built, not just promises in copy.
   24-hour time-to-live and expires automatically. Pressing **"End session"**
   wipes the participants, submissions, content, patterns, votes, and words
   immediately rather than waiting for the timer.
+- **The end-of-session recap (take-away).** When a session ends, participants are
+  shown a **recap they can keep for 24 hours** (and scan from the projector to
+  take with them). This recap is the **synthesis only** — the summary, themes,
+  decisions, next steps and any action items — and is **handle-free**: it never
+  contains a raw response or attributes anything to a named person. It lives in
+  the same 24-hour-TTL session store under a random, unguessable, room-scoped
+  token and **self-destructs at 24 hours**; it is not indexed by search engines.
+  The raw live data is still wiped at End exactly as above — only the
+  de-identified synthesis is kept, and only for a day.
 - **Synthetic outputs are clearly labelled.** The synthetic persona panel and the
   empty chair carry an honesty banner stating they are AI-generated stand-ins,
   not real users or the real stakeholder. They are useful for pressure-testing a

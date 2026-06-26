@@ -6,7 +6,7 @@
 // infra. Postgres is reserved for Phase 6 (analytics/history/relational).
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import type { ModeId, PhaseInstance, Role } from "./types";
+import type { ModeId, PhaseInstance, Role, SessionReport } from "./types";
 
 const KV_URL =
   process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "";
@@ -336,19 +336,9 @@ export async function regenerateRoleCode(
 
 // ---- Archive / reporting --------------------------------------------------
 
-import { getFacilitatorState, withLock } from "./store";
+import { getFacilitatorState, publishAndEnd, withLock } from "./store";
 import { aiAvailable, asData, capItems, generateJSON, topicLine } from "./ai";
-
-// An AI-generated whole-session synthesis, produced at archive time from every
-// phase's submissions + the facilitator's curated patterns. Null when no AI key.
-export interface SessionReport {
-  summary: string; // 2-3 sentence overview
-  themes: { title: string; detail: string }[];
-  tensions: string[]; // the unresolved disagreements
-  decisions: string[]; // what the room concluded/agreed
-  nextSteps: string[]; // concrete actions surfaced
-  generatedAt: number;
-}
+import type { TakeawaySnapshot } from "./types";
 
 export interface RoomArchive {
   slug: string;
@@ -543,6 +533,45 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
 
 export async function getArchive(slug: string): Promise<RoomArchive | null> {
   return db.get<RoomArchive>(archiveKey(slug));
+}
+
+// F3 — publish the participant take-away and end the session. NO AI in this path
+// (it precedes the wipe; the 60s ceiling must never strand un-wiped data): the
+// recap reuses an already-built report if present, else the structural fallback.
+// Handle-free synthesis only. Returns the share token.
+export async function publishTakeaway(
+  slug: string,
+): Promise<{ token: string } | null> {
+  const room = await getRoom(slug);
+  if (!room) return null;
+  const fs = await getFacilitatorState(slug);
+  const existing = await getArchive(slug);
+  const report =
+    existing?.report ??
+    buildFallbackReport(fs.submissions.length, fs.patterns.map((p) => p.name));
+  const t = room.theme;
+  const snapshot: TakeawaySnapshot = {
+    name: room.name,
+    sessionName: fs.modeName,
+    publishedAt: Date.now(),
+    participantCount: fs.participantCount,
+    submissionCount: fs.submissions.length,
+    patterns: fs.patterns.map((p) => p.name),
+    report,
+    actionItems: (fs.actionItems ?? []).map((a) => ({
+      text: a.text,
+      ownerName: a.ownerName,
+      due: a.due,
+      status: a.status,
+    })),
+    branding:
+      t && (t.logoUrl || t.headline)
+        ? { logoUrl: t.logoUrl, headline: t.headline }
+        : undefined,
+  };
+  const token = randomBytes(16).toString("hex");
+  await publishAndEnd(slug, token, snapshot);
+  return { token };
 }
 
 // ---- Auth: resolve a passcode to a role within a room ---------------------

@@ -139,10 +139,44 @@ export interface ActionItem {
   updatedAt: number;
 }
 
+// AI-generated whole-session synthesis (lives here so the takeaway snapshot can
+// reference it without a rooms<->types cycle).
+export interface SessionReport {
+  summary: string;
+  themes: { title: string; detail: string }[];
+  tensions: string[];
+  decisions: string[];
+  nextSteps: string[];
+  generatedAt: number;
+}
+
+// F3 — the ephemeral "take-away" every participant keeps. Handle-free synthesis
+// only (no raw responses, no attribution). Lives in the 24h-TTL session store
+// under a random token and self-destructs; published at session end.
+export interface TakeawaySnapshot {
+  name: string;
+  sessionName: string | null;
+  publishedAt: number;
+  participantCount: number;
+  submissionCount: number;
+  patterns: string[];
+  report: SessionReport | null;
+  actionItems?: {
+    text: string;
+    ownerName?: string;
+    due?: string;
+    status: ActionItemStatus;
+  }[];
+  branding?: { logoUrl?: string; headline?: string };
+}
+export type TakeawayPayload = TakeawaySnapshot & { token: string };
+
 export interface SessionState {
   mode: ModeId | null;
   phaseId: string | null;
   timerEndsAt: number | null;
+  // F3 — set at end when a take-away is published. The token keys the snapshot.
+  publishedTakeaway?: { token: string; publishedAt: number };
   // F2 — the action-item register. Lives ON the state key (not a side hash) so
   // its sole writer is writeState and every mutation bumps rev — the rev-correct
   // path that stops an in-flight poll clobbering a just-added item.
@@ -276,6 +310,9 @@ export interface PublicState {
   } | null;
   patterns: Pattern[];
   clusterAssistAvailable: boolean;
+  // F3 — when the session has ended with a published take-away, the recap (handle-
+  // free synthesis + share token) for the participant's keep screen. Else null.
+  takeaway?: TakeawayPayload | null;
   // F2 — the action-item register, role-scoped (facilitator-tier only for now).
   actionItems?: ActionItem[] | null;
   // C2 — glanceable "N of M responded" for the current gather phase, role-scoped

@@ -6,6 +6,7 @@ import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
 import { useConnection, type ConnState } from "@/components/useConnection";
 import { ConnectionStrip } from "@/components/ConnectionStrip";
+import { TakeawayScreen } from "@/components/TakeawayScreen";
 import { Button, Screen } from "@/components/ui";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -62,6 +63,21 @@ export function ParticipantApp({ apiBase }: { apiBase: string }) {
   }
 
   if (state.ended) {
+    // F3 — a published take-away flips the end screen to a keepable recap.
+    if (state.takeaway) {
+      const slug = apiBase.replace("/api/r/", "");
+      const shareUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/r/${slug}/takeaway?k=${state.takeaway.token}`
+          : undefined;
+      return (
+        <Screen>
+          <div className="flex-1 overflow-y-auto">
+            <TakeawayScreen takeaway={state.takeaway} shareUrl={shareUrl} />
+          </div>
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">

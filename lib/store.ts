@@ -38,6 +38,7 @@ import type {
   Role,
   SessionState,
   Submission,
+  TakeawaySnapshot,
 } from "./types";
 
 // Support both classic Vercel KV and Upstash Redis env names.
@@ -953,6 +954,54 @@ export async function endSession(
   await writeState({ ...DEFAULT_STATE, ended: true }, roomId);
 }
 
+// ---- F3 take-away (the participant keep-recap) -----------------------------
+// A separate session key (room-scoped, inherits the 24h TTL) that SURVIVES the
+// end wipe so participants can read their recap; it self-destructs at 24h. The
+// raw live data is still wiped.
+
+function takeawayKey(roomId: string, token: string): string {
+  return `room:${roomId}:takeaway:${token}`;
+}
+
+export async function getTakeaway(
+  roomId: string,
+  token: string,
+): Promise<TakeawaySnapshot | null> {
+  if (!token) return null;
+  return backend.get<TakeawaySnapshot>(takeawayKey(roomId, token));
+}
+
+// Publish a take-away and end the session in the correct order: write the
+// snapshot FIRST (so the ended+token state can never precede its data), wipe the
+// live data, then flip state to ended + record the published token. The takeaway
+// key is NOT wiped — it's the recap.
+export async function publishAndEnd(
+  roomId: string,
+  token: string,
+  snapshot: TakeawaySnapshot,
+): Promise<void> {
+  await backend.set(takeawayKey(roomId, token), snapshot); // inherits 24h TTL
+  const KEYS = roomKeys(roomId);
+  await backend.del(
+    KEYS.participants,
+    KEYS.submissions,
+    KEYS.content,
+    KEYS.patterns,
+    KEYS.votes,
+    KEYS.words,
+    KEYS.seen,
+    KEYS.undo,
+  );
+  await writeState(
+    {
+      ...DEFAULT_STATE,
+      ended: true,
+      publishedTakeaway: { token, publishedAt: snapshot.publishedAt },
+    },
+    roomId,
+  );
+}
+
 // ---- Composed views -------------------------------------------------------
 
 function contentVersion(visible: ContentItem[]): number {
@@ -1137,6 +1186,15 @@ export async function getPublicState(
     }
   }
 
+  // F3 — when ended with a published take-away, attach the recap (handle-free)
+  // for the keep screen. Null-degrades to a plain ended screen if the snapshot is
+  // gone (TTL expiry / replication lag) — never a half card.
+  let takeaway: PublicState["takeaway"] = null;
+  if (state.ended && state.publishedTakeaway?.token) {
+    const snap = await getTakeaway(roomId, state.publishedTakeaway.token);
+    if (snap) takeaway = { ...snap, token: state.publishedTakeaway.token };
+  }
+
   return {
     ended: state.ended,
     mode: state.mode,
@@ -1168,6 +1226,7 @@ export async function getPublicState(
       role === "participant" || role === "projector"
         ? null
         : state.actionItems ?? [],
+    takeaway,
   };
 }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { archiveRoom, buildReport, getRoom } from "@/lib/rooms";
+import { archiveRoom, buildReport, getRoom, publishTakeaway } from "@/lib/rooms";
 import { requireCapability, type Capability } from "@/lib/auth";
 import { suggestClusters } from "@/lib/cluster";
 import { getServerModule } from "@/lib/modules/registry.server";
@@ -18,7 +18,6 @@ import {
   type ActionItemOp,
   deleteSubmission,
   dispatchAction,
-  endSession,
   getFacilitatorState,
   getState,
   listContent,
@@ -441,13 +440,17 @@ export async function POST(
       return NextResponse.json({ ok: true, archive });
     }
     case "archive": {
+      // Build the durable archive (AI report), then publish the take-away (reuses
+      // that report) which also wipes the live data.
       const archive = await archiveRoom(room);
-      await endSession(room);
+      await publishTakeaway(room);
       return NextResponse.json({ ok: true, archive });
     }
-    case "end":
-      await endSession(room);
+    case "end": {
+      // F3 — publish a take-away by default, then wipe (publishTakeaway does both).
+      await publishTakeaway(room);
       return NextResponse.json({ ok: true });
+    }
     default:
       return NextResponse.json({ error: "Unknown command" }, { status: 400 });
   }
