@@ -22,6 +22,9 @@ interface RoomRow {
   status: string;
   createdAt: number;
   isSample?: boolean;
+  // A5 — design summary + last-run memory.
+  blueprint?: { chips: string[]; phaseCount: number } | null;
+  lastRun?: { endedAt: number; participantCount: number; submissionCount: number } | null;
 }
 
 // Inlined (not imported from lib/sample) so no server-only code — node:crypto,
@@ -513,6 +516,30 @@ function RoomCard({
   // A4 — inline-edit the display name (never the slug — that's the room's key).
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(room.name);
+  // A5 — duplicate this room's design into a fresh room; show the new codes once.
+  const [dupCreated, setDupCreated] = useState<{
+    slug: string;
+    name: string;
+    passcodes: { admin: string; facilitator: string; cohost: string; projector: string };
+  } | null>(null);
+  const [dupBusy, setDupBusy] = useState(false);
+  async function duplicate() {
+    setDupBusy(true);
+    try {
+      const res = await fetch("/api/admin/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ duplicateOf: room.slug, code }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDupCreated(data);
+        onChanged();
+      }
+    } finally {
+      setDupBusy(false);
+    }
+  }
   async function rename() {
     const next = nameDraft.trim();
     setEditingName(false);
@@ -609,7 +636,26 @@ function RoomCard({
           )}
           <p className="text-xs text-muted">
             /{room.slug} · {room.status}
+            {room.lastRun && (
+              <span>
+                {" "}· last run: {room.lastRun.participantCount} joined,{" "}
+                {room.lastRun.submissionCount} contributions
+              </span>
+            )}
           </p>
+          {/* A5 — the saved design at a glance. */}
+          {room.blueprint && room.blueprint.chips.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {room.blueprint.chips.slice(0, 6).map((c, i) => (
+                <span key={i} className="rounded-full bg-bg px-1.5 py-0.5 text-[10px] text-muted">
+                  {c}
+                </span>
+              ))}
+              {room.blueprint.chips.length > 6 && (
+                <span className="text-[10px] text-muted">+{room.blueprint.chips.length - 6}</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex gap-3 text-xs text-accent underline">
           <a href={`/r/${room.slug}`} target="_blank" rel="noreferrer">join</a>
@@ -620,12 +666,35 @@ function RoomCard({
           <button onClick={() => setPanel(panel === "access" ? null : "access")}>access</button>
           <button onClick={openTheme}>theme</button>
           <button onClick={openReport}>report</button>
+          <button onClick={duplicate} disabled={dupBusy} className="text-accent">
+            {dupBusy ? "duplicating…" : "duplicate"}
+          </button>
           {room.status === "draft" && (
             <button onClick={markLive} className="text-emerald-400">make live</button>
           )}
           <button onClick={del} className="text-[#ff8a8a]">delete</button>
         </div>
       </div>
+
+      {/* A5 — the duplicate's fresh passcodes, shown once. */}
+      {dupCreated && (
+        <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+          <p className="text-xs text-emerald-400">
+            Duplicated the design into a fresh room — new passcodes (shown once):
+          </p>
+          <RoomAccessCard
+            slug={dupCreated.slug}
+            name={dupCreated.name}
+            codes={dupCreated.passcodes}
+          />
+          <button
+            className="self-start text-xs text-muted underline"
+            onClick={() => setDupCreated(null)}
+          >
+            Done — close
+          </button>
+        </div>
+      )}
 
       {panel === "access" && (
         <div className="mt-3 border-t border-border pt-3">

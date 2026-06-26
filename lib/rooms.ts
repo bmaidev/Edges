@@ -105,6 +105,22 @@ export interface RoomTheme {
   tagline?: string; // witty subtext under the QR
 }
 
+// A5 — a durable snapshot of a room's DESIGN (its launched phase sequence), so a
+// custom session survives the 24h live-state wipe and can be duplicated. Contains
+// zero participant-authored material — only {id, moduleId, config} per phase.
+export interface RoomBlueprint {
+  name: string;
+  phases: PhaseInstance[];
+  savedAt: number;
+}
+// A5 — a one-line memory of the room's last run, co-located on the Room record at
+// archive time so the rooms list needs no per-room archive fan-out.
+export interface RoomLastRun {
+  endedAt: number;
+  participantCount: number;
+  submissionCount: number;
+}
+
 export interface Room {
   slug: string; // also the roomId passed to the session store
   name: string;
@@ -113,6 +129,9 @@ export interface Room {
   status: RoomStatus;
   createdAt: number;
   theme?: RoomTheme;
+  // A5 — the design + last-run memory (both optional; older rooms lack them).
+  blueprint?: RoomBlueprint;
+  lastRun?: RoomLastRun;
   // sha256 hashes of the tier passcodes (plaintext never stored). `projector` is
   // optional: rooms created before the A2 projector tier lack it (minted on
   // demand by regenerateRoleCode), so every read must guard it.
@@ -370,7 +389,17 @@ async function withRoomLock<T>(slug: string, fn: () => Promise<T>): Promise<T> {
 export async function updateRoom(
   slug: string,
   patch: Partial<
-    Pick<Room, "name" | "topic" | "templateId" | "status" | "theme" | "passcodeHashes">
+    Pick<
+      Room,
+      | "name"
+      | "topic"
+      | "templateId"
+      | "status"
+      | "theme"
+      | "passcodeHashes"
+      | "blueprint"
+      | "lastRun"
+    >
   >,
 ): Promise<Room | null> {
   return withRoomLock(slug, async () => {
@@ -380,6 +409,45 @@ export async function updateRoom(
     await db.set(roomKey(slug), next);
     return next;
   });
+}
+
+// A5 — strip a trailing " (copy)" so duplicating a copy stays "X (copy)", never
+// "X (copy) (copy)".
+export function stripCopy(name: string): string {
+  return name.replace(/\s*\(copy\)\s*$/i, "").trim();
+}
+
+// A5 — chip labels for a blueprint's phases (the phase's own label, else the
+// module id). Pure; used by the rooms-list projection.
+export function blueprintSummary(phases: PhaseInstance[]): string[] {
+  return phases.map((p) => (p.config?.label as string) || p.moduleId);
+}
+
+// A5 — persist a durable snapshot of a room's launched design (called on the
+// admin setPhases launch). Pure design data; never any participant material.
+export async function saveBlueprint(
+  slug: string,
+  bp: { name: string; phases: PhaseInstance[] },
+): Promise<void> {
+  await updateRoom(slug, {
+    blueprint: { name: bp.name, phases: bp.phases, savedAt: Date.now() },
+  });
+}
+
+// A5 — clone a room's DESIGN (name+" (copy)", topic, templateId, theme, blueprint)
+// into a brand-new room with FRESH passcodes. Never copies participants,
+// submissions, votes, content, or any live session state — only the Room record
+// is read. Returns the new room + its plaintext passcodes (shown once).
+export async function duplicateRoom(slug: string): Promise<RoomCreated | null> {
+  const src = await getRoom(slug);
+  if (!src) return null;
+  const name = `${stripCopy(src.name)} (copy)`.slice(0, 120);
+  const { room, passcodes } = await createRoom(name, src.topic, src.templateId);
+  const updated = await updateRoom(room.slug, {
+    theme: src.theme,
+    blueprint: src.blueprint,
+  });
+  return { room: updated ?? room, passcodes };
 }
 
 // Rotate a single role's passcode atomically: the old link 403s, the others are
@@ -596,7 +664,16 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
       const archive = await composeArchive(slug);
       if (!archive) return null;
       await db.set(archiveKey(slug), archive);
-      await updateRoom(slug, { status: "archived" });
+      // A5 — co-locate a one-line last-run memory on the Room so the rooms list
+      // never has to fan out to per-room archives.
+      await updateRoom(slug, {
+        status: "archived",
+        lastRun: {
+          endedAt: Date.now(),
+          participantCount: archive.participantCount,
+          submissionCount: archive.submissions.length,
+        },
+      });
       return archive;
     },
     { ttlSeconds: 30 },

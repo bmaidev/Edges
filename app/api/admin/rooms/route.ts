@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  blueprintSummary,
   checkSuperAdmin,
   createRoom,
+  duplicateRoom,
   listRooms,
   SlugError,
   SlugTakenError,
@@ -26,6 +28,12 @@ export async function GET(req: NextRequest) {
       createdAt: r.createdAt,
       templateId: r.templateId,
       isSample: Boolean(r.isSample),
+      // A5 — design + last-run memory for the grouped list (chips, counts). Read
+      // straight off the Room record; no per-room archive fan-out.
+      blueprint: r.blueprint
+        ? { chips: blueprintSummary(r.blueprint.phases), phaseCount: r.blueprint.phases.length }
+        : null,
+      lastRun: r.lastRun ?? null,
     })),
   });
 }
@@ -39,6 +47,7 @@ export async function POST(req: NextRequest) {
     topic?: string;
     templateId?: string;
     slug?: string;
+    duplicateOf?: string;
     code?: string;
   };
   try {
@@ -48,6 +57,19 @@ export async function POST(req: NextRequest) {
   }
   if (!checkSuperAdmin(body.code))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  // A5 — duplicate an existing room's DESIGN into a fresh room (new passcodes,
+  // no participant data carried over).
+  if (body.duplicateOf) {
+    const dup = await duplicateRoom(body.duplicateOf);
+    if (!dup)
+      return NextResponse.json({ error: "No such room" }, { status: 404 });
+    return NextResponse.json({
+      slug: dup.room.slug,
+      name: dup.room.name,
+      passcodes: dup.passcodes,
+    });
+  }
 
   try {
     const { room, passcodes } = await createRoom(
