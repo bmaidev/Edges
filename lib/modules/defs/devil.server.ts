@@ -149,7 +149,7 @@ export const devilModule: ModuleServerDef<DevilConfig> = {
   // Objections are room-facing (AI-authored, not personal submissions), so the
   // same payload is shown to everyone.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

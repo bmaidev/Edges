@@ -162,7 +162,7 @@ export const consultModule: ModuleServerDef<ConsultConfig> = {
     phaseSeconds: { present: 120, advise: 240 },
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,

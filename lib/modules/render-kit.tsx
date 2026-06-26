@@ -409,3 +409,58 @@ export function Bars({
     </div>
   );
 }
+
+// C2 — the calm "read the room" signal for a gather phase. Ambient, never
+// alarmist: numbers only climb (rev guard upstream), "quiet" is greyed not red,
+// no surface attributes a response to a person. Renders nothing meaningful for a
+// tiny room. The Nudge affordance is wired only in Full vision (onNudge unset in
+// the MVP, so the button doesn't render).
+export function ParticipationSignal({
+  s,
+  onNudge,
+  nudgeDisabled,
+}: {
+  s: { present: number; responded: number; typing: number; quiet: number };
+  onNudge?: () => void;
+  nudgeDisabled?: boolean;
+}) {
+  if (s.present <= 1)
+    return (
+      <p className="text-sm text-muted">Waiting for the room to arrive…</p>
+    );
+  const all = s.responded >= s.present;
+  const pct = Math.round((Math.min(s.responded, s.present) / s.present) * 100);
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface px-3 py-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium tabular-nums">
+          {all ? (
+            <span className="text-accent">All {s.present} responded</span>
+          ) : (
+            <>
+              {s.responded} of {s.present} responded
+            </>
+          )}
+        </p>
+        {onNudge && (
+          <button
+            onClick={onNudge}
+            disabled={nudgeDisabled || all}
+            className="shrink-0 text-xs text-accent underline disabled:text-muted disabled:no-underline"
+          >
+            {all ? "everyone's in" : "Nudge the room"}
+          </button>
+        )}
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-bg ring-1 ring-inset ring-border/40">
+        <div
+          className="h-1.5 rounded-full bg-gradient-to-r from-accent/80 to-accent transition-[width] duration-500 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {s.quiet > 0 && (
+        <p className="text-xs text-muted">{s.quiet} gone quiet</p>
+      )}
+    </div>
+  );
+}

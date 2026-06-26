@@ -9,7 +9,11 @@ import {
   clusterAssistAvailable,
 } from "./session";
 import { getMode, getPhase } from "./modes";
-import { getServerModule } from "./modules/registry.server";
+import {
+  PROJECTOR_FLOOR,
+  computeParticipationSignal,
+  getServerModule,
+} from "./modules/registry.server";
 import type {
   ModuleAction,
   ModuleContext,
@@ -24,6 +28,7 @@ import type {
   ModeId,
   ModuleKind,
   ModuleView,
+  ParticipationSignal,
   Participant,
   Pattern,
   PublicState,
@@ -391,6 +396,34 @@ export async function reassign(
   await backend.hset<Participant>(key, token, me);
 }
 
+// ---- Liveness heartbeat (C2) ----------------------------------------------
+// A dedicated single-field hash (NOT folded into the Participant record, whose
+// hget-then-hset would race a concurrent allocation on the same token). One
+// genuine single-field hset per token; throttled so 50 pollers don't hammer KV.
+
+const TOUCH_THROTTLE_SECONDS = 15; // also the cushion under the 25s quiet threshold
+
+export async function touchParticipant(
+  token: string,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<void> {
+  // setNX a short-lived throttle key; if we wrote within the window, skip. The
+  // in-memory backend makes both ops free, so CI/test are unaffected.
+  const ok = await backend.setNX(
+    `${roomKeys(roomId).seen}:touch:${token}`,
+    1,
+    TOUCH_THROTTLE_SECONDS,
+  );
+  if (!ok) return;
+  await backend.hset<number>(roomKeys(roomId).seen, token, Date.now());
+}
+
+export async function readHeartbeats(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<Record<string, number>> {
+  return backend.hgetall<number>(roomKeys(roomId).seen);
+}
+
 // ---- Submissions (Redis list: atomic RPUSH append) ------------------------
 
 export async function listSubmissions(
@@ -643,6 +676,7 @@ export async function endSession(
     KEYS.patterns,
     KEYS.votes,
     KEYS.words,
+    KEYS.seen,
   );
   await writeState({ ...DEFAULT_STATE, ended: true }, roomId);
 }
@@ -803,6 +837,34 @@ export async function getPublicState(
     }
   }
 
+  // C2 — role-scoped participation signal. Derived from the heartbeat hash +
+  // responders, never stored. Costs one hgetall only on gather phases.
+  let participation: ParticipationSignal | null = null;
+  if (ctx && moduleId) {
+    const gatherSource = getServerModule(moduleId)?.capabilities.gatherSource ?? "none";
+    if (gatherSource !== "none") {
+      const heartbeats = await readHeartbeats(roomId);
+      const raw = await computeParticipationSignal(ctx, gatherSource, heartbeats);
+      if (raw) {
+        const anonymous = (cfg as { anonymity?: string } | null)?.anonymity === "anonymous";
+        if (role === "participant") {
+          participation = null; // participants never see breakdowns
+        } else if (role === "projector") {
+          // bare present+responded, only when opted in AND above the privacy floor
+          const show = Boolean((cfg as { showLiveCount?: boolean } | null)?.showLiveCount);
+          participation =
+            show && raw.present >= PROJECTOR_FLOOR
+              ? { present: raw.present, responded: raw.responded, typing: 0, quiet: 0 }
+              : null;
+        } else {
+          // facilitator / cohost / admin: full numbers, but no per-person quiet
+          // breakdown on anonymous phases (can't pair "the quiet one" with a gap).
+          participation = anonymous ? { ...raw, typing: 0, quiet: 0 } : raw;
+        }
+      }
+    }
+  }
+
   return {
     ended: state.ended,
     mode: state.mode,
@@ -826,6 +888,7 @@ export async function getPublicState(
     readaround,
     patterns,
     clusterAssistAvailable: clusterAssistAvailable(),
+    participation,
   };
 }
 

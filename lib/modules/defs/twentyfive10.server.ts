@@ -173,7 +173,7 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
     passes: 5,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,

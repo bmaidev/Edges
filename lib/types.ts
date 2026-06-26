@@ -251,6 +251,21 @@ export interface PublicState {
   } | null;
   patterns: Pattern[];
   clusterAssistAvailable: boolean;
+  // C2 — glanceable "N of M responded" for the current gather phase, role-scoped
+  // and derived (never stored). null on non-gather phases / for roles that
+  // shouldn't see it (participants; projector unless opted in above the floor).
+  participation: ParticipationSignal | null;
+}
+
+// C2 — content-free participation signal. Every value is an integer count; no
+// surface ever maps a response to a person. `quiet` is suppressed (0) on
+// anonymous phases and for the projector.
+export interface ParticipationSignal {
+  present: number; // participants currently in the room
+  responded: number; // distinct participants who responded for THIS phase (<= present)
+  typing: number; // always 0 in the MVP (focus/draft heartbeat is a fast-follow)
+  quiet: number; // present participants whose heartbeat is stale (>QUIET_MS)
+  nudgedAt?: number; // central re-pulse field (Full vision); unused in MVP
 }
 
 export interface FacilitatorState extends PublicState {

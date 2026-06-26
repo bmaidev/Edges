@@ -96,7 +96,7 @@ export const fishbowlModule: ModuleServerDef<FishbowlConfig> = {
   // Participants need the live circle; the projector mirrors it. Observers'
   // identities are never leaked to other participants (handled in computeView).
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
