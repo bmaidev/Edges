@@ -572,6 +572,17 @@ export async function publishTakeaway(
       t && (t.logoUrl || t.headline)
         ? { logoUrl: t.logoUrl, headline: t.headline }
         : undefined,
+    // F3 — keep each contribution with its author token so a participant can be
+    // handed back their OWN. Stays server-side; the per-caller filter happens in
+    // getPublicState. (Anonymity doesn't restrict this — it's only ever yours.)
+    contributions: fs.submissions
+      .filter((s) => s.token)
+      .map((s) => ({
+        token: s.token as string,
+        phaseLabel:
+          fs.sequence.find((p) => p.id === s.phaseId)?.label ?? s.phaseId,
+        text: s.text,
+      })),
   };
   const token = randomBytes(16).toString("hex");
   await publishAndEnd(slug, token, snapshot);

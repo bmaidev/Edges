@@ -19,7 +19,8 @@ export async function GET(
       { status: 410, headers: { "Cache-Control": "no-store" } },
     );
   return NextResponse.json(
-    { takeaway: { ...snapshot, token } },
+    // F3 — strip the raw contributions; the public API serves the shared body only.
+    { takeaway: { ...snapshot, contributions: undefined, token } },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

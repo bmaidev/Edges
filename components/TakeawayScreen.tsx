@@ -79,6 +79,19 @@ export function TakeawayScreen({
         </Block>
       )}
 
+      {t.yourContributions && t.yourContributions.length > 0 && (
+        <Block title="What you contributed" show>
+          <ul className="space-y-1.5">
+            {t.yourContributions.map((c, i) => (
+              <li key={i} className="border-l-2 border-accent/40 pl-3">
+                <span className="text-white/90">{c.text}</span>
+                <span className="block text-xs text-muted">{c.phaseLabel}</span>
+              </li>
+            ))}
+          </ul>
+        </Block>
+      )}
+
       {shareUrl && (
         <div className="flex flex-wrap gap-2 border-t border-border pt-4">
           <button
