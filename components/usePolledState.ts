@@ -28,6 +28,10 @@ export function usePolledState<
 ) {
   const [state, setState] = useState<T | null>(null);
   const [error, setError] = useState(false);
+  // H1 — wall-clock of the last successfully-applied state. A silent stall (a
+  // captive portal returning 200s that never advance rev) shows no `error`, so
+  // the connection hook also watches the age of this timestamp.
+  const [lastAppliedAt, setLastAppliedAt] = useState<number | null>(null);
   const optsRef = useRef(opts);
   optsRef.current = opts;
   const pollRef = useRef<() => Promise<void> | void>(() => {});
@@ -49,6 +53,7 @@ export function usePolledState<
     // New identity → forget the old response immediately.
     setState(null);
     setError(false);
+    setLastAppliedAt(null);
     appliedRef.current = 0;
     seqRef.current = 0;
     lastRevRef.current = -1;
@@ -80,6 +85,7 @@ export function usePolledState<
         if (rev !== null) lastRevRef.current = Math.max(lastRevRef.current, rev);
         setState(data);
         setError(false);
+        setLastAppliedAt(Date.now());
       } catch {
         if (active) setError(true);
       }
@@ -142,7 +148,8 @@ export function usePolledState<
     appliedRef.current = seqRef.current;
     setState(next);
     setError(false);
+    setLastAppliedAt(Date.now());
   }, []);
 
-  return { state, error, refresh, refreshUntil, apply };
+  return { state, error, lastAppliedAt, refresh, refreshUntil, apply };
 }

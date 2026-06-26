@@ -7,6 +7,8 @@ import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LobbyScreen } from "@/components/LobbyScreen";
 import { TourCoach } from "@/components/TourCoach";
+import { ConnectionChip } from "@/components/ConnectionStrip";
+import { useConnection } from "@/components/useConnection";
 import { bootToken } from "@/lib/magicLink";
 import type { PublicState } from "@/lib/types";
 
@@ -23,12 +25,13 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
     if (t) setTok(t);
   }, [slug]);
 
-  const { state, error } = usePolledState<PublicState>({
+  const { state, error, lastAppliedAt } = usePolledState<PublicState>({
     endpoint: `${apiBase}/state`,
     role: "projector",
     code: tok,
     streamEndpoint: `${apiBase}/stream`,
   });
+  const conn = useConnection({ error, lastAppliedAt });
 
   // The participant join link for this room — workshop members scan to walk in
   // (no passcode; handle is optional). apiBase is "/api/r/<slug>".
@@ -88,7 +91,7 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
       <div className="flex items-center justify-between border-b border-border px-10 py-5 text-xl text-muted">
         <span>{state.config?.label ?? state.modeName ?? state.topic}</span>
         <span className="flex items-center gap-4">
-          {error && <span className="text-base text-[#ffd7d7]">Reconnecting…</span>}
+          <ConnectionChip conn={conn} />
           {/* C1 gate fix: a paused timer (timerEndsAt null, remaining set) must
               freeze on the big screen, never blank. */}
           {(state.timerEndsAt != null || state.timerRemainingMs != null) && (

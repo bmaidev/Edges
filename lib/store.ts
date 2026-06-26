@@ -9,6 +9,7 @@ import {
   clusterAssistAvailable,
 } from "./session";
 import { getMode, getPhase } from "./modes";
+import { computeRoomHealth } from "./health";
 import {
   PROJECTOR_FLOOR,
   computeParticipationSignal,
@@ -1151,11 +1152,15 @@ export async function getFacilitatorState(
   roomId: string = DEFAULT_ROOM_ID,
   stateOverride?: SessionState,
 ): Promise<FacilitatorState> {
-  const [pub, submissions, participants, allContent] = await Promise.all([
-    getPublicState(null, roomId, "facilitator", stateOverride),
-    listSubmissions(roomId),
-    listParticipants(roomId),
-    listContent(roomId),
-  ]);
-  return { ...pub, submissions, participants, allContent };
+  const [pub, submissions, participants, allContent, heartbeats] =
+    await Promise.all([
+      getPublicState(null, roomId, "facilitator", stateOverride),
+      listSubmissions(roomId),
+      listParticipants(roomId),
+      listContent(roomId),
+      readHeartbeats(roomId),
+    ]);
+  // H1 — room-wide health (every phase), from C2's existing liveness hash.
+  const roomHealth = computeRoomHealth(participants, heartbeats);
+  return { ...pub, submissions, participants, allContent, roomHealth };
 }
