@@ -13,6 +13,11 @@ import { computeRoomHealth } from "./health";
 import { computeReadiness } from "./preflight";
 import { aiAvailable } from "./ai";
 import {
+  extractRunsheet,
+  hasRunsheet,
+  stripRunsheet,
+} from "./modules/runsheet";
+import {
   PROJECTOR_FLOOR,
   computeParticipationSignal,
   getServerModule,
@@ -1049,6 +1054,17 @@ function storeFacade(roomId: string): ModuleStore {
   };
 }
 
+// B3 — only the host-tier roles (facilitator/admin/cohost) keep the private
+// run-sheet on a phase config; the room (participant/projector) gets it stripped.
+function scopeConfigForRole(
+  config: Record<string, unknown> | null,
+  role: Role,
+): Record<string, unknown> | null {
+  return role === "participant" || role === "projector"
+    ? stripRunsheet(config)
+    : config;
+}
+
 async function buildContext(
   roomId: string,
   role: Role,
@@ -1085,7 +1101,9 @@ async function buildContext(
       roomId,
       role,
       phase,
-      config: phase.config,
+      // B3 — strip the facilitator-private run-sheet BEFORE computeView sees it,
+      // so a module's view can never echo it to a participant/projector.
+      config: scopeConfigForRole(phase.config, role) ?? phase.config,
       state,
       participants,
       visibleContent: visible,
@@ -1109,7 +1127,11 @@ export async function getPublicState(
 
   const mode = getMode(state.mode);
   const phase = resolveActive(state);
-  const cfg = (phase?.config ?? null) as PublicState["config"];
+  // B3 — the returned config is also role-scoped (the other leak surface).
+  const cfg = scopeConfigForRole(
+    phase?.config ?? null,
+    role,
+  ) as PublicState["config"];
   const moduleId: ModuleKind | null = phase?.moduleId ?? null;
   const allPhases = resolvePhases(state);
   const sequence = allPhases.map((p) => ({
@@ -1307,5 +1329,29 @@ export async function getFacilitatorState(
     aiConfigured: aiAvailable(),
     blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
   });
-  return { ...pub, submissions, participants, allContent, roomHealth, readiness };
+  // B3 — derive the facilitator-only run-sheets (phaseId -> notes) and a one-line
+  // peek at the next phase, from the same phase configs (never on PublicState).
+  const seq = resolvePhases(state);
+  const runsheets: Record<string, import("./types").RunSheet> = {};
+  for (const p of seq) {
+    const rs = extractRunsheet(p.config);
+    if (hasRunsheet(rs)) runsheets[p.id] = rs!;
+  }
+  const curIdx = seq.findIndex((p) => p.id === state.phaseId);
+  const nextPhase = curIdx >= 0 && curIdx < seq.length - 1 ? seq[curIdx + 1] : null;
+  const nextPeek = nextPhase
+    ? (nextPhase.config.label as string) ||
+      getServerModule(nextPhase.moduleId)?.meta.name ||
+      nextPhase.moduleId
+    : null;
+  return {
+    ...pub,
+    submissions,
+    participants,
+    allContent,
+    roomHealth,
+    readiness,
+    runsheets,
+    nextPeek,
+  };
 }

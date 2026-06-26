@@ -128,6 +128,16 @@ export interface Mode {
 
 // F2 — a live-captured commitment: a decision/action with an optional owner and
 // due date. Owners are free-text handles/names, never accounts. Verbatim, not AI.
+// B3 — a facilitator-PRIVATE run-sheet for a phase: the script, talking points,
+// and contingency the facilitator speaks from. Authored in the builder, nested in
+// PhaseInstance.config under RUNSHEET_KEY. MUST NEVER reach participants/projector
+// (stripped role-side before computeView + before the returned config).
+export interface RunSheet {
+  script?: string; // what to say / do
+  talkingPoints?: string; // bullet notes
+  contingency?: string; // "if it goes quiet…"
+}
+
 export type ActionItemStatus = "open" | "done";
 export interface ActionItem {
   id: string;
@@ -357,4 +367,8 @@ export interface FacilitatorState extends PublicState {
   roomHealth?: { present: number; here: number } | null;
   // H2 — pre-flight readiness for the built session. Advisory.
   readiness?: Readiness | null;
+  // B3 — per-phase facilitator run-sheets (facilitator-only; phaseId -> notes) and
+  // a one-line peek at the next phase. Derived; never on PublicState.
+  runsheets?: Record<string, RunSheet>;
+  nextPeek?: string | null;
 }

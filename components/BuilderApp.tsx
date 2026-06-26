@@ -10,6 +10,7 @@ import { TEMPLATES } from "@/lib/templates";
 // validation and the readiness check can never drift.
 import { LONG_TEXT, validatePhaseConfig } from "@/lib/preflight";
 import { AgendaArc } from "@/components/AgendaArc";
+import { RunSheetSection } from "@/components/RunSheetSection";
 import { acceptsTimerEdit, phaseMinutes, phaseStage } from "@/lib/arc";
 import type { ModuleKind } from "@/lib/types";
 
@@ -864,6 +865,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                     />
                   )}
                 </div>
+
+                {/* B3 — author the facilitator-private run-sheet for this phase. */}
+                <RunSheetSection config={p.config} onChange={(c) => setConfig(i, c)} />
 
                 <div className="mt-2 flex items-center justify-between">
                   <button

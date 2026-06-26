@@ -17,6 +17,7 @@ import { useConnection } from "@/components/useConnection";
 import { PreflightPill, PreflightSheet } from "@/components/PreflightPanel";
 import { HandoverPanel } from "@/components/HandoverPanel";
 import { ActionItemsPanel } from "@/components/ActionItemsPanel";
+import { RunSheetPanel } from "@/components/RunSheetPanel";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -358,6 +359,11 @@ export function HostConsole({
         {activeTab === "run" && (
           <div className="lg:grid lg:grid-cols-[1fr_minmax(320px,380px)] lg:items-start lg:gap-6">
             <div className="flex flex-col gap-6">
+              {/* B3 — your private script for this phase + a peek at what's next. */}
+              <RunSheetPanel
+                runsheet={s.runsheets?.[s.phaseId ?? ""]}
+                nextPeek={s.nextPeek}
+              />
               {/* C2 — read the room: "N of M responded" on every gather phase. */}
               {s.participation && (
                 <ParticipationSignal s={s.participation} />
