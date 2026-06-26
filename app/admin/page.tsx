@@ -244,7 +244,9 @@ function Admin() {
             No rooms of your own yet — create one above, or poke the demo first.
           </p>
         ) : (
-          realRooms.map((r) => <RoomCard key={r.slug} room={r} code={code} />)
+          realRooms.map((r) => (
+            <RoomCard key={r.slug} room={r} code={code} onChanged={() => load(code)} />
+          ))
         )}
       </div>
     </main>
@@ -398,7 +400,36 @@ function CreateRoom({
   );
 }
 
-function RoomCard({ room, code }: { room: RoomRow; code: string }) {
+function RoomCard({
+  room,
+  code,
+  onChanged,
+}: {
+  room: RoomRow;
+  code: string;
+  onChanged: () => void;
+}) {
+  // A1 — mark a draft room live, or permanently delete a room.
+  async function markLive() {
+    await fetch(`/api/admin/rooms/${room.slug}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, status: "live" }),
+    });
+    onChanged();
+  }
+  async function del() {
+    if (
+      !window.confirm(
+        `Delete "${room.name}"? This permanently removes the room, its data, and any saved report.`,
+      )
+    )
+      return;
+    await fetch(`/api/admin/rooms/${room.slug}?code=${encodeURIComponent(code)}`, {
+      method: "DELETE",
+    });
+    onChanged();
+  }
   const [panel, setPanel] = useState<"theme" | "report" | "access" | null>(null);
   const [theme, setTheme] = useState<ThemeDraft>(EMPTY_THEME);
   const [report, setReport] = useState<any>(null);
@@ -471,6 +502,10 @@ function RoomCard({ room, code }: { room: RoomRow; code: string }) {
           <button onClick={() => setPanel(panel === "access" ? null : "access")}>access</button>
           <button onClick={openTheme}>theme</button>
           <button onClick={openReport}>report</button>
+          {room.status === "draft" && (
+            <button onClick={markLive} className="text-emerald-400">make live</button>
+          )}
+          <button onClick={del} className="text-[#ff8a8a]">delete</button>
         </div>
       </div>
 
