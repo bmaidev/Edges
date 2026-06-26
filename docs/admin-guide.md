@@ -8,6 +8,10 @@ super-admin passcode (`ADMIN_PASSCODE`).
 Go to **`/admin`** and enter the super-admin passcode. (The site root `/`
 redirects here.)
 
+> **New here?** The fastest way to understand Edges is the **sample room & the
+> 5-minute tour** — see the section near the end of this guide. It spins up a
+> safe demo you can't break and walks you through driving a live session.
+
 ## 2. Create a room
 
 In **New room**, give it a name and an optional **topic**, then **Create room**.
@@ -67,6 +71,36 @@ snapshot is saved. Open the room's **report** panel in `/admin` to see it:
 
 If no AI key was set when the session was archived, you'll see the data snapshot
 without the AI synthesis.
+
+## Sample room & the 5-minute tour
+
+The fastest way to understand Edges is to drive a workshop that's already
+mid-flight. From `/admin`:
+
+- A pinned **DEMO** card sits at the top of the rooms list: a `sample-demo` room
+  seeded with **seven fake participants**, real messy ideas, pre-clustered
+  patterns, and a running timer — landed mid read-around.
+- **open host** drops you straight into a live-looking host console (no extra
+  passcode). Press **Advance** to move the room, open **What they see** to watch
+  the participant view, and try **Content** and **Patterns**.
+- **open screen** shows the projector view.
+- **reset sample** re-seeds it from scratch (and rotates its passcodes).
+
+A short **guided tour** (the *Start tour* / *Replay tour* link in the header)
+points at each of these in turn. It never blocks the UI — the real buttons stay
+clickable the whole time.
+
+**It's safe to break.** Everything in the sample is fake. The best beat is the
+last one: press **End session** and watch every participant, submission, pattern
+and note vanish — that's the off-the-record contract, felt rather than read.
+
+Privacy notes for the sample:
+
+- Sample passcodes are **generated randomly each time you seed** and shown only
+  once — never committed to the codebase.
+- The only durable trace is a tiny non-PII "you've seen the tour" flag, keyed by
+  a hash of your admin code so the first-run nudge doesn't re-appear. Deleting
+  the `sample-demo` room and that flag removes the feature entirely.
 
 ## Notes
 

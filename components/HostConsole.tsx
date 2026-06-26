@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
+import { TourCoach } from "@/components/TourCoach";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -58,6 +59,7 @@ export function HostConsole({
   const [code, setCode] = useState("");
   const [codeInput, setCodeInput] = useState("");
   const [cmdError, setCmdError] = useState<string | null>(null);
+  const [tour, setTour] = useState(false);
   type Tab = "run" | "preview" | "content" | "patterns" | "session";
   const [tab, setTab] = useState<Tab>("run");
   const slug = apiBase.replace("/api/r/", "");
@@ -68,6 +70,19 @@ export function HostConsole({
     const t = bootToken(slug);
     if (t) setCode(t);
   }, [slug]);
+  // A3 tour deep-link: `?tour=1` enables the coach; `?code=` carries the demo
+  // facilitator passcode so the second gate is skipped — stripped immediately via
+  // history.replaceState so the low-value disposable code never lingers in the bar.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("tour") === "1") setTour(true);
+    const c = url.searchParams.get("code");
+    if (c) {
+      setCode(c);
+      url.searchParams.delete("code");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
   const { state, refresh, apply } = usePolledState<FacilitatorState & { role?: Role }>({
     code: code || undefined,
     endpoint: `${apiBase}/state`,
@@ -157,9 +172,29 @@ export function HostConsole({
   const s = state as FacilitatorState & { role?: Role };
   const role: Role = s.role ?? "facilitator";
 
+  // The coach is mounted in EVERY authed branch (incl. the post-end ModeSelector
+  // path) so the "End wipes everything" beat still resolves after the wipe. It
+  // reads the rev-guarded `s` the console already applies — never a /state refetch.
+  const coach = tour ? (
+    <TourCoach
+      surface="host"
+      roomState={{
+        phaseId: s.phaseId,
+        ended: Boolean(s.ended),
+        rev: s.rev ?? 0,
+        patternsCount: s.patterns?.length ?? 0,
+      }}
+    />
+  ) : null;
+
   // No sequence yet (no mode and no custom phases) → pick a starting point.
   if (!s.mode && (!s.sequence || s.sequence.length === 0))
-    return <ModeSelector cmd={cmd} apiBase={apiBase} />;
+    return (
+      <>
+        {coach}
+        <ModeSelector cmd={cmd} apiBase={apiBase} />
+      </>
+    );
 
   const hasModuleControls =
     Boolean(s.moduleId && getClientRenderer(s.moduleId, "facilitator") && s.view) &&
@@ -190,6 +225,7 @@ export function HostConsole({
 
   return (
     <main className="mx-auto w-full max-w-2xl pb-24 lg:max-w-5xl">
+      {coach}
       <div className="sticky top-0 z-10 border-b border-border bg-bg/95 backdrop-blur">
         <SessionHeader state={s} cmd={cmd} role={role} />
         <PhaseStepper state={s} cmd={cmd} />
@@ -197,6 +233,7 @@ export function HostConsole({
           {TABS.filter((t) => t.show).map((t) => (
             <button
               key={t.id}
+              data-tour-id={`tab-${t.id}`}
               onClick={() => setTab(t.id)}
               className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${
                 activeTab === t.id
@@ -572,6 +609,7 @@ function PhaseStepper({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
           })}
         </div>
         <button
+          data-tour-id="advance"
           disabled={!next}
           onClick={() => next && cmd("setPhase", { phaseId: next.id })}
           className="shrink-0 rounded-lg border border-accent bg-accent/10 px-3 py-2 text-sm font-medium text-accent disabled:opacity-30"
@@ -987,7 +1025,11 @@ function SessionControls({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) 
       <Button variant="ghost" onClick={() => setConfirming("archive")}>
         Archive (save report + wipe)
       </Button>
-      <Button variant="danger" onClick={() => setConfirming("end")}>
+      <Button
+        variant="danger"
+        data-tour-id="end-session"
+        onClick={() => setConfirming("end")}
+      >
         End session
       </Button>
       {confirming && (

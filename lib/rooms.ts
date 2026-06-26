@@ -102,6 +102,9 @@ export interface Room {
     cohost: string;
     projector?: string;
   };
+  // Marks the reserved demo room (`sample-demo`). Drives the DEMO badge + pinning
+  // in /admin and exclusion from the "zero real rooms" first-run check. Non-PII.
+  isSample?: boolean;
 }
 
 export interface RoomCreated {
@@ -190,8 +193,86 @@ export async function createRoom(
   return { room, passcodes };
 }
 
+// Mint a fresh set of tier passcodes + their sha256 hashes in one place, so
+// callers that create a room at a fixed slug (the sample seeder) get plaintext
+// to return ONCE while only the hashes are ever persisted. Keeps all crypto in
+// this module.
+export function freshPasscodes(): {
+  plain: Record<PasscodeTier, string>;
+  hashes: Room["passcodeHashes"];
+} {
+  const plain = {
+    admin: randomPasscode("adm"),
+    facilitator: randomPasscode("fac"),
+    cohost: randomPasscode("co"),
+    projector: randomPasscode("scr"),
+  };
+  return {
+    plain,
+    hashes: {
+      admin: sha256(plain.admin),
+      facilitator: sha256(plain.facilitator),
+      cohost: sha256(plain.cohost),
+      projector: sha256(plain.projector),
+    },
+  };
+}
+
+// Create-or-update a room at a FIXED slug (vs createRoom's random slug). Used by
+// the sample seeder: re-seeding reuses the same `sample-demo` record but rotates
+// its passcode hashes. Idempotent on the index.
+export async function createRoomWithSlug(
+  slug: string,
+  name: string,
+  topic: string,
+  opts: { isSample?: boolean; passcodeHashes: Room["passcodeHashes"] },
+): Promise<Room> {
+  return withRoomLock(slug, async () => {
+    const existing = await getRoom(slug);
+    const room: Room = {
+      slug,
+      name: name.trim().slice(0, 120) || "Untitled room",
+      topic: topic.trim().slice(0, 200),
+      templateId: existing?.templateId ?? null,
+      // A sample room is "live" so it reads as active in the rooms list.
+      status: existing?.status ?? "live",
+      createdAt: existing?.createdAt ?? Date.now(),
+      isSample: opts.isSample ?? existing?.isSample,
+      passcodeHashes: opts.passcodeHashes,
+    };
+    await db.set(roomKey(slug), room);
+    const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
+    if (!index.includes(slug)) {
+      index.push(slug);
+      await db.set(ROOM_INDEX_KEY, index);
+    }
+    return room;
+  });
+}
+
 export async function getRoom(slug: string): Promise<Room | null> {
   return db.get<Room>(roomKey(slug));
+}
+
+// ---- Onboarding: durable per-admin "seen the tour" flag -------------------
+// The one durable, non-PII onboarding key. Keyed by a sha256 of the admin code
+// so the plaintext is never stored. Documented in the privacy docs and fully
+// removable via clearTourSeen, so deleting the sample removes the whole feature.
+
+function tourKey(adminCode: string): string {
+  return `rooms:tour:${sha256(adminCode)}`;
+}
+
+export async function getTourSeen(adminCode: string): Promise<boolean> {
+  return Boolean(await db.get<boolean>(tourKey(adminCode)));
+}
+
+export async function setTourSeen(adminCode: string): Promise<void> {
+  await db.set(tourKey(adminCode), true);
+}
+
+export async function clearTourSeen(adminCode: string): Promise<void> {
+  await db.del(tourKey(adminCode));
 }
 
 export async function listRooms(): Promise<Room[]> {
