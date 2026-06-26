@@ -133,11 +133,13 @@ const ContentProjector: Renderer = ({ view }) => {
 
 // ---- capture --------------------------------------------------------------
 
-const CaptureRenderer: Renderer = ({ view, act }) => {
+const CaptureRenderer: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as CaptureView;
   const twoPart = Boolean(v.prompt2);
   const [text, setText] = useState("");
   const [text2, setText2] = useState("");
+  // H1 — persist the in-progress answer so a reload/crash never loses it.
+  const draftKey = `edges_draft:${token}:${phaseId}`;
   const { status, setStatus } = useSend(act);
   const [lastPayloads, setLastPayloads] = useState<string[]>([]);
   const [sharedCount, setSharedCount] = useState(0);
@@ -201,7 +203,12 @@ const CaptureRenderer: Renderer = ({ view, act }) => {
           </details>
         )}
         <p className="text-lg font-medium leading-snug">{v.prompt}</p>
-        <VoiceTextarea value={text} onChange={setText} placeholder={v.placeholder} />
+        <VoiceTextarea
+          value={text}
+          onChange={setText}
+          placeholder={v.placeholder}
+          draftKey={draftKey}
+        />
         {twoPart && (
           <>
             <p className="mt-2 text-lg font-medium leading-snug">{v.prompt2}</p>
@@ -209,6 +216,7 @@ const CaptureRenderer: Renderer = ({ view, act }) => {
               value={text2}
               onChange={setText2}
               placeholder={v.placeholder2}
+              draftKey={`${draftKey}:2`}
             />
           </>
         )}

@@ -280,4 +280,6 @@ export interface FacilitatorState extends PublicState {
   submissions: Submission[];
   participants: Participant[];
   allContent: ContentItem[];
+  // H1 — room-wide "who's still with you" (every phase). Derived, never stored.
+  roomHealth?: { present: number; here: number } | null;
 }

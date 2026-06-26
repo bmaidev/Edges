@@ -20,11 +20,17 @@ export function VoiceTextarea({
   onChange,
   placeholder,
   disabled = false,
+  draftKey,
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  // H1 — when set, the in-progress text is mirrored to localStorage (debounced)
+  // and restored on mount, so a reload/crash never loses what someone typed. Key
+  // must be unique per participant+phase+field. Cleared when the box empties
+  // (e.g. after a send). Off-the-record: the draft never leaves the browser.
+  draftKey?: string;
 }) {
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(true);
@@ -33,6 +39,33 @@ export function VoiceTextarea({
   // Text committed before the current dictation run started, so interim
   // results replace cleanly rather than duplicating.
   const baseTextRef = useRef("");
+
+  // H1 draft persistence: restore once on mount (only into an empty box, so we
+  // never clobber a fresher value), then mirror debounced; remove when empty.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (!draftKey || restoredRef.current) return;
+    restoredRef.current = true;
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved && !value) onChange(saved);
+    } catch {
+      /* private mode — skip */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+  useEffect(() => {
+    if (!draftKey) return;
+    const id = window.setTimeout(() => {
+      try {
+        if (value) localStorage.setItem(draftKey, value);
+        else localStorage.removeItem(draftKey);
+      } catch {
+        /* ignore */
+      }
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [draftKey, value]);
 
   useEffect(() => {
     setSupported(getRecognitionCtor() !== null);

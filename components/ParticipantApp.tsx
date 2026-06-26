@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
+import { useConnection, type ConnState } from "@/components/useConnection";
+import { ConnectionStrip } from "@/components/ConnectionStrip";
 import { Button, Screen } from "@/components/ui";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -16,11 +18,13 @@ export function ParticipantApp({ apiBase }: { apiBase: string }) {
   const [joined, setJoined] = useState(false);
   const [handle, setHandle] = useState("Anonymous");
   const [token, setToken] = useState<string | undefined>(undefined);
-  const { state, error } = usePolledState<PublicState>({
+  const { state, error, lastAppliedAt } = usePolledState<PublicState>({
     token,
     endpoint: `${apiBase}/state`,
     streamEndpoint: apiBase.startsWith("/api/r/") ? `${apiBase}/stream` : undefined,
   });
+  // H1 — honest tri-state connection signal for this device.
+  const conn = useConnection({ error, lastAppliedAt });
 
   // Per-room localStorage keys so different rooms don't clobber each other.
   const HK = `edges_handle:${apiBase}`;
@@ -37,10 +41,21 @@ export function ParticipantApp({ apiBase }: { apiBase: string }) {
   }, [TK, HK]);
 
   if (!state) {
+    // H1 — never strand on an endless "Connecting…". If the device is offline
+    // before the first state ever lands, say so honestly and hold calmly.
     return (
       <Screen>
-        <div className="flex flex-1 items-center justify-center p-8 text-muted">
-          Connecting…
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-muted">
+          {conn === "offline" ? (
+            <>
+              <p className="text-lg text-white/80">You&apos;re offline</p>
+              <p className="text-sm">
+                We&apos;ll connect you to the room as soon as you&apos;re back online.
+              </p>
+            </>
+          ) : (
+            "Connecting…"
+          )}
         </div>
       </Screen>
     );
@@ -81,18 +96,8 @@ export function ParticipantApp({ apiBase }: { apiBase: string }) {
       handle={handle}
       token={token!}
       apiBase={apiBase}
-      reconnecting={error}
+      conn={conn}
     />
-  );
-}
-
-// Calm, non-blocking "we lost the connection" strip. The last-good screen stays
-// visible underneath — we never block on the network.
-function ReconnectBanner() {
-  return (
-    <div className="sticky top-0 z-20 bg-[#5a2a2a]/90 px-5 py-2 text-center text-xs text-[#ffd7d7] backdrop-blur">
-      Reconnecting…
-    </div>
   );
 }
 
@@ -209,13 +214,13 @@ function PhaseScreen({
   handle,
   token,
   apiBase,
-  reconnecting,
+  conn,
 }: {
   state: PublicState;
   handle: string;
   token: string;
   apiBase: string;
-  reconnecting: boolean;
+  conn: ConnState;
 }) {
   const act = useAct(apiBase, token, handle);
   const pulse = useContentPulse(state.contentVersion);
@@ -239,7 +244,7 @@ function PhaseScreen({
       : "Look up at the screen.";
     return (
       <Screen>
-        {reconnecting && <ReconnectBanner />}
+        <ConnectionStrip conn={conn} />
         <div className="flex flex-1 flex-col items-center justify-center gap-8 p-8 text-center animate-riseIn">
           <div className="relative h-16 w-16">
             <div className="absolute inset-0 rounded-full bg-accent/30 blur-xl animate-pulseSoft" />
@@ -258,7 +263,7 @@ function PhaseScreen({
 
   return (
     <Screen>
-      {reconnecting && <ReconnectBanner />}
+      <ConnectionStrip conn={conn} />
       <StatusBar state={state} />
       <ErrorBoundary
         label={`participant:${state.moduleId ?? "?"}`}

@@ -12,6 +12,8 @@ import {
   phaseAnswerCount,
 } from "@/components/recovery/recovery";
 import { ParticipationSignal } from "@/lib/modules/render-kit";
+import { ConnectionChip } from "@/components/ConnectionStrip";
+import { useConnection } from "@/components/useConnection";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -99,11 +101,14 @@ export function HostConsole({
       window.history.replaceState({}, "", url.toString());
     }
   }, []);
-  const { state, refresh, apply } = usePolledState<FacilitatorState & { role?: Role }>({
+  const { state, error, lastAppliedAt, refresh, apply } = usePolledState<
+    FacilitatorState & { role?: Role }
+  >({
     code: code || undefined,
     endpoint: `${apiBase}/state`,
     streamEndpoint: `${apiBase}/stream`,
   });
+  const conn = useConnection({ error, lastAppliedAt });
   // Forget the remembered token once the session is ended/wiped.
   useEffect(() => {
     if (state?.ended) clearToken(slug);
@@ -295,10 +300,25 @@ export function HostConsole({
               {t.label}
             </button>
           ))}
+          {/* H1 — room-wide "who's still with you", every phase. */}
+          {s.roomHealth && s.roomHealth.present > 0 && (
+            <span
+              className="ml-auto mr-3 shrink-0 text-xs text-muted tabular-nums"
+              title="Participants whose connection is fresh"
+            >
+              {s.roomHealth.here} of {s.roomHealth.present} with you
+            </span>
+          )}
+          {/* H1 — this device's honest connection state. */}
+          <span
+            className={`${s.roomHealth && s.roomHealth.present > 0 ? "" : "ml-auto"} mr-2 shrink-0`}
+          >
+            <ConnectionChip conn={conn} />
+          </span>
           {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
           <a
             href={`/r/${slug}/facilitate`}
-            className="ml-auto shrink-0 whitespace-nowrap rounded-lg border border-accent/40 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+            className="shrink-0 whitespace-nowrap rounded-lg border border-accent/40 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
           >
             ⛶ Facilitate
           </a>

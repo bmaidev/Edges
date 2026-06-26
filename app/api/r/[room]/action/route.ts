@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dispatchAction } from "@/lib/store";
+import { dispatchAction, touchParticipant } from "@/lib/store";
 import { getRoom } from "@/lib/rooms";
 import type { ModuleAction } from "@/lib/modules/types";
 
@@ -24,6 +24,11 @@ export async function POST(
   }
   if (!body || typeof body.type !== "string")
     return NextResponse.json({ error: "Missing action type" }, { status: 400 });
+
+  // H1 — acting is liveness: refresh the heartbeat so room-health reflects
+  // people who are engaging but between polls. Fire-and-forget, throttled.
+  if (typeof body.token === "string")
+    void touchParticipant(body.token, params.room).catch(() => {});
 
   const result = await dispatchAction(params.room, body, "participant");
   if (!result.ok)
