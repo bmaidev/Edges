@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { usePolledState } from "@/components/usePolledState";
-import { Countdown } from "@/components/Countdown";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LobbyScreen } from "@/components/LobbyScreen";
 import { TourCoach } from "@/components/TourCoach";
 import { ConnectionChip } from "@/components/ConnectionStrip";
 import { useConnection } from "@/components/useConnection";
+import { usePresentMode } from "@/components/usePresentMode";
+import { PresentPill } from "@/components/PresentPill";
+import { PresenterRibbon } from "@/components/PresenterRibbon";
+import { PhaseTransition } from "@/components/PhaseTransition";
 import { bootToken } from "@/lib/magicLink";
 import type { PublicState } from "@/lib/types";
 
@@ -33,6 +36,9 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
     streamEndpoint: `${apiBase}/stream`,
   });
   const conn = useConnection({ error, lastAppliedAt });
+  // E2 — present mode (fullscreen + wake-lock + auto-hiding chrome). Called here,
+  // above the early "Connecting…" return, to keep hook order stable.
+  const present = usePresentMode();
 
   // The participant join link for this room — workshop members scan to walk in
   // (no passcode; handle is optional). apiBase is "/api/r/<slug>".
@@ -81,34 +87,36 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
       ? getClientRenderer(state.moduleId, "projector")
       : null;
 
+  // E2 — a single key that changes on every screen change (advance, lobby↔phase↔
+  // ended) to drive the cross-dissolve + per-change chime.
+  const chromeHidden = present.active && present.controlsHidden;
+  const screenKey = state.ended ? "__ended__" : state.phaseId ?? "__lobby__";
+
   return (
-    <main className="flex min-h-screen flex-col">
+    <main
+      className={`flex min-h-screen flex-col ${present.cinema ? "cinema" : ""} ${chromeHidden ? "controls-hidden" : ""}`}
+    >
       {tour && <TourCoach surface="screen" />}
       {ribbon && (
         <div className="bg-accent/15 px-10 py-3 text-center text-lg text-accent">
           This is what the room sees on the big screen.
         </div>
       )}
-      <div className="flex items-center justify-between border-b border-border px-10 py-5 text-xl text-muted">
-        <span>{state.config?.label ?? state.modeName ?? state.topic}</span>
-        <span className="flex items-center gap-4">
-          <ConnectionChip conn={conn} />
-          {/* C1 gate fix: a paused timer (timerEndsAt null, remaining set) must
-              freeze on the big screen, never blank. */}
-          {(state.timerEndsAt != null || state.timerRemainingMs != null) && (
-            <span className="flex items-center gap-3 font-mono text-accent">
-              {state.timerEndsAt == null && state.timerRemainingMs != null && (
-                <span className="text-sm uppercase tracking-wide text-muted">paused</span>
-              )}
-              <Countdown
-                endsAt={state.timerEndsAt}
-                remainingMs={state.timerRemainingMs}
-              />
-            </span>
-          )}
-        </span>
+      {/* E2 — connection status is now ambient chrome (the top status bar is
+          retired in favour of the bottom presenter ribbon). Auto-hides with the
+          rest of the controls in present mode. */}
+      <div
+        className={`fixed right-5 top-5 z-40 transition-opacity duration-500 ${chromeHidden ? "pointer-events-none opacity-0" : "opacity-100"}`}
+      >
+        <ConnectionChip conn={conn} />
       </div>
-      <div className="relative flex flex-1 flex-col overflow-y-auto">
+      <PresentPill
+        active={present.active}
+        cinema={present.cinema}
+        hidden={chromeHidden}
+        onToggle={present.toggle}
+      />
+      <div className="relative flex flex-1 flex-col overflow-hidden">
         {/* C4 — a spotlighted response blooms over the live module (kept mounted,
             dimmed, behind). Outside the module ErrorBoundary so neither can take
             the other down. Cleared by the host or any phase advance. */}
@@ -134,50 +142,65 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
             </ul>
           </div>
         )}
-        {state.ended ? (
-          state.takeaway && joinUrl ? (
-            // F3 — let the room keep their recap on the way out.
-            <div className="flex flex-1 flex-col items-center justify-center gap-6 p-12 text-center">
-              <p className="font-display text-4xl text-white/90">
-                Take your recap with you
-              </p>
-              <span className="rounded-2xl bg-white p-4">
-                <QRCodeSVG
-                  value={`${joinUrl}/takeaway?k=${state.takeaway.token}`}
-                  size={220}
-                />
-              </span>
-              <p className="max-w-md text-xl text-muted">
-                Scan to keep the session summary — yours for 24 hours.
-              </p>
-            </div>
+        {/* E2 — soft cross-dissolve between screens; chime only in present mode
+            (so a lobby projector with a suspended AudioContext stays silent). */}
+        <PhaseTransition screenKey={screenKey} chime={present.active}>
+          {state.ended ? (
+            state.takeaway && joinUrl ? (
+              // F3 — let the room keep their recap on the way out.
+              <div className="flex flex-1 flex-col items-center justify-center gap-6 p-12 text-center">
+                <p className="font-display text-4xl text-white/90">
+                  Take your recap with you
+                </p>
+                <span className="rounded-2xl bg-white p-4">
+                  <QRCodeSVG
+                    value={`${joinUrl}/takeaway?k=${state.takeaway.token}`}
+                    size={220}
+                  />
+                </span>
+                <p className="max-w-md text-xl text-muted">
+                  Scan to keep the session summary — yours for 24 hours.
+                </p>
+              </div>
+            ) : (
+              <Centered>Session closed.</Centered>
+            )
+          ) : Renderer && state.view ? (
+            <ErrorBoundary
+              label={`projector:${state.moduleId ?? "?"}`}
+              resetKey={`${state.phaseId}:${state.rev}`}
+            >
+              <Renderer
+                view={state.view.data}
+                token=""
+                handle=""
+                phaseId={state.phaseId ?? ""}
+                act={async () => false}
+              />
+            </ErrorBoundary>
           ) : (
-            <Centered>Session closed.</Centered>
-          )
-        ) : Renderer && state.view ? (
-          <ErrorBoundary
-            label={`projector:${state.moduleId ?? "?"}`}
-            resetKey={`${state.phaseId}:${state.rev}`}
-          >
-            <Renderer
-              view={state.view.data}
-              token=""
-              handle=""
-              phaseId={state.phaseId ?? ""}
-              act={async () => false}
+            <LobbyScreen
+              variant="wide"
+              branding={state.branding}
+              title={state.topic}
+              joinUrl={joinUrl}
+              present={state.participantCount}
+              timerEndsAt={state.timerEndsAt}
             />
-          </ErrorBoundary>
-        ) : (
-          <LobbyScreen
-            variant="wide"
-            branding={state.branding}
-            title={state.topic}
-            joinUrl={joinUrl}
-            present={state.participantCount}
-            timerEndsAt={state.timerEndsAt}
-          />
-        )}
+          )}
+        </PhaseTransition>
       </div>
+      {/* E2 — the bottom presenter ribbon: now/next + position + clock. Hidden on
+          the closed screen (nothing to navigate). */}
+      {!state.ended && (
+        <PresenterRibbon
+          sequence={state.sequence ?? []}
+          phaseId={state.phaseId}
+          fallbackLabel={state.config?.label ?? state.modeName ?? state.topic}
+          timerEndsAt={state.timerEndsAt}
+          timerRemainingMs={state.timerRemainingMs}
+        />
+      )}
     </main>
   );
 }

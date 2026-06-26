@@ -27,6 +27,7 @@ import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MODES, STARTER_LIBRARY } from "@/lib/modes";
 import { TEMPLATES } from "@/lib/templates";
+import { phaseNav } from "@/lib/sequence";
 import type {
   ContentType,
   FacilitatorState,
@@ -799,10 +800,10 @@ function PhaseStepper({
   cmd: Cmd;
   onMoved?: (label: string) => void;
 }) {
-  const phases = state.sequence ?? [];
-  const idx = phases.findIndex((p) => p.id === state.phaseId);
-  const prev = idx > 0 ? phases[idx - 1] : null;
-  const next = idx >= 0 && idx < phases.length - 1 ? phases[idx + 1] : null;
+  // E2 — share the one nav-maths helper with the presenter ribbon (identical
+  // prev/next/done logic, proven by test/sequence.test.ts).
+  const nav = phaseNav(state.sequence, state.phaseId);
+  const { phases, index: idx, prev, next } = nav;
   // C3 — every nav move offers a 12s undo. Back no longer dumps queued content
   // (the server releases only on a forward move).
   const go = (p: { id: string; label: string }) => {

@@ -47,12 +47,23 @@ const config: Config = {
           "0%": { backgroundPosition: "-200% 0" },
           "100%": { backgroundPosition: "200% 0" },
         },
+        // E2 — projector cross-dissolve between phases (paired in/out).
+        crossFadeIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        crossFadeOut: {
+          "0%": { opacity: "1" },
+          "100%": { opacity: "0" },
+        },
       },
       animation: {
         pulseSoft: "pulseSoft 2.4s ease-in-out infinite",
         fadeInUp: "fadeInUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both",
         riseIn: "riseIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both",
         shimmer: "shimmer 1.6s ease-in-out infinite",
+        crossFadeIn: "crossFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
+        crossFadeOut: "crossFadeOut 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
       },
     },
   },
