@@ -23,8 +23,8 @@ describe("roleHasCapability", () => {
     expect(CAPABILITIES.participant.size).toBe(0);
   });
 
-  it("facilitator has all caps except configure", () => {
-    expect(roleHasCapability("facilitator", "configure")).toBe(false);
+  it("facilitator has every cap incl. configure (A2: the magic-link runs the whole room)", () => {
+    expect(roleHasCapability("facilitator", "configure")).toBe(true);
     expect(roleHasCapability("facilitator", "advance")).toBe(true);
     expect(roleHasCapability("facilitator", "end")).toBe(true);
     expect(roleHasCapability("facilitator", "reassign")).toBe(true);
@@ -57,9 +57,9 @@ describe("requireCapability against a real room", () => {
     const facAdvance = await requireCapability(slug, passcodes.facilitator, "advance");
     expect(facAdvance).toEqual({ ok: true, role: "facilitator" });
 
-    // Facilitator cannot configure (admin-only).
+    // A2: facilitator now PASSES configure (can launch a custom build — no 403).
     const facConfigure = await requireCapability(slug, passcodes.facilitator, "configure");
-    expect(facConfigure).toEqual({ ok: false, role: "facilitator" });
+    expect(facConfigure).toEqual({ ok: true, role: "facilitator" });
 
     // Cohost is REJECTED for configure (403-style), but resolves as cohost.
     const cohostConfigure = await requireCapability(slug, passcodes.cohost, "configure");
