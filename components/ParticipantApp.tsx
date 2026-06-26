@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
+import { useChime } from "@/components/useChime";
 import { Button, Screen } from "@/components/ui";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -169,16 +170,27 @@ function StatusBar({ state }: { state: PublicState }) {
   const label = state.config?.label ?? state.modeName ?? "Lobby";
   const chime = useChime();
   const [expired, setExpired] = useState(false);
+  const paused = state.timerEndsAt == null && state.timerRemainingMs != null;
+  // Reset "time's up" whenever a fresh deadline arrives (a +time or resume),
+  // so the room doesn't stay stuck on a stale "Time's up" after the clock moves.
+  useEffect(() => {
+    if (state.timerEndsAt != null) setExpired(false);
+  }, [state.timerEndsAt]);
+  // C1 gate fix: show the clock when RUNNING or PAUSED (a pause writes
+  // timerEndsAt:null, which previously blanked the numeral from the room).
+  const hasTimer = state.timerEndsAt != null || state.timerRemainingMs != null;
   return (
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-bg/90 px-5 py-3 text-sm text-muted backdrop-blur">
       <span>{label}</span>
-      {state.timerEndsAt && (
-        <span className={`font-mono ${expired ? "text-[#ff8a8a]" : "text-accent"}`}>
-          {expired ? (
+      {hasTimer && (
+        <span className={`flex items-center gap-2 font-mono ${expired ? "text-[#ff8a8a]" : "text-accent"}`}>
+          {paused && <span className="text-[10px] uppercase tracking-wide text-muted">paused</span>}
+          {expired && !paused ? (
             "Time's up"
           ) : (
             <Countdown
               endsAt={state.timerEndsAt}
+              remainingMs={state.timerRemainingMs}
               onElapsed={() => {
                 setExpired(true);
                 chime();
@@ -190,35 +202,6 @@ function StatusBar({ state }: { state: PublicState }) {
       )}
     </div>
   );
-}
-
-// Soft two-note chime via WebAudio — no asset, no autoplay surprise.
-function useChime() {
-  const ctxRef = useRef<AudioContext | null>(null);
-  return useCallback(() => {
-    try {
-      const Ctor =
-        (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!Ctor) return;
-      if (!ctxRef.current) ctxRef.current = new Ctor();
-      const ctx = ctxRef.current!;
-      [660, 880].forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.frequency.value = freq;
-        osc.type = "sine";
-        const t = ctx.currentTime + i * 0.18;
-        gain.gain.setValueAtTime(0.0001, t);
-        gain.gain.exponentialRampToValueAtTime(0.18, t + 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start(t);
-        osc.stop(t + 0.5);
-      });
-    } catch {
-      // chime is a nicety, never a requirement
-    }
-  }, []);
 }
 
 function PhaseScreen({

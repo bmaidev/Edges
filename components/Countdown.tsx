@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 
-// Renders mm:ss remaining until `endsAt` (epoch ms). Shows "0:00" when elapsed.
-// Calls onElapsed once when it crosses zero, if provided.
+// Renders mm:ss remaining until `endsAt` (epoch ms) while RUNNING. When PAUSED
+// (endsAt null but `remainingMs` set) it freezes the numeral — never blanks — and
+// onElapsed is suppressed. Shows "—" only when truly idle (both null).
 export function Countdown({
   endsAt,
+  remainingMs = null,
   onElapsed,
   className = "",
 }: {
   endsAt: number | null;
+  remainingMs?: number | null;
   onElapsed?: () => void;
   className?: string;
 }) {
@@ -20,14 +23,23 @@ export function Countdown({
     return () => clearInterval(id);
   }, []);
 
+  // onElapsed fires only for a LIVE deadline — a paused timer sitting at 0:00
+  // must not re-trigger "time's up" / the chime.
   const firedRef = useElapsedFire(endsAt, now, onElapsed);
 
-  if (endsAt === null) {
+  // Running → count toward endsAt; paused → frozen remaining; idle → dash.
+  const ms =
+    endsAt !== null
+      ? Math.max(0, endsAt - now)
+      : remainingMs !== null
+        ? Math.max(0, remainingMs)
+        : null;
+
+  if (ms === null) {
     return <span className={className}>—</span>;
   }
 
-  const remainingMs = Math.max(0, endsAt - now);
-  const totalSec = Math.ceil(remainingMs / 1000);
+  const totalSec = Math.ceil(ms / 1000);
   const mm = Math.floor(totalSec / 60);
   const ss = totalSec % 60;
 

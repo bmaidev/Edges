@@ -11,14 +11,17 @@ import {
   createPattern,
   deleteContent,
   deletePattern,
+  addTime,
   deleteSubmission,
   dispatchAction,
   endSession,
   getFacilitatorState,
   getState,
+  pauseTimer,
   reassign,
   renamePattern,
   reorderPatterns,
+  resumeTimer,
   setMode,
   setPhase,
   setPhases,
@@ -63,6 +66,10 @@ const COMMAND_CAP: Record<string, Capability> = {
   reviseSession: "advance",
   setPhase: "advance",
   setTimer: "timer",
+  // C1 — pause/resume/+time share the timer cap (cohost can drive the clock).
+  pauseTimer: "timer",
+  resumeTimer: "timer",
+  addTime: "timer",
   addContent: "inject",
   updateContent: "inject",
   deleteContent: "inject",
@@ -206,6 +213,25 @@ export async function POST(
       return NextResponse.json({
         ok: true,
         state: await navState(room, await setTimer(a.endsAt ?? null, room), role ?? "facilitator"),
+      });
+    case "pauseTimer":
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await pauseTimer(room), role ?? "facilitator"),
+      });
+    case "resumeTimer":
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await resumeTimer(room), role ?? "facilitator"),
+      });
+    case "addTime":
+      return NextResponse.json({
+        ok: true,
+        state: await navState(
+          room,
+          await addTime(Number(a.addMs ?? 0), room),
+          role ?? "facilitator",
+        ),
       });
     case "addContent":
       return NextResponse.json({

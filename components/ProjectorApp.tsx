@@ -89,9 +89,17 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
         <span>{state.config?.label ?? state.modeName ?? state.topic}</span>
         <span className="flex items-center gap-4">
           {error && <span className="text-base text-[#ffd7d7]">Reconnecting…</span>}
-          {state.timerEndsAt && (
-            <span className="font-mono text-accent">
-              <Countdown endsAt={state.timerEndsAt} />
+          {/* C1 gate fix: a paused timer (timerEndsAt null, remaining set) must
+              freeze on the big screen, never blank. */}
+          {(state.timerEndsAt != null || state.timerRemainingMs != null) && (
+            <span className="flex items-center gap-3 font-mono text-accent">
+              {state.timerEndsAt == null && state.timerRemainingMs != null && (
+                <span className="text-sm uppercase tracking-wide text-muted">paused</span>
+              )}
+              <Countdown
+                endsAt={state.timerEndsAt}
+                remainingMs={state.timerRemainingMs}
+              />
             </span>
           )}
         </span>
