@@ -9,7 +9,17 @@ import { TEMPLATES } from "@/lib/templates";
 // H2 — single source of truth, shared with the pre-flight engine so the builder's
 // validation and the readiness check can never drift.
 import { LONG_TEXT, validatePhaseConfig } from "@/lib/preflight";
+import { AgendaArc } from "@/components/AgendaArc";
+import { acceptsTimerEdit, phaseMinutes, phaseStage } from "@/lib/arc";
 import type { ModuleKind } from "@/lib/types";
+
+// B1 — arc-stage dot colours (shared with AgendaArc's palette).
+const STAGE_DOT: Record<string, string> = {
+  open: "#6aa9ff",
+  diverge: "rgb(var(--c-accent))",
+  converge: "#5fd0a0",
+  close: "#8a8aa0",
+};
 
 interface BuilderPhase {
   id: string;
@@ -433,6 +443,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   // Setup-phase AI assist
   const [goal, setGoal] = useState("");
   const [minutes, setMinutes] = useState("");
+  // B1 — shared hover/selection across the arc and the phase cards (index-keyed,
+  // because builder phase ids aren't unique).
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [aiBusy, setAiBusy] = useState<null | "suggest" | "critique" | "revise">(null);
   const [rationale, setRationale] = useState<string | null>(null);
   const [critique, setCritique] = useState<{ strengths: string[]; issues: string[] } | null>(null);
@@ -779,18 +792,59 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         <p className="mt-2 text-sm text-muted">Add modules above to build the flow.</p>
       ) : (
         <div className="mt-2 flex flex-col gap-3">
+          <AgendaArc
+            phases={parsedPhases()}
+            minutes={minutes ? Number(minutes) : undefined}
+            selectedIndex={selectedIndex}
+            onSelect={setSelectedIndex}
+          />
           {phases.map((p, i) => {
             const mod = SERVER_MODULES[p.moduleId];
             const valid = validateConfig(p.moduleId, p.config);
             const earlierPhases = phases.slice(0, i).map((q) => ({ id: q.id, moduleId: q.moduleId }));
+            const stage = phaseStage(p.moduleId);
+            const mins = phaseMinutes({ moduleId: p.moduleId, config: p.config });
+            const timed = acceptsTimerEdit(p.moduleId);
             return (
-              <div key={i} className="rounded-xl border border-border bg-surface p-3">
+              <div
+                key={i}
+                onMouseEnter={() => setSelectedIndex(i)}
+                onMouseLeave={() => setSelectedIndex(null)}
+                className={`rounded-xl border bg-surface p-3 transition-colors ${
+                  selectedIndex === i ? "border-accent" : "border-border"
+                }`}
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: STAGE_DOT[stage] }}
+                      title={stage}
+                    />
                     {i + 1}. {mod.meta.name}{" "}
                     <span className="text-xs text-muted">({p.id})</span>
                   </span>
                   <div className="flex items-center gap-2 text-xs">
+                    {timed ? (
+                      <span className="inline-flex items-center gap-1 text-muted">
+                        <input
+                          type="number"
+                          min={1}
+                          value={mins.minutes}
+                          onChange={(e) => {
+                            const v = Math.max(1, Number(e.target.value) || 1);
+                            setConfig(i, { ...p.config, timerSeconds: v * 60 });
+                          }}
+                          className="w-12 rounded border border-border bg-bg px-1 py-0.5 text-right text-xs focus:border-accent focus:outline-none"
+                          aria-label="Planned minutes"
+                        />
+                        min
+                      </span>
+                    ) : (
+                      <span className="text-muted" title="estimated">
+                        ~{mins.minutes}m
+                      </span>
+                    )}
                     <button className="text-muted disabled:opacity-20" disabled={i === 0} onClick={() => move(i, -1)}>▲</button>
                     <button className="text-muted disabled:opacity-20" disabled={i === phases.length - 1} onClick={() => move(i, 1)}>▼</button>
                     <button className="text-[#ff8a8a] underline" onClick={() => remove(i)}>remove</button>
