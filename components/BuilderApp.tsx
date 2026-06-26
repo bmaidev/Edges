@@ -11,6 +11,7 @@ import { TEMPLATES } from "@/lib/templates";
 import { LONG_TEXT, validatePhaseConfig } from "@/lib/preflight";
 import { AgendaArc } from "@/components/AgendaArc";
 import { RunSheetSection } from "@/components/RunSheetSection";
+import { RoomMockup } from "@/components/RoomMockup";
 import { acceptsTimerEdit, phaseMinutes, phaseStage } from "@/lib/arc";
 import type { ModuleKind } from "@/lib/types";
 
@@ -27,6 +28,7 @@ interface BuilderPhase {
   moduleId: ModuleKind;
   config: Record<string, unknown>; // edited via form fields; schema-validated
   advanced?: boolean; // show the raw-JSON editor for this phase
+  previewOpen?: boolean; // B2 — show the live room mockup for this phase
 }
 
 // Palette grouped into scannable categories (the registry is flat; this is just
@@ -598,6 +600,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   function toggleAdvanced(i: number) {
     setPhases(phases.map((p, idx) => (idx === i ? { ...p, advanced: !p.advanced } : p)));
   }
+  function togglePreview(i: number) {
+    setPhases(phases.map((p, idx) => (idx === i ? { ...p, previewOpen: !p.previewOpen } : p)));
+  }
 
   async function launch() {
     setMsg(null);
@@ -869,15 +874,35 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                 {/* B3 — author the facilitator-private run-sheet for this phase. */}
                 <RunSheetSection config={p.config} onChange={(c) => setConfig(i, c)} />
 
-                <div className="mt-2 flex items-center justify-between">
-                  <button
-                    onClick={() => toggleAdvanced(i)}
-                    className="text-xs text-muted underline decoration-dotted hover:text-white/80"
-                  >
-                    {p.advanced ? "▾ Hide JSON — back to form" : "▸ Advanced (JSON)"}
-                  </button>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => toggleAdvanced(i)}
+                      className="text-xs text-muted underline decoration-dotted hover:text-white/80"
+                    >
+                      {p.advanced ? "▾ Hide JSON — back to form" : "▸ Advanced (JSON)"}
+                    </button>
+                    {/* B2 — audition this phase on the participant phone + projector. */}
+                    <button
+                      onClick={() => togglePreview(i)}
+                      className="text-xs text-accent underline decoration-dotted hover:text-white/80"
+                    >
+                      {p.previewOpen ? "▾ Hide preview" : "👁 Preview the room"}
+                    </button>
+                  </div>
                   {!valid.ok && <span className="text-xs text-[#ff8a8a]">{valid.msg}</span>}
                 </div>
+
+                {p.previewOpen &&
+                  (valid.ok ? (
+                    <div className="mt-3 border-t border-border pt-3">
+                      <RoomMockup moduleId={p.moduleId} config={p.config} />
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-[#ff8a8a]">
+                      Fix the highlighted field to preview.
+                    </p>
+                  ))}
               </div>
             );
           })}
