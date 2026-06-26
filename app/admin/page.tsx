@@ -2,8 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui";
+import { RoomAccessCard } from "@/components/RoomAccessCard";
 
 interface RoomRow {
   slug: string;
@@ -105,11 +105,10 @@ function CreateRoom({
   const [created, setCreated] = useState<{
     slug: string;
     name: string;
-    passcodes: { admin: string; facilitator: string; cohost: string };
+    passcodes: { admin: string; facilitator: string; cohost: string; projector: string };
   } | null>(null);
 
   const [err, setErr] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   async function create() {
     if (!name.trim()) return;
@@ -124,7 +123,6 @@ function CreateRoom({
       const data = await res.json();
       if (res.ok) {
         setCreated(data);
-        setCopied(false);
         setName("");
         setTopic("");
         onCreated();
@@ -136,26 +134,6 @@ function CreateRoom({
     } finally {
       setBusy(false);
     }
-  }
-
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-
-  function copyAll() {
-    if (!created) return;
-    const text = [
-      `${created.name} — passcodes`,
-      `admin: ${created.passcodes.admin}`,
-      `facilitator: ${created.passcodes.facilitator}`,
-      `co-host: ${created.passcodes.cohost}`,
-      ``,
-      `Join: ${origin}/r/${created.slug}`,
-      `Host: ${origin}/r/${created.slug}/host`,
-      `Screen: ${origin}/r/${created.slug}/screen`,
-    ].join("\n");
-    navigator.clipboard?.writeText(text).then(
-      () => setCopied(true),
-      () => setCopied(false),
-    );
   }
 
   return (
@@ -181,50 +159,18 @@ function CreateRoom({
       {err && <p className="text-sm text-[#ff8a8a]">{err}</p>}
 
       {created && (
-        <div className="mt-2 rounded-lg border-2 border-accent bg-accent/10 p-3 text-sm">
-          <p className="font-semibold text-accent">
-            Save these now — passcodes are shown once and cannot be recovered.
-          </p>
-          <ul className="mt-2 space-y-1 font-mono text-xs">
-            <li>admin: {created.passcodes.admin}</li>
-            <li>facilitator: {created.passcodes.facilitator}</li>
-            <li>co-host: {created.passcodes.cohost}</li>
-          </ul>
-          <div className="mt-3 space-y-1 break-all text-xs text-muted">
-            <p>Join: {origin}/r/{created.slug}</p>
-            <p>Host: {origin}/r/{created.slug}/host</p>
-            <p>Screen: {origin}/r/{created.slug}/screen</p>
-            <p>Door QR: {origin}/r/{created.slug}/qr</p>
-          </div>
-          {origin && (
-            <div className="mt-3 flex items-center gap-3">
-              <span className="rounded-lg bg-white p-2">
-                <QRCodeSVG value={`${origin}/r/${created.slug}`} size={96} />
-              </span>
-              <span className="text-xs text-muted">
-                Scan to join (no passcode). Open the{" "}
-                <a
-                  className="text-accent underline"
-                  href={`/r/${created.slug}/qr`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  full-screen QR
-                </a>{" "}
-                for the door, and brand it via <em>theme</em>.
-              </span>
-            </div>
-          )}
-          <div className="mt-3 flex items-center gap-3">
-            <Button onClick={copyAll}>{copied ? "Copied" : "Copy all"}</Button>
-            <button
-              className="text-xs text-muted underline disabled:opacity-40"
-              disabled={!copied}
-              onClick={() => setCreated(null)}
-            >
-              I&apos;ve saved them — dismiss
-            </button>
-          </div>
+        <div className="mt-2 flex flex-col gap-2">
+          <RoomAccessCard
+            slug={created.slug}
+            name={created.name}
+            codes={created.passcodes}
+          />
+          <button
+            className="self-start text-xs text-muted underline"
+            onClick={() => setCreated(null)}
+          >
+            Done — close
+          </button>
         </div>
       )}
     </section>
@@ -248,7 +194,7 @@ const PALETTE_LABELS: Record<string, string> = {
 };
 
 function RoomCard({ room, code }: { room: RoomRow; code: string }) {
-  const [panel, setPanel] = useState<"theme" | "report" | null>(null);
+  const [panel, setPanel] = useState<"theme" | "report" | "access" | null>(null);
   const [palette, setPalette] = useState<Record<string, string>>(PALETTE_DEFAULTS);
   const [logoUrl, setLogoUrl] = useState("");
   const [headline, setHeadline] = useState("");
@@ -256,6 +202,23 @@ function RoomCard({ room, code }: { room: RoomRow; code: string }) {
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [report, setReport] = useState<any>(null);
+  // Existing rooms keep only passcode HASHES, so we can't show their links — a
+  // facilitator regenerates a role to mint a fresh shareable link. The returned
+  // plaintext is spliced straight in (authoritative-apply, no read-back).
+  const [accessCodes, setAccessCodes] = useState<{
+    facilitator?: string;
+    cohost?: string;
+    projector?: string;
+  }>({});
+  async function regenRole(role: "facilitator" | "cohost" | "projector") {
+    const res = await fetch(`/api/admin/rooms/${room.slug}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, action: "regenerate", role }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.code) setAccessCodes((c) => ({ ...c, [role]: d.code }));
+  }
 
   async function uploadLogo(file: File) {
     setUploading(true);
@@ -331,10 +294,22 @@ function RoomCard({ room, code }: { room: RoomRow; code: string }) {
           <a href={`/r/${room.slug}/build`} target="_blank" rel="noreferrer">build</a>
           <a href={`/r/${room.slug}/screen`} target="_blank" rel="noreferrer">screen</a>
           <a href={`/r/${room.slug}/qr`} target="_blank" rel="noreferrer">qr</a>
+          <button onClick={() => setPanel(panel === "access" ? null : "access")}>access</button>
           <button onClick={openTheme}>theme</button>
           <button onClick={openReport}>report</button>
         </div>
       </div>
+
+      {panel === "access" && (
+        <div className="mt-3 border-t border-border pt-3">
+          <RoomAccessCard
+            slug={room.slug}
+            name={room.name}
+            codes={accessCodes}
+            onRegenerate={regenRole}
+          />
+        </div>
+      )}
 
       {panel === "theme" && (
         <div className="mt-3 border-t border-border pt-3">

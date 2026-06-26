@@ -6,20 +6,31 @@ import { Countdown } from "@/components/Countdown";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LobbyScreen } from "@/components/LobbyScreen";
+import { bootToken } from "@/lib/magicLink";
 import type { PublicState } from "@/lib/types";
 
 // Read-only big-screen view for the room. Renders the active module's projector
 // renderer (falls back to a calm title card + a join QR when a module has none).
 export function ProjectorApp({ apiBase }: { apiBase: string }) {
+  const slug = apiBase.replace("/api/r/", "");
+  // A2: a Big-screen link carries an optional projector token. The projector
+  // view is read-only either way (a bare /screen still works), so this is just
+  // an anti-casual-takeover affordance — never depended on for confidentiality.
+  const [tok, setTok] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    const t = bootToken(slug);
+    if (t) setTok(t);
+  }, [slug]);
+
   const { state, error } = usePolledState<PublicState>({
     endpoint: `${apiBase}/state`,
     role: "projector",
+    code: tok,
     streamEndpoint: `${apiBase}/stream`,
   });
 
   // The participant join link for this room — workshop members scan to walk in
   // (no passcode; handle is optional). apiBase is "/api/r/<slug>".
-  const slug = apiBase.replace("/api/r/", "");
   const [joinUrl, setJoinUrl] = useState("");
   useEffect(() => {
     setJoinUrl(`${window.location.origin}/r/${slug}`);

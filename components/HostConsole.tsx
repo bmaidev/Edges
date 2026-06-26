@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
+import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
 import { Button, InlineEdit, Modal } from "@/components/ui";
@@ -59,11 +60,23 @@ export function HostConsole({
   const [cmdError, setCmdError] = useState<string | null>(null);
   type Tab = "run" | "preview" | "content" | "patterns" | "session";
   const [tab, setTab] = useState<Tab>("run");
+  const slug = apiBase.replace("/api/r/", "");
+  // A2: a Facilitator/Co-host magic link opens already authed — read the `#k=`
+  // token (or the tab's remembered one), scrub it from the URL, set the code. No
+  // password box. Falls through to the manual passcode screen when absent.
+  useEffect(() => {
+    const t = bootToken(slug);
+    if (t) setCode(t);
+  }, [slug]);
   const { state, refresh, apply } = usePolledState<FacilitatorState & { role?: Role }>({
     code: code || undefined,
     endpoint: `${apiBase}/state`,
     streamEndpoint: `${apiBase}/stream`,
   });
+  // Forget the remembered token once the session is ended/wiped.
+  useEffect(() => {
+    if (state?.ended) clearToken(slug);
+  }, [state?.ended, slug]);
 
   // Authenticate by the resolved role, not by racing on response shape. While a
   // freshly-entered code's first poll is in flight, state is null → "checking"
@@ -132,7 +145,10 @@ export function HostConsole({
           {checking ? "Checking…" : "Enter"}
         </Button>
         {wrongCode && (
-          <p className="text-sm text-[#ff8a8a]">Wrong passcode — try again.</p>
+          <p className="text-sm text-[#ff8a8a]">
+            That code or link didn&apos;t work — it may have been reset. Ask the
+            organiser for a fresh link.
+          </p>
         )}
       </main>
     );

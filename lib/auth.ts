@@ -42,7 +42,11 @@ const COHOST: Capability[] = [
 
 export const CAPABILITIES: Record<Role, Set<Capability>> = {
   admin: new Set(ALL),
-  facilitator: new Set(ALL.filter((c) => c !== "configure")),
+  // A2: the Facilitator (magic-link) role runs the WHOLE room — it now holds
+  // `configure`, so launching a custom build (setPhases) no longer 403s. This
+  // makes facilitator capability-equal to admin; the per-room admin tier is kept
+  // but vestigial (no Owner portal in this slice).
+  facilitator: new Set(ALL),
   cohost: new Set(COHOST),
   projector: new Set<Capability>(),
   participant: new Set<Capability>(),
