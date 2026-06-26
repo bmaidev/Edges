@@ -336,7 +336,7 @@ export async function regenerateRoleCode(
 
 // ---- Archive / reporting --------------------------------------------------
 
-import { getFacilitatorState, publishAndEnd, withLock } from "./store";
+import { endSession, getFacilitatorState, publishAndEnd, withLock } from "./store";
 import { aiAvailable, asData, capItems, generateJSON, topicLine } from "./ai";
 import type { TakeawaySnapshot } from "./types";
 
@@ -537,6 +537,26 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
 
 export async function getArchive(slug: string): Promise<RoomArchive | null> {
   return db.get<RoomArchive>(archiveKey(slug));
+}
+
+// A1 — permanently delete a room: its durable record + index entry + archive,
+// and wipe any live session data immediately (rather than waiting out the TTL).
+export async function deleteRoom(slug: string): Promise<boolean> {
+  const ok = await withRoomLock(slug, async () => {
+    const room = await getRoom(slug);
+    if (!room) return false;
+    await db.del(roomKey(slug));
+    await db.del(archiveKey(slug));
+    const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
+    if (index.includes(slug))
+      await db.set(
+        ROOM_INDEX_KEY,
+        index.filter((s) => s !== slug),
+      );
+    return true;
+  });
+  if (ok) await endSession(slug); // wipe live participants/submissions/etc. now
+  return ok;
 }
 
 // F3 — publish the participant take-away and end the session. NO AI in this path

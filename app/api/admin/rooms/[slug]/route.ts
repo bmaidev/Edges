@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   checkSuperAdmin,
+  deleteRoom,
   getArchive,
   getRoom,
   regenerateRoleCode,
@@ -83,5 +84,17 @@ export async function PATCH(
   if (body.status) patch.status = body.status;
   const room = await updateRoom(params.slug, patch);
   if (!room) return NextResponse.json({ error: "No such room" }, { status: 404 });
+  return NextResponse.json({ ok: true });
+}
+
+// DELETE /api/admin/rooms/[slug]?code=ADMIN -> permanently delete the room.
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { slug: string } },
+) {
+  if (!checkSuperAdmin(req.nextUrl.searchParams.get("code")))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const ok = await deleteRoom(params.slug);
+  if (!ok) return NextResponse.json({ error: "No such room" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
