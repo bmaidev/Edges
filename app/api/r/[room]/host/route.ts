@@ -14,6 +14,8 @@ import {
   addTime,
   clearPhaseData,
   clearUndo,
+  mutateActionItems,
+  type ActionItemOp,
   deleteSubmission,
   dispatchAction,
   endSession,
@@ -98,6 +100,9 @@ const COMMAND_CAP: Record<string, Capability> = {
   // Facilitator-driven module actions (AI generate/promote, spectrogram stage,
   // consult round, lightning next, open-space placement, …).
   moduleAction: "advance",
+  // F2 — capture/manage action items (same tier as moduleAction; cohost can
+  // capture, participant cannot; never the admin-only `configure`).
+  actionItem: "advance",
   // F1 — build a client-ready report mid-session (no wipe). Facilitator + admin,
   // not cohost; never the admin-only `configure` cap.
   buildReport: "end",
@@ -419,6 +424,16 @@ export async function POST(
         { ok: result.ok, reason: result.reason },
         { status: result.status },
       );
+    }
+    case "actionItem": {
+      const op = a.op as ActionItemOp | undefined;
+      if (!op || typeof op.kind !== "string")
+        return NextResponse.json({ ok: false, reason: "bad op" });
+      const written = await mutateActionItems(op, room);
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, written, role ?? "facilitator"),
+      });
     }
     case "buildReport": {
       // F1 — build the client-ready report from the LIVE session, no wipe.

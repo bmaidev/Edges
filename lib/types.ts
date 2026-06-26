@@ -126,10 +126,27 @@ export interface Mode {
 
 // ---- Persisted records ----------------------------------------------------
 
+// F2 — a live-captured commitment: a decision/action with an optional owner and
+// due date. Owners are free-text handles/names, never accounts. Verbatim, not AI.
+export type ActionItemStatus = "open" | "done";
+export interface ActionItem {
+  id: string;
+  text: string;
+  ownerName?: string;
+  due?: string; // yyyy-mm-dd
+  status: ActionItemStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface SessionState {
   mode: ModeId | null;
   phaseId: string | null;
   timerEndsAt: number | null;
+  // F2 — the action-item register. Lives ON the state key (not a side hash) so
+  // its sole writer is writeState and every mutation bumps rev — the rev-correct
+  // path that stops an in-flight poll clobbering a just-added item.
+  actionItems?: ActionItem[];
   // C1 — timer pause. Exactly one of these is non-null at a time:
   //   timerEndsAt set, timerRemainingMs null → RUNNING (counts toward endsAt)
   //   timerEndsAt null, timerRemainingMs set → PAUSED (frozen ms remaining)
@@ -259,6 +276,8 @@ export interface PublicState {
   } | null;
   patterns: Pattern[];
   clusterAssistAvailable: boolean;
+  // F2 — the action-item register, role-scoped (facilitator-tier only for now).
+  actionItems?: ActionItem[] | null;
   // C2 — glanceable "N of M responded" for the current gather phase, role-scoped
   // and derived (never stored). null on non-gather phases / for roles that
   // shouldn't see it (participants; projector unless opted in above the floor).

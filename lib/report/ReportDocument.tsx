@@ -60,6 +60,26 @@ export function ReportDocument({
       <ListSection title="Open tensions" accent={accent} items={r?.tensions} />
       <ListSection title="Next steps" accent={accent} items={r?.nextSteps} />
 
+      {archive.actionItems && archive.actionItems.length > 0 && (
+        <Section title="Action items" accent={accent} show>
+          <ul className="space-y-1">
+            {archive.actionItems.map((a, i) => (
+              <li key={i} className="leading-relaxed">
+                <span className={a.status === "done" ? "text-[#888] line-through" : ""}>
+                  {a.text}
+                </span>
+                {(a.ownerName || a.due) && (
+                  <span className="text-[#666]">
+                    {" — "}
+                    {[a.ownerName, a.due ? `due ${a.due}` : null].filter(Boolean).join(", ")}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
       {archive.patterns.length > 0 && (
         <Section title="Patterns the facilitator grouped" accent={accent} show>
           <p className="text-[#444]">{archive.patterns.map((p) => p.name).join(" · ")}</p>

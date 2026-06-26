@@ -16,6 +16,7 @@ import { ConnectionChip } from "@/components/ConnectionStrip";
 import { useConnection } from "@/components/useConnection";
 import { PreflightPill, PreflightSheet } from "@/components/PreflightPanel";
 import { HandoverPanel } from "@/components/HandoverPanel";
+import { ActionItemsPanel } from "@/components/ActionItemsPanel";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -390,6 +391,8 @@ export function HostConsole({
               {isAllocate && <AllocationsPanel state={s} cmd={cmd} />}
               {isReadaround && <ReadAroundControls state={s} cmd={cmd} />}
               {isSubmissions && <SubmissionsPanel state={s} cmd={cmd} />}
+              {/* F2 — always-on action-item capture, on every phase. */}
+              <ActionItemsPanel state={s} cmd={cmd} />
               {!runHasContent && (
                 <div className="rounded-xl border border-border bg-surface p-4 text-sm text-muted">
                   Nothing to drive in this phase — it’s display-only for the room.

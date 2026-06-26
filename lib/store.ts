@@ -204,6 +204,7 @@ const DEFAULT_STATE: SessionState = {
   readaroundIndex: 0,
   topic: SESSION_TOPIC,
   ended: false,
+  actionItems: [],
   rev: 0, // a real write always has rev > 0, so the fallback never wins a race
 };
 
@@ -417,6 +418,66 @@ export async function replaceState(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   return writeState(next, roomId);
+}
+
+// F2 — mutate the action-item register. The ONLY writer is writeState (via this
+// fn), so every add/edit/status/remove stamps a fresh rev and the client applies
+// it authoritatively — an in-flight 2s poll can never clobber a just-added item
+// (the Upstash flash bug, designed out). Serialised so two drivers don't race the
+// read-modify-write.
+export type ActionItemOp =
+  | { kind: "add"; text: string; ownerName?: string; due?: string }
+  | { kind: "update"; id: string; text?: string; ownerName?: string; due?: string }
+  | { kind: "setStatus"; id: string; status: import("./types").ActionItemStatus }
+  | { kind: "remove"; id: string };
+
+export async function mutateActionItems(
+  op: ActionItemOp,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const apply = async () => {
+      const state = await getState(roomId);
+      const items = [...(state.actionItems ?? [])];
+      const now = Date.now();
+      if (op.kind === "add") {
+        const text = op.text.trim().slice(0, 500);
+        if (text)
+          items.push({
+            id: newId(),
+            text,
+            ownerName: op.ownerName?.trim() || undefined,
+            due: op.due || undefined,
+            status: "open",
+            createdAt: now,
+            updatedAt: now,
+          });
+      } else {
+        const i = items.findIndex((a) => a.id === op.id);
+        if (i >= 0) {
+          if (op.kind === "remove") items.splice(i, 1);
+          else if (op.kind === "setStatus")
+            items[i] = { ...items[i], status: op.status, updatedAt: now };
+          else
+            items[i] = {
+              ...items[i],
+              text: op.text?.trim() ? op.text.trim().slice(0, 500) : items[i].text,
+              ownerName:
+                op.ownerName !== undefined ? op.ownerName.trim() || undefined : items[i].ownerName,
+              due: op.due !== undefined ? op.due || undefined : items[i].due,
+              updatedAt: now,
+            };
+        }
+      }
+      return writeState({ ...state, actionItems: items }, roomId);
+  };
+  // Retry on contention (don't drop a captured item) — same philosophy as the
+  // timer lock; each op is one get+write, so contention clears in ms.
+  for (let i = 0; i < 10; i++) {
+    const res = await withLock(roomId, "actionItems", apply, { ttlSeconds: 5 });
+    if (res.ok) return res.value;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  return apply();
 }
 
 // C3 — ordered phase ids of the active sequence, so the host route can tell a
@@ -1101,6 +1162,12 @@ export async function getPublicState(
     patterns,
     clusterAssistAvailable: clusterAssistAvailable(),
     participation,
+    // F2 — the register is facilitator-tier only for now (participants/projector
+    // get null; a participant "your items" surface is a scoped follow).
+    actionItems:
+      role === "participant" || role === "projector"
+        ? null
+        : state.actionItems ?? [],
   };
 }
 
@@ -1132,6 +1199,8 @@ export async function roomSignature(
     contentVersion(visible),
     Object.keys(votes).length,
     words.length,
+    // F2 — tick the stream when the action-item register changes.
+    (state.actionItems ?? []).map((a) => `${a.id}:${a.status}`).join(","),
   ].join("|");
 }
 
