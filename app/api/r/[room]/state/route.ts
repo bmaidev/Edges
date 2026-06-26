@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getFacilitatorState,
   getPublicState,
+  heartbeatHost,
   touchParticipant,
 } from "@/lib/store";
 import { getRoom, resolveRole } from "@/lib/rooms";
@@ -42,6 +43,17 @@ export async function GET(
     const role = await resolveRole(room, code);
     // Any valid passcode tier (admin/facilitator/cohost) gets the raw view.
     if (role && role !== "participant" && role !== "projector") {
+      // C5 — record this host console's presence. Fire-and-forget + throttled,
+      // so it never adds latency. The role is the SERVER-resolved tier — the
+      // client's `pid`/`pname` only identify + label the console, never its power.
+      const pid = req.nextUrl.searchParams.get("pid");
+      if (pid)
+        void heartbeatHost(
+          pid,
+          req.nextUrl.searchParams.get("pname") ?? "",
+          role,
+          room,
+        ).catch(() => {});
       const state = await getFacilitatorState(room);
       return NextResponse.json({ ...state, topic: topic ?? state.topic, role, branding }, { headers });
     }

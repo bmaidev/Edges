@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
+import { usePresence } from "@/components/usePresence";
+import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip";
 import { TourCoach } from "@/components/TourCoach";
 import { FacilitateCockpit } from "@/components/FacilitateCockpit";
 import { ConfirmSheet } from "@/components/recovery/ConfirmSheet";
@@ -109,12 +111,15 @@ export function HostConsole({
       window.history.replaceState({}, "", url.toString());
     }
   }, []);
+  // C5 — this console's co-facilitation identity (per-tab id + per-device name).
+  const me = usePresence();
   const { state, error, lastAppliedAt, refresh, apply } = usePolledState<
     FacilitatorState & { role?: Role }
   >({
     code: code || undefined,
     endpoint: `${apiBase}/state`,
     streamEndpoint: `${apiBase}/stream`,
+    presence: me.presenceId ? { id: me.presenceId, name: me.name } : undefined,
   });
   const conn = useConnection({ error, lastAppliedAt });
   // Forget the remembered token once the session is ended/wiped.
@@ -277,6 +282,15 @@ export function HostConsole({
       )}
       <div className="sticky top-0 z-10 border-b border-border bg-bg/95 backdrop-blur">
         <SessionHeader state={s} cmd={cmd} role={role} />
+        {/* C5 — who else is driving right now (self-hides when you're solo). */}
+        <div className="px-4">
+          <FacilitatorPresenceStrip
+            presence={s.presence ?? []}
+            myId={me.presenceId}
+            myName={me.name}
+            onRename={me.setName}
+          />
+        </div>
         <PhaseStepper
           state={s}
           cmd={cmd}

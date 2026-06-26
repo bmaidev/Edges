@@ -18,6 +18,7 @@ import {
   stripRunsheet,
 } from "./modules/runsheet";
 import { resolveAttribution } from "./modules/attribution";
+import { HEARTBEAT_THROTTLE_MS, liveRoster } from "./presence";
 import {
   PROJECTOR_FLOOR,
   computeParticipationSignal,
@@ -34,6 +35,7 @@ import type {
   ContentType,
   CoordinatorInfo,
   FacilitatorState,
+  HostPresence,
   ModeId,
   ModuleKind,
   ModuleView,
@@ -624,6 +626,38 @@ export async function readHeartbeats(
   return backend.hgetall<number>(roomKeys(roomId).seen);
 }
 
+// C5 — host-presence heartbeat. A host console writes its presence on the
+// privileged /state poll; role is the SERVER-resolved tier (never client-sent).
+// Throttled like touchParticipant so 2s polls don't hammer KV. The whole record
+// is one hset (field = presenceId), so co-hosts never race each other.
+export async function heartbeatHost(
+  presenceId: string,
+  name: string,
+  role: Role,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<void> {
+  if (!presenceId) return;
+  const ok = await backend.setNX(
+    `${roomKeys(roomId).hostPresence}:touch:${presenceId}`,
+    1,
+    Math.round(HEARTBEAT_THROTTLE_MS / 1000),
+  );
+  if (!ok) return;
+  await backend.hset<HostPresence>(roomKeys(roomId).hostPresence, presenceId, {
+    presenceId,
+    name: typeof name === "string" ? name.slice(0, 40) : "",
+    role,
+    lastSeen: Date.now(),
+  });
+}
+
+export async function readHostPresence(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<HostPresence[]> {
+  const raw = await backend.hgetall<unknown>(roomKeys(roomId).hostPresence);
+  return liveRoster(raw, Date.now());
+}
+
 // H1 — idempotency for the offline submit queue. A client tags each send with a
 // stable `dedupeId`; `claimAction` setNX's it (true only the FIRST time). So a
 // send that actually reached the server but whose response was lost — then gets
@@ -1004,6 +1038,7 @@ export async function endSession(
     KEYS.words,
     KEYS.seen,
     KEYS.undo,
+    KEYS.hostPresence, // C5 — the "burn now" wipe clears co-facilitator presence too
   );
   await writeState({ ...DEFAULT_STATE, ended: true }, roomId);
 }
@@ -1045,6 +1080,7 @@ export async function publishAndEnd(
     KEYS.words,
     KEYS.seen,
     KEYS.undo,
+    KEYS.hostPresence, // C5
   );
   await writeState(
     {
@@ -1439,13 +1475,14 @@ export async function getFacilitatorState(
 ): Promise<FacilitatorState> {
   // Read state once and thread it through (avoids a second getState below).
   const state = stateOverride ?? (await getState(roomId));
-  const [pub, submissions, participants, allContent, heartbeats] =
+  const [pub, submissions, participants, allContent, heartbeats, presence] =
     await Promise.all([
       getPublicState(null, roomId, "facilitator", state),
       listSubmissions(roomId),
       listParticipants(roomId),
       listContent(roomId),
       readHeartbeats(roomId),
+      readHostPresence(roomId),
     ]);
   // H1 — room-wide health (every phase), from C2's existing liveness hash.
   const roomHealth = computeRoomHealth(participants, heartbeats);
@@ -1488,5 +1525,7 @@ export async function getFacilitatorState(
     nextPeek,
     // C4 — the raw ref (host-only) so the cockpit can ring the active card.
     spotlightRef: state.spotlight ?? null,
+    // C5 — the live co-facilitators (host-only; derived, never stored).
+    presence,
   };
 }

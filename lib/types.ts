@@ -412,4 +412,18 @@ export interface FacilitatorState extends PublicState {
   // C4 — the raw spotlight ref (host-only), so the cockpit can ring the active
   // submission card + render the clear chip. Never on the participant/projector.
   spotlightRef?: SpotlightRef | null;
+  // C5 — the live co-facilitators currently driving this room (you + co-hosts).
+  // Host-only; NEVER on the participant/projector surface. Derived from a
+  // heartbeat hash, never stored on the session state.
+  presence?: HostPresence[] | null;
+}
+
+// C5 — one present host console. `name` is self-asserted (a localStorage label,
+// never an account); `role` is the SERVER-resolved passcode tier (never trusted
+// from the client). lastSeen ages the entry out of the live roster.
+export interface HostPresence {
+  presenceId: string;
+  name: string; // "" when the operator hasn't named themselves
+  role: Role;
+  lastSeen: number;
 }

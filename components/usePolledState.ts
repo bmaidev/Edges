@@ -23,6 +23,10 @@ export function usePolledState<
     endpoint?: string;
     role?: string;
     streamEndpoint?: string; // optional SSE accelerator (see /api/r/[room]/stream)
+    // C5 — when a host console polls, it piggybacks its presence (a stable id +
+    // an optional self-asserted name) so the server can heartbeat it. Role is
+    // never sent — the server derives it from the code.
+    presence?: { id: string; name?: string };
   } = {},
   intervalMs = 2000,
 ) {
@@ -61,13 +65,18 @@ export function usePolledState<
     async function poll() {
       const mySeq = ++seqRef.current;
       try {
-        const { code, token, endpoint, role } = optsRef.current;
+        const { code, token, endpoint, role, presence } = optsRef.current;
         if (!endpoint) return; // every caller passes a room-scoped endpoint
         const base = endpoint;
         const qs = new URLSearchParams();
         if (code) qs.set("code", code);
         else if (token) qs.set("token", token);
         if (role) qs.set("role", role);
+        // C5 — host presence rides the privileged poll (only when authed by code).
+        if (code && presence?.id) {
+          qs.set("pid", presence.id);
+          if (presence.name) qs.set("pname", presence.name);
+        }
         const url = qs.toString() ? `${base}?${qs}` : base;
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error("bad status");
