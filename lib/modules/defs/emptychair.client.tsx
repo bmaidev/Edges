@@ -46,7 +46,7 @@ function PersonaCard({
 
 // ---- participant — ask the empty chair + read the answers so far ----------
 
-const EmptychairParticipant: Renderer = ({ view, act }) => {
+const EmptychairParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as EmptychairView;
   const [text, setText] = useState("");
   const { status, setStatus } = useSend(act);
@@ -70,6 +70,7 @@ const EmptychairParticipant: Renderer = ({ view, act }) => {
           Ask {v.personaName || "them"} a question.
         </p>
         <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
           value={text}
           onChange={setText}
           placeholder={`Ask ${v.personaName || "the empty chair"}…`}

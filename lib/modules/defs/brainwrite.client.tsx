@@ -24,7 +24,7 @@ import type {
 
 // ---- participant ----------------------------------------------------------
 
-const BrainwriteParticipant: Renderer = ({ view, act }) => {
+const BrainwriteParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as BrainwriteView;
   const pv = v.for === "participant" ? (v as BrainwriteParticipantView) : null;
 
@@ -84,6 +84,7 @@ const BrainwriteParticipant: Renderer = ({ view, act }) => {
 
         <div className="mt-2 flex flex-col gap-2">
           <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
             value={text}
             onChange={(next) => setText(next.slice(0, pv.maxLen))}
             placeholder="Add the next line…"

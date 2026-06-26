@@ -37,7 +37,7 @@ function whoLabel(v: OneTwoFourParticipantView): string {
   return v.groupMembers.join(", ");
 }
 
-const OneTwoFourParticipant: Renderer = ({ view, act }) => {
+const OneTwoFourParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as OneTwoFourParticipantView;
   const [text, setText] = useState("");
   const { status, setStatus } = useSend(act);
@@ -100,6 +100,7 @@ const OneTwoFourParticipant: Renderer = ({ view, act }) => {
                 Agree on your group&apos;s combined answer, then capture it.
               </p>
               <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
                 value={text}
                 onChange={setText}
                 placeholder="Your group&apos;s shared answer…"

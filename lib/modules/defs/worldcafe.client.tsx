@@ -28,7 +28,7 @@ import type {
   WorldCafeParticipantView,
 } from "./worldcafe.server";
 
-const WorldCafeParticipant: Renderer = ({ view, act }) => {
+const WorldCafeParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as WorldCafeParticipantView;
   const [text, setText] = useState("");
   const { status, setStatus } = useSend(act);
@@ -117,6 +117,7 @@ const WorldCafeParticipant: Renderer = ({ view, act }) => {
                 Capture this table&apos;s shared insight
               </p>
               <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
                 value={text}
                 onChange={setText}
                 placeholder="What surfaced at this table…"

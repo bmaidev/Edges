@@ -28,7 +28,7 @@ import type {
   ConsultProjectorView,
 } from "./consult.server";
 
-const ConsultParticipant: Renderer = ({ view, act }) => {
+const ConsultParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as ConsultParticipantView;
   const [text, setText] = useState("");
   const { status, setStatus } = useSend(act);
@@ -145,6 +145,7 @@ const ConsultParticipant: Renderer = ({ view, act }) => {
             : "Advise as if it were your own challenge — be useful, be honest."}
         </p>
         <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
           value={text}
           onChange={setText}
           placeholder="Your advice…"

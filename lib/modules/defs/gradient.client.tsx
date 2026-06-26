@@ -29,7 +29,7 @@ function isRequired(v: GradientView, level: number): boolean {
 
 // ---- participant ----------------------------------------------------------
 
-const GradientParticipant: Renderer = ({ view, act }) => {
+const GradientParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as GradientView;
   const dissent = new Set(v.dissentLevels);
 
@@ -115,6 +115,7 @@ const GradientParticipant: Renderer = ({ view, act }) => {
               )}
             </p>
             <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
               value={reason}
               onChange={setReason}
               placeholder="Name the concern so the group can work with it…"
