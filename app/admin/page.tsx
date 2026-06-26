@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { normalizeSlug } from "@/lib/slug";
 import { Button } from "@/components/ui";
 import { RoomAccessCard } from "@/components/RoomAccessCard";
 import { CreateWorkshop } from "@/components/wizard/CreateWorkshop";
@@ -332,6 +333,37 @@ function CreateRoom({
   } | null>(null);
 
   const [err, setErr] = useState<string | null>(null);
+  // A4 — the memorable room address. Auto-fills from the name until the operator
+  // edits it, then live-checks availability.
+  const [slug, setSlug] = useState("");
+  const [slugDirty, setSlugDirty] = useState(false);
+  const [avail, setAvail] = useState<
+    { available: boolean; slug: string; reason?: string; suggestion?: string } | null
+  >(null);
+
+  // Auto-derive the slug from the name while the operator hasn't touched it.
+  useEffect(() => {
+    if (!slugDirty) setSlug(normalizeSlug(name));
+  }, [name, slugDirty]);
+
+  // Debounced availability probe.
+  useEffect(() => {
+    if (!slug) {
+      setAvail(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/rooms/availability?code=${encodeURIComponent(code)}&slug=${encodeURIComponent(slug)}`,
+        );
+        if (res.ok) setAvail(await res.json());
+      } catch {
+        /* ignore — the create call is the real gate */
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [slug, code]);
 
   async function create() {
     if (!name.trim()) return;
@@ -341,14 +373,19 @@ function CreateRoom({
       const res = await fetch("/api/admin/rooms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, topic, code }),
+        body: JSON.stringify({ name, topic, slug: slug || undefined, code }),
       });
       const data = await res.json();
       if (res.ok) {
         setCreated(data);
         setName("");
         setTopic("");
+        setSlug("");
+        setSlugDirty(false);
+        setAvail(null);
         onCreated();
+      } else if (res.status === 409 && data.suggestion) {
+        setErr(`That address is taken — try “${data.suggestion}”.`);
       } else {
         setErr(data.error ?? "Couldn't create the room.");
       }
@@ -358,6 +395,8 @@ function CreateRoom({
       setBusy(false);
     }
   }
+
+  const slugBlocked = Boolean(slug) && avail !== null && !avail.available;
 
   return (
     <section className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
@@ -370,13 +409,51 @@ function CreateRoom({
         placeholder="Room name (e.g. Cybernetics meetup)"
         className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
       />
+      {/* A4 — the memorable room address (the join URL). */}
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted">Room address</label>
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm focus-within:border-accent">
+          <span className="shrink-0 text-muted">/r/</span>
+          <input
+            value={slug}
+            onChange={(e) => {
+              setSlugDirty(true);
+              setSlug(normalizeSlug(e.target.value));
+            }}
+            placeholder="team-sync"
+            className="min-w-0 flex-1 bg-transparent focus:outline-none"
+          />
+        </div>
+        {slug && avail && !avail.available && (
+          <p className="text-xs text-[#ff8a8a]">
+            {avail.reason
+              ? "That address can't be used — try another."
+              : "That address is taken."}
+            {avail.suggestion && (
+              <button
+                type="button"
+                className="ml-1 text-accent underline"
+                onClick={() => {
+                  setSlugDirty(true);
+                  setSlug(avail.suggestion!);
+                }}
+              >
+                use “{avail.suggestion}”
+              </button>
+            )}
+          </p>
+        )}
+        {slug && avail?.available && (
+          <p className="text-xs text-emerald-400">“{slug}” is available ✓</p>
+        )}
+      </div>
       <input
         value={topic}
         onChange={(e) => setTopic(e.target.value)}
         placeholder="Topic (optional)"
         className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
       />
-      <Button onClick={create} disabled={busy || !name.trim()}>
+      <Button onClick={create} disabled={busy || !name.trim() || slugBlocked}>
         {busy ? "Creating…" : "Create room"}
       </Button>
       {err && <p className="text-sm text-[#ff8a8a]">{err}</p>}
@@ -433,6 +510,20 @@ function RoomCard({
   const [panel, setPanel] = useState<"theme" | "report" | "access" | null>(null);
   const [theme, setTheme] = useState<ThemeDraft>(EMPTY_THEME);
   const [report, setReport] = useState<any>(null);
+  // A4 — inline-edit the display name (never the slug — that's the room's key).
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(room.name);
+  async function rename() {
+    const next = nameDraft.trim();
+    setEditingName(false);
+    if (!next || next === room.name) return;
+    await fetch(`/api/admin/rooms/${room.slug}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, name: next }),
+    });
+    onChanged();
+  }
   // Existing rooms keep only passcode HASHES, so we can't show their links — a
   // facilitator regenerates a role to mint a fresh shareable link. The returned
   // plaintext is spliced straight in (authoritative-apply, no read-back).
@@ -488,7 +579,34 @@ function RoomCard({
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-medium">{room.name}</p>
+          {editingName ? (
+            <input
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={rename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") rename();
+                if (e.key === "Escape") {
+                  setNameDraft(room.name);
+                  setEditingName(false);
+                }
+              }}
+              maxLength={120}
+              className="rounded border border-border bg-bg px-2 py-0.5 text-sm font-medium focus:border-accent focus:outline-none"
+            />
+          ) : (
+            <p
+              className="cursor-pointer font-medium hover:underline"
+              title="Click to rename"
+              onClick={() => {
+                setNameDraft(room.name);
+                setEditingName(true);
+              }}
+            >
+              {room.name}
+            </p>
+          )}
           <p className="text-xs text-muted">
             /{room.slug} · {room.status}
           </p>

@@ -65,12 +65,19 @@ export async function POST(
   return NextResponse.json({ ok: true, code: res.code });
 }
 
-// PATCH /api/admin/rooms/[slug] { code, theme?, status? } -> update room.
+// PATCH /api/admin/rooms/[slug] { code, name?, theme?, status? } -> update room.
+// A4 — the display name is freely editable (the slug is not — it's the room's
+// primary key). Renaming the name never touches the slug, passcodes, or links.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { slug: string } },
 ) {
-  let body: { code?: string; theme?: RoomTheme; status?: "draft" | "live" | "archived" };
+  let body: {
+    code?: string;
+    name?: string;
+    theme?: RoomTheme;
+    status?: "draft" | "live" | "archived";
+  };
   try {
     body = await req.json();
   } catch {
@@ -79,7 +86,17 @@ export async function PATCH(
   if (!checkSuperAdmin(body.code))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const patch: { theme?: RoomTheme; status?: "draft" | "live" | "archived" } = {};
+  const patch: {
+    name?: string;
+    theme?: RoomTheme;
+    status?: "draft" | "live" | "archived";
+  } = {};
+  if (typeof body.name === "string") {
+    const name = body.name.trim().slice(0, 120);
+    if (!name)
+      return NextResponse.json({ error: "Name can't be empty" }, { status: 400 });
+    patch.name = name;
+  }
   if (body.theme) patch.theme = body.theme;
   if (body.status) patch.status = body.status;
   const room = await updateRoom(params.slug, patch);

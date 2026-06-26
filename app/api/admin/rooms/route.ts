@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkSuperAdmin, createRoom, listRooms } from "@/lib/rooms";
+import {
+  checkSuperAdmin,
+  createRoom,
+  listRooms,
+  SlugError,
+  SlugTakenError,
+} from "@/lib/rooms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +30,17 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// POST /api/admin/rooms { name, topic, templateId?, code } -> creates a room
-// and returns the three tier passcodes ONCE (never persisted in plaintext).
+// POST /api/admin/rooms { name, topic, templateId?, slug?, code } -> creates a
+// room and returns the three tier passcodes ONCE (never persisted in plaintext).
+// A4 — an optional chosen `slug` is validated + claimed atomically.
 export async function POST(req: NextRequest) {
-  let body: { name?: string; topic?: string; templateId?: string; code?: string };
+  let body: {
+    name?: string;
+    topic?: string;
+    templateId?: string;
+    slug?: string;
+    code?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -36,14 +49,26 @@ export async function POST(req: NextRequest) {
   if (!checkSuperAdmin(body.code))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { room, passcodes } = await createRoom(
-    body.name ?? "Untitled room",
-    body.topic ?? "",
-    body.templateId ?? null,
-  );
-  return NextResponse.json({
-    slug: room.slug,
-    name: room.name,
-    passcodes, // plaintext, shown once
-  });
+  try {
+    const { room, passcodes } = await createRoom(
+      body.name ?? "Untitled room",
+      body.topic ?? "",
+      body.templateId ?? null,
+      body.slug ?? null,
+    );
+    return NextResponse.json({
+      slug: room.slug,
+      name: room.name,
+      passcodes, // plaintext, shown once
+    });
+  } catch (e) {
+    if (e instanceof SlugTakenError)
+      return NextResponse.json(
+        { error: "taken", suggestion: e.suggestion },
+        { status: 409 },
+      );
+    if (e instanceof SlugError)
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    throw e;
+  }
 }
