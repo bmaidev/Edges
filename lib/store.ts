@@ -1025,6 +1025,25 @@ export async function undoLastAction(
 
 // ---- End / wipe -----------------------------------------------------------
 
+// B5 — fully delete EVERY key for a room, including the state key (unlike
+// endSession, which re-writes an empty ended state). Used to tear down a
+// disposable rehearsal shadow room so it leaves nothing behind.
+export async function purgeRoom(roomId: string): Promise<void> {
+  const KEYS = roomKeys(roomId);
+  await backend.del(
+    KEYS.state,
+    KEYS.participants,
+    KEYS.submissions,
+    KEYS.content,
+    KEYS.patterns,
+    KEYS.votes,
+    KEYS.words,
+    KEYS.seen,
+    KEYS.undo,
+    KEYS.hostPresence,
+  );
+}
+
 export async function endSession(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<void> {

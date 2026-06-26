@@ -13,6 +13,7 @@ import { LONG_TEXT, validatePhaseConfig } from "@/lib/preflight";
 import { AgendaArc } from "@/components/AgendaArc";
 import { RunSheetSection } from "@/components/RunSheetSection";
 import { RoomMockup } from "@/components/RoomMockup";
+import { RehearsalTheatre } from "@/components/RehearsalTheatre";
 import { acceptsTimerEdit, phaseMinutes, phaseStage } from "@/lib/arc";
 import type { ModuleKind } from "@/lib/types";
 
@@ -565,6 +566,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
     );
   }
 
+  // B5 — rehearsal theatre overlay.
+  const [rehearsing, setRehearsing] = useState(false);
+
   // B4 — the shared user-template library.
   const [userDesigns, setUserDesigns] = useState<
     { id: string; name: string; phaseCount: number }[]
@@ -713,6 +717,14 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
 
   return (
     <main className="mx-auto w-full max-w-3xl p-6 lg:max-w-4xl">
+      {rehearsing && (
+        <RehearsalTheatre
+          apiBase={apiBase}
+          code={code}
+          phases={parsedPhases()}
+          onClose={() => setRehearsing(false)}
+        />
+      )}
       <h1 className="font-display text-2xl font-semibold tracking-tight">Session builder · {slug}</h1>
       <p className="mt-1 text-sm text-muted">
         Start from a template or compose your own sequence, edit each phase, then launch.
@@ -1020,7 +1032,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         </div>
       )}
 
-      <div className="mt-6 flex items-center gap-3">
+      <div className="mt-6 flex flex-wrap items-center gap-3">
         <Button
           onClick={launch}
           disabled={
@@ -1030,6 +1042,17 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         >
           Launch into room
         </Button>
+        {/* B5 — walk the whole arc with a synthetic room before going live. */}
+        <button
+          onClick={() => setRehearsing(true)}
+          disabled={
+            phases.length === 0 ||
+            phases.some((p) => !validateConfig(p.moduleId, p.config).ok)
+          }
+          className="rounded-lg border border-border bg-surface px-4 py-2 text-sm hover:border-accent disabled:opacity-30"
+        >
+          ▶ Rehearse (dry-run)
+        </button>
       </div>
       {msg && (
         <p className="mt-3 rounded-lg border border-[#5a2a2a] bg-[#5a2a2a]/30 px-3 py-2 text-sm text-[#ffd7d7]">

@@ -13,6 +13,7 @@ export type Capability =
   | "reassign" // manually move a participant's allocation
   | "cluster" // run AI cluster assist
   | "viewRaw" // see raw submissions / participants
+  | "rehearse" // B5 — dry-run a built session in an isolated shadow room
   | "end"; // end + wipe the session
 
 const ALL: Capability[] = [
@@ -25,6 +26,7 @@ const ALL: Capability[] = [
   "reassign",
   "cluster",
   "viewRaw",
+  "rehearse",
   "end",
 ];
 
@@ -38,6 +40,7 @@ const COHOST: Capability[] = [
   "readaround",
   "cluster",
   "viewRaw",
+  "rehearse",
 ];
 
 export const CAPABILITIES: Record<Role, Set<Capability>> = {
