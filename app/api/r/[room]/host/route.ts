@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { archiveRoom, getRoom } from "@/lib/rooms";
+import { archiveRoom, buildReport, getRoom } from "@/lib/rooms";
 import { requireCapability, type Capability } from "@/lib/auth";
 import { suggestClusters } from "@/lib/cluster";
 import { getServerModule } from "@/lib/modules/registry.server";
@@ -98,6 +98,9 @@ const COMMAND_CAP: Record<string, Capability> = {
   // Facilitator-driven module actions (AI generate/promote, spectrogram stage,
   // consult round, lightning next, open-space placement, …).
   moduleAction: "advance",
+  // F1 — build a client-ready report mid-session (no wipe). Facilitator + admin,
+  // not cohost; never the admin-only `configure` cap.
+  buildReport: "end",
   archive: "end",
   end: "end",
 };
@@ -416,6 +419,11 @@ export async function POST(
         { ok: result.ok, reason: result.reason },
         { status: result.status },
       );
+    }
+    case "buildReport": {
+      // F1 — build the client-ready report from the LIVE session, no wipe.
+      const archive = await buildReport(room);
+      return NextResponse.json({ ok: true, archive });
     }
     case "archive": {
       const archive = await archiveRoom(room);

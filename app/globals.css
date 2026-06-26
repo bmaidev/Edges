@@ -70,3 +70,23 @@ button {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* F1 — print-to-PDF a client-ready report: hide everything except the report
+   document, and render it edge-to-edge on a white page. */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .report-print,
+  .report-print * {
+    visibility: visible !important;
+  }
+  .report-print {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    box-shadow: none !important;
+  }
+}
