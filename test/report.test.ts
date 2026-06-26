@@ -85,6 +85,17 @@ describe("archive reuses the built report (no double work, no clobber)", () => {
   });
 });
 
+describe("public report token (F1)", () => {
+  it("buildReport mints a stable, unguessable reportToken (reused on rebuild)", async () => {
+    const slug = "f1-token";
+    await seedRoom(slug);
+    const a1 = await buildReport(slug);
+    expect(a1!.reportToken).toMatch(/^[0-9a-f]{32}$/);
+    const a2 = await buildReport(slug);
+    expect(a2!.reportToken).toBe(a1!.reportToken); // stable across rebuilds
+  });
+});
+
 describe("reportToMarkdown", () => {
   it("renders the synthesis and never leaks raw submission text", async () => {
     const slug = "f1-md";

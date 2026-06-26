@@ -60,6 +60,20 @@ export function HandoverPanel({
     );
   }
 
+  const [linkCopied, setLinkCopied] = useState(false);
+  function copyLink() {
+    if (!archive?.reportToken || typeof window === "undefined") return;
+    const slug = apiBase.replace("/api/r/", "");
+    const url = `${window.location.origin}/r/${slug}/report?k=${archive.reportToken}`;
+    navigator.clipboard?.writeText(url).then(
+      () => {
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
+      },
+      () => setErr("Couldn't copy the link."),
+    );
+  }
+
   const branding = {
     logoUrl: state.branding?.logoUrl,
     headline: state.branding?.headline,
@@ -93,6 +107,11 @@ export function HandoverPanel({
             <Button variant="ghost" onClick={copyMarkdown}>
               {copied ? "Copied ✓" : "Copy as Markdown"}
             </Button>
+            {archive.reportToken && (
+              <Button variant="ghost" onClick={copyLink}>
+                {linkCopied ? "Link copied ✓" : "Copy shareable link"}
+              </Button>
+            )}
           </div>
           <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg bg-[#f3f3f5] p-3">
             <ReportDocument archive={archive} branding={branding} />
