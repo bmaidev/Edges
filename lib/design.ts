@@ -66,8 +66,14 @@ const PRODUCERS_LIST = Array.from(PRODUCERS).join(", ");
 // Time budget → how many phases to aim for. Workshops run long when every idea
 // becomes its own phase; budget ~13 min/phase (setup + activity + debrief) and
 // bias toward FEWER, deeper phases.
+// The effective time budget (the stated minutes, or a 60-minute default). Shared
+// with B1's agenda arc so the builder and the AI designer agree on the budget.
+export function timeBudget(minutes?: number): number {
+  return minutes && minutes > 0 ? minutes : 60;
+}
+
 function timeGuidance(minutes?: number): { budget: number; text: string } {
-  const budget = minutes && minutes > 0 ? minutes : 60;
+  const budget = timeBudget(minutes);
   const target = Math.min(10, Math.max(3, Math.round(budget / 13)));
   return {
     budget,
