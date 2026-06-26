@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { TourCoach } from "@/components/TourCoach";
+import { FacilitateCockpit } from "@/components/FacilitateCockpit";
 import { ParticipationSignal } from "@/lib/modules/render-kit";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
@@ -46,16 +47,18 @@ const PHASE_NA = "—";
 const CONTENT_TYPES: ContentType[] = ["case", "lens", "prompt", "argument", "note"];
 
 // Command dispatcher → POST {apiBase}/host { command, code, ...args }.
-type Cmd = (command: string, args?: Record<string, unknown>) => Promise<Response>;
+export type Cmd = (command: string, args?: Record<string, unknown>) => Promise<Response>;
 
 // Room-scoped facilitator/co-host console. Drives any room via the host
 // command API; role (from the state response) gates which controls show.
 export function HostConsole({
   apiBase,
   roomName,
+  cockpit = false,
 }: {
   apiBase: string;
   roomName?: string;
+  cockpit?: boolean;
 }) {
   const [code, setCode] = useState("");
   const [codeInput, setCodeInput] = useState("");
@@ -188,6 +191,11 @@ export function HostConsole({
     />
   ) : null;
 
+  // C1 — Facilitate mode: once a session is set up, the cockpit replaces the
+  // tabbed console. Falls through to the setup picker when nothing's prepared.
+  if (cockpit && (s.mode || (s.sequence && s.sequence.length > 0)))
+    return <FacilitateCockpit s={s} cmd={cmd} role={role} slug={slug} />;
+
   // No sequence yet (no mode and no custom phases) → pick a starting point.
   if (!s.mode && (!s.sequence || s.sequence.length === 0))
     return (
@@ -230,7 +238,7 @@ export function HostConsole({
       <div className="sticky top-0 z-10 border-b border-border bg-bg/95 backdrop-blur">
         <SessionHeader state={s} cmd={cmd} role={role} />
         <PhaseStepper state={s} cmd={cmd} />
-        <div className="flex gap-1 overflow-x-auto px-2">
+        <div className="flex items-center gap-1 overflow-x-auto px-2">
           {TABS.filter((t) => t.show).map((t) => (
             <button
               key={t.id}
@@ -245,6 +253,13 @@ export function HostConsole({
               {t.label}
             </button>
           ))}
+          {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
+          <a
+            href={`/r/${slug}/facilitate`}
+            className="ml-auto shrink-0 whitespace-nowrap rounded-lg border border-accent/40 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+          >
+            ⛶ Facilitate
+          </a>
         </div>
       </div>
 

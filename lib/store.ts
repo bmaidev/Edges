@@ -185,6 +185,7 @@ const DEFAULT_STATE: SessionState = {
   mode: null,
   phaseId: null,
   timerEndsAt: null,
+  timerRemainingMs: null,
   readaroundIndex: 0,
   topic: SESSION_TOPIC,
   ended: false,
@@ -252,6 +253,7 @@ export async function setMode(
       phases,
       phaseId: phases[0]?.id ?? "lobby",
       timerEndsAt: null,
+      timerRemainingMs: null,
       readaroundIndex: 0,
       ended: false,
     },
@@ -274,6 +276,7 @@ export async function setPhases(
       phases,
       phaseId: phases[0]?.id ?? null,
       timerEndsAt: null,
+      timerRemainingMs: null,
       readaroundIndex: 0,
       ended: false,
     },
@@ -293,18 +296,95 @@ export async function setPhase(
       ...state,
       phaseId,
       timerEndsAt: null,
+      timerRemainingMs: null,
       readaroundIndex: 0,
     },
     roomId,
   );
 }
 
+// C1 — every timer mutation is a read-compute-write of the state key, so two
+// drivers (lead + cohost) can otherwise read a stale state and drop time (a +2
+// vs a pause). Serialise them all through the per-room "timer" lock. The lock is
+// non-blocking, so a busy loser would silently no-op and DROP its action — to
+// honour "never drops time" we retry briefly (each op is a single get+write, so
+// contention clears in ms), then fall back to an unlocked run rather than lose it.
+async function withTimerLock(
+  roomId: string,
+  fn: () => Promise<SessionState>,
+): Promise<SessionState> {
+  for (let i = 0; i < 10; i++) {
+    const res = await withLock(roomId, "timer", fn, { ttlSeconds: 5 });
+    if (res.ok) return res.value;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  return fn(); // last resort: apply unlocked rather than silently drop the action
+}
+
+// Set (or clear) an absolute deadline. Clears any paused-remaining so the timer
+// is unambiguously RUNNING (or IDLE when endsAt is null).
 export async function setTimer(
   endsAt: number | null,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  return writeState({ ...state, timerEndsAt: endsAt }, roomId);
+  return withTimerLock(roomId, async () => {
+    const state = await getState(roomId);
+    return writeState(
+      { ...state, timerEndsAt: endsAt, timerRemainingMs: null },
+      roomId,
+    );
+  });
+}
+
+// Add (or subtract) time. Extends the live deadline when RUNNING, the frozen
+// remaining when PAUSED, and no-ops when IDLE (nothing to extend).
+export async function addTime(
+  addMs: number,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  return withTimerLock(roomId, async () => {
+    const state = await getState(roomId);
+    if (state.timerEndsAt != null)
+      return writeState(
+        { ...state, timerEndsAt: state.timerEndsAt + addMs },
+        roomId,
+      );
+    if (state.timerRemainingMs != null)
+      return writeState(
+        { ...state, timerRemainingMs: Math.max(0, state.timerRemainingMs + addMs) },
+        roomId,
+      );
+    return state; // idle
+  });
+}
+
+// Freeze a running timer: capture the remaining ms, drop the deadline.
+export async function pauseTimer(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  return withTimerLock(roomId, async () => {
+    const state = await getState(roomId);
+    if (state.timerEndsAt == null) return state; // not running
+    const remaining = Math.max(0, state.timerEndsAt - Date.now());
+    return writeState(
+      { ...state, timerEndsAt: null, timerRemainingMs: remaining },
+      roomId,
+    );
+  });
+}
+
+// Resume a paused timer: a fresh deadline now + the frozen remaining.
+export async function resumeTimer(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  return withTimerLock(roomId, async () => {
+    const state = await getState(roomId);
+    if (state.timerRemainingMs == null) return state; // not paused
+    return writeState(
+      { ...state, timerEndsAt: Date.now() + state.timerRemainingMs, timerRemainingMs: null },
+      roomId,
+    );
+  });
 }
 
 // Replace the ENTIRE session state in a single write, with a fresh monotonic
@@ -879,6 +959,7 @@ export async function getPublicState(
     primitive: moduleId,
     config: cfg,
     timerEndsAt: state.timerEndsAt,
+    timerRemainingMs: state.timerRemainingMs ?? null,
     participantCount: participants.length,
     visibleContent: visible,
     contentVersion: contentVersion(visible),
@@ -909,6 +990,9 @@ export async function roomSignature(
   return [
     state.phaseId,
     state.timerEndsAt,
+    // C1 — include paused-remaining so a pause / resume / +2-while-paused (which
+    // may not change timerEndsAt) still ticks the SSE stream to every screen.
+    state.timerRemainingMs ?? "",
     state.ended,
     state.readaroundIndex,
     state.sessionName,

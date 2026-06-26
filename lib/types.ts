@@ -130,6 +130,11 @@ export interface SessionState {
   mode: ModeId | null;
   phaseId: string | null;
   timerEndsAt: number | null;
+  // C1 — timer pause. Exactly one of these is non-null at a time:
+  //   timerEndsAt set, timerRemainingMs null → RUNNING (counts toward endsAt)
+  //   timerEndsAt null, timerRemainingMs set → PAUSED (frozen ms remaining)
+  //   both null                              → IDLE (no timer)
+  timerRemainingMs?: number | null;
   readaroundIndex: number;
   topic: string;
   ended: boolean;
@@ -234,6 +239,9 @@ export interface PublicState {
   primitive: Primitive | null;
   config: PhaseConfig | null;
   timerEndsAt: number | null;
+  // C1 — frozen ms remaining when the timer is paused (see SessionState). null
+  // when running or idle. Surfaces so every screen freezes (never blanks) on pause.
+  timerRemainingMs: number | null;
   participantCount: number;
   visibleContent: ContentItem[];
   contentVersion: number; // bumps when visible content changes (for the pulse)
