@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
 import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { LobbyScreen } from "@/components/LobbyScreen";
 import type { PublicState } from "@/lib/types";
 
 // Read-only big-screen view for the room. Renders the active module's projector
@@ -68,37 +68,14 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
             />
           </ErrorBoundary>
         ) : (
-          <Centered>
-            <span className="flex flex-col items-center gap-5">
-              {state.branding?.logoUrl && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={state.branding.logoUrl}
-                  alt=""
-                  className="max-h-28 max-w-[60vw] object-contain"
-                />
-              )}
-              <span className="font-display text-5xl font-semibold tracking-tight text-white">
-                {state.branding?.headline || state.topic}
-              </span>
-              {joinUrl && (
-                <span className="flex flex-col items-center gap-3">
-                  <span className="rounded-2xl bg-white p-5">
-                    <QRCodeSVG value={joinUrl} size={240} />
-                  </span>
-                  <span className="text-2xl text-accent">Scan to join</span>
-                  <span className="font-mono text-lg text-muted">{joinUrl}</span>
-                  <span className="max-w-xl text-base text-muted">
-                    {state.branding?.tagline ||
-                      "No app, no code — just pick a name (or stay anonymous)."}
-                  </span>
-                </span>
-              )}
-              <span className="text-xl text-muted">
-                {state.modeName ? "Look up here when the room shares." : "We’ll begin shortly."}
-              </span>
-            </span>
-          </Centered>
+          <LobbyScreen
+            variant="wide"
+            branding={state.branding}
+            title={state.topic}
+            joinUrl={joinUrl}
+            present={state.participantCount}
+            timerEndsAt={state.timerEndsAt}
+          />
         )}
       </div>
     </main>
