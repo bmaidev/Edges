@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui";
 import { bootToken } from "@/lib/magicLink";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
+import { PaletteChip, PlacedPhaseCard, SourceField } from "@/components/ModuleCard";
 import { TEMPLATES } from "@/lib/templates";
 // H2 — single source of truth, shared with the pre-flight engine so the builder's
 // validation and the readiness check can never drift.
@@ -51,10 +52,6 @@ const CATEGORIES: { label: string; kinds: ModuleKind[] }[] = [
   },
   { label: "Analytics", kinds: ["equity"] },
 ];
-
-// Modules whose output a later phase can consume via sourcePhaseId. Used to rank
-// the "Takes input from" dropdown so producers surface first.
-const PRODUCERS = new Set<ModuleKind>(["capture", "prework", "qna", "brainwrite"]);
 
 // ---- zod introspection -----------------------------------------------------
 // The form is generated from each module's zod schema. We detect a handful of
@@ -198,7 +195,9 @@ function AutoForm({
   moduleId: ModuleKind;
   config: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
-  earlierPhases: { id: string; moduleId: ModuleKind }[];
+  // B6 — carries each earlier phase's config so the source field can quote its
+  // real prompt ("Reads what the room wrote in '…'").
+  earlierPhases: { id: string; moduleId: ModuleKind; config: Record<string, unknown> }[];
 }) {
   const fields = schemaFields(moduleId);
   if (!fields) {
@@ -345,31 +344,12 @@ function AutoForm({
             case "source":
               return (
                 <FieldRow key={f.key} label={label} optional={f.optional}>
-                  <select
+                  <SourceField
                     value={(val as string) ?? ""}
-                    onChange={(e) => set(f.key, e.target.value || undefined)}
-                    className={inputCls}
-                  >
-                    {/* Blank means different things per module: optional source
-                        modules read EVERY earlier contribution; required ones
-                        need a specific phase chosen. */}
-                    <option value="">
-                      {f.optional ? "All contributions so far" : "Select a phase…"}
-                    </option>
-                    {earlierPhases.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.id} · {SERVER_MODULES[p.moduleId]?.meta.name}
-                        {PRODUCERS.has(p.moduleId) ? " ✓" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-[11px] text-muted">
-                    {f.optional
-                      ? "Leave on “All contributions so far” to analyse everything, or pick one phase to focus."
-                      : earlierPhases.length === 0
-                        ? "Add a capture/pre-work phase before this one to feed it."
-                        : "Choose which earlier phase this reads from."}
-                  </span>
+                    optional={f.optional}
+                    earlierPhases={earlierPhases}
+                    onChange={(v) => set(f.key, v)}
+                  />
                 </FieldRow>
               );
             default:
@@ -777,14 +757,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
               {cat.kinds
                 .filter((k) => SERVER_MODULES[k])
                 .map((k) => (
-                  <button
-                    key={k}
-                    onClick={() => add(k)}
-                    title={SERVER_MODULES[k].meta.description}
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-xs hover:border-accent"
-                  >
-                    + {SERVER_MODULES[k].meta.name}
-                  </button>
+                  <PaletteChip key={k} moduleId={k} onAdd={() => add(k)} />
                 ))}
             </div>
           </div>
@@ -807,7 +780,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           {phases.map((p, i) => {
             const mod = SERVER_MODULES[p.moduleId];
             const valid = validateConfig(p.moduleId, p.config);
-            const earlierPhases = phases.slice(0, i).map((q) => ({ id: q.id, moduleId: q.moduleId }));
+            const earlierPhases = phases.slice(0, i).map((q) => ({ id: q.id, moduleId: q.moduleId, config: q.config }));
             const stage = phaseStage(p.moduleId);
             const mins = phaseMinutes({ moduleId: p.moduleId, config: p.config });
             const timed = acceptsTimerEdit(p.moduleId);
@@ -856,7 +829,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                     <button className="text-[#ff8a8a] underline" onClick={() => remove(i)}>remove</button>
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-muted">{mod.meta.description}</p>
+                <PlacedPhaseCard moduleId={p.moduleId} />
 
                 <div className="mt-3">
                   {p.advanced ? (
