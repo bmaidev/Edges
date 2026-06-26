@@ -22,7 +22,7 @@ export async function GET(
   if (!room) return NextResponse.json({ error: "No such room" }, { status: 404 });
   const archive = await getArchive(params.slug);
   return NextResponse.json({
-    room: { slug: room.slug, name: room.name, status: room.status, theme: room.theme },
+    room: { slug: room.slug, name: room.name, topic: room.topic, status: room.status, theme: room.theme },
     archive,
     // Per-tier existence only — never hashes or plaintext. Lets the Access panel
     // know whether a legacy room needs a "Regenerate to get a shareable link".

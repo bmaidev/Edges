@@ -4,6 +4,14 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui";
 import { RoomAccessCard } from "@/components/RoomAccessCard";
+import { CreateWorkshop } from "@/components/wizard/CreateWorkshop";
+import {
+  EMPTY_THEME,
+  ThemePanel,
+  themeForPatch,
+  type ThemeDraft,
+} from "@/components/admin/ThemePanel";
+import { JoinScreenPreview } from "@/components/admin/JoinScreenPreview";
 
 interface RoomRow {
   slug: string;
@@ -28,6 +36,7 @@ function Admin() {
   const [authed, setAuthed] = useState(false);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
 
   useEffect(() => {
     const c = params.get("code");
@@ -72,6 +81,27 @@ function Admin() {
     );
   }
 
+  if (showWizard) {
+    return (
+      <main className="mx-auto w-full max-w-2xl p-6">
+        <button
+          onClick={() => setShowWizard(false)}
+          className="mb-4 text-sm text-muted underline"
+        >
+          ← All rooms
+        </button>
+        <CreateWorkshop
+          code={code}
+          onClose={() => {
+            setShowWizard(false);
+            load(code);
+          }}
+          onCreated={() => load(code)}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto w-full max-w-2xl p-6 lg:max-w-3xl">
       <div className="flex items-center justify-between">
@@ -80,7 +110,13 @@ function Admin() {
           📖 Guides
         </a>
       </div>
-      <CreateRoom code={code} onCreated={() => load(code)} />
+      <div className="mt-4">
+        <Button onClick={() => setShowWizard(true)}>＋ Create a workshop</Button>
+      </div>
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs text-muted">Quick create (advanced)</summary>
+        <CreateRoom code={code} onCreated={() => load(code)} />
+      </details>
       <div className="mt-6 flex flex-col gap-3">
         {rooms.length === 0 ? (
           <p className="text-sm text-muted">No rooms yet. Create one above.</p>
@@ -177,30 +213,9 @@ function CreateRoom({
   );
 }
 
-const PALETTE_KEYS = ["bg", "surface", "accent", "muted", "border"] as const;
-const PALETTE_DEFAULTS: Record<string, string> = {
-  bg: "#0F1A35",
-  surface: "#1A2247",
-  accent: "#E8B14A",
-  muted: "#A8ADE9",
-  border: "#2A3454",
-};
-const PALETTE_LABELS: Record<string, string> = {
-  bg: "Background",
-  surface: "Cards",
-  accent: "Highlight",
-  muted: "Secondary text",
-  border: "Lines",
-};
-
 function RoomCard({ room, code }: { room: RoomRow; code: string }) {
   const [panel, setPanel] = useState<"theme" | "report" | "access" | null>(null);
-  const [palette, setPalette] = useState<Record<string, string>>(PALETTE_DEFAULTS);
-  const [logoUrl, setLogoUrl] = useState("");
-  const [headline, setHeadline] = useState("");
-  const [tagline, setTagline] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [theme, setTheme] = useState<ThemeDraft>(EMPTY_THEME);
   const [report, setReport] = useState<any>(null);
   // Existing rooms keep only passcode HASHES, so we can't show their links — a
   // facilitator regenerates a role to mint a fresh shareable link. The returned
@@ -220,26 +235,6 @@ function RoomCard({ room, code }: { room: RoomRow; code: string }) {
     if (res.ok && d.code) setAccessCodes((c) => ({ ...c, [role]: d.code }));
   }
 
-  async function uploadLogo(file: File) {
-    setUploading(true);
-    setUploadErr(null);
-    try {
-      const fd = new FormData();
-      fd.set("file", file);
-      const res = await fetch(
-        `/api/admin/upload?code=${encodeURIComponent(code)}`,
-        { method: "POST", body: fd },
-      );
-      const d = await res.json();
-      if (res.ok && d.url) setLogoUrl(d.url);
-      else setUploadErr(d.error ?? "Upload failed.");
-    } catch {
-      setUploadErr("Upload failed — try again.");
-    } finally {
-      setUploading(false);
-    }
-  }
-
   async function openTheme() {
     setPanel(panel === "theme" ? null : "theme");
     const res = await fetch(
@@ -248,24 +243,18 @@ function RoomCard({ room, code }: { room: RoomRow; code: string }) {
     );
     const d = await res.json();
     const t = d.room?.theme ?? {};
-    setPalette({ ...PALETTE_DEFAULTS, ...(t.palette ?? {}) });
-    setLogoUrl(t.logoUrl ?? "");
-    setHeadline(t.headline ?? "");
-    setTagline(t.tagline ?? "");
+    setTheme({
+      palette: { ...EMPTY_THEME.palette, ...(t.palette ?? {}) },
+      logoUrl: t.logoUrl ?? "",
+      headline: t.headline ?? "",
+      tagline: t.tagline ?? "",
+    });
   }
   async function saveTheme() {
     await fetch(`/api/admin/rooms/${room.slug}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code,
-        theme: {
-          palette,
-          logoUrl: logoUrl.trim() || undefined,
-          headline: headline.trim() || undefined,
-          tagline: tagline.trim() || undefined,
-        },
-      }),
+      body: JSON.stringify({ code, theme: themeForPatch(theme) }),
     });
     setPanel(null);
   }
@@ -312,104 +301,15 @@ function RoomCard({ room, code }: { room: RoomRow; code: string }) {
       )}
 
       {panel === "theme" && (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="flex flex-wrap gap-3">
-            {PALETTE_KEYS.map((k) => (
-              <label key={k} className="flex items-center gap-2 text-xs">
-                <input
-                  type="color"
-                  value={palette[k]}
-                  onChange={(e) => setPalette({ ...palette, [k]: e.target.value })}
-                />
-                {PALETTE_LABELS[k]}
-              </label>
-            ))}
-          </div>
-          {/* Live preview of the chosen palette. */}
-          <div
-            className="mt-3 rounded-lg border p-3 text-sm"
-            style={{
-              backgroundColor: palette.bg,
-              borderColor: palette.border,
-              color: "#fff",
-            }}
-          >
-            <span style={{ color: palette.accent }}>{room.name}</span>{" "}
-            <span style={{ color: palette.muted }}>— preview</span>
-            <div
-              className="mt-2 rounded p-2"
-              style={{ backgroundColor: palette.surface }}
-            >
-              A card on the surface colour.
+        <div className="mt-3 grid gap-5 border-t border-border pt-3 md:grid-cols-[1fr_auto]">
+          <div className="flex flex-col gap-3">
+            <ThemePanel code={code} value={theme} onChange={setTheme} />
+            <div>
+              <Button onClick={saveTheme}>Save theme &amp; branding</Button>
             </div>
           </div>
-          {/* Join-screen branding: logo + surprise copy shown on the projector
-              lobby and the /qr door page. */}
-          <div className="mt-4 flex flex-col gap-2 border-t border-border pt-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-              Join-screen branding (projector lobby + QR page)
-            </p>
-            <div className="flex items-center gap-3">
-              {logoUrl && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={logoUrl}
-                  alt="logo preview"
-                  className="h-12 w-12 shrink-0 rounded-lg border border-border object-contain"
-                />
-              )}
-              <div className="flex flex-1 flex-col gap-1">
-                <input
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  placeholder="Logo image URL (or upload below)"
-                  className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                />
-                <label className="flex items-center gap-2 text-xs text-muted">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    disabled={uploading}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) uploadLogo(f);
-                    }}
-                    className="text-xs file:mr-2 file:rounded file:border-0 file:bg-accent/20 file:px-2 file:py-1 file:text-accent"
-                  />
-                  {uploading && <span>Uploading…</span>}
-                  {logoUrl && !uploading && <span className="text-accent">✓ set</span>}
-                </label>
-                {uploadErr && <span className="text-xs text-[#ff8a8a]">{uploadErr}</span>}
-              </div>
-            </div>
-            <input
-              value={headline}
-              onChange={(e) => setHeadline(e.target.value)}
-              placeholder="Big headline — e.g. “Welcome, beautiful nerds 🛸”"
-              maxLength={80}
-              className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-            />
-            <input
-              value={tagline}
-              onChange={(e) => setTagline(e.target.value)}
-              placeholder="Tagline / surprise line under the QR"
-              maxLength={140}
-              className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-            />
-            <a
-              href={`/r/${room.slug}/qr`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-accent underline"
-            >
-              Preview the QR / lobby page →
-            </a>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button onClick={saveTheme}>Save theme & branding</Button>
-            <Button variant="ghost" onClick={() => setPalette({ ...PALETTE_DEFAULTS })}>
-              Reset colours
-            </Button>
+          <div className="md:w-60">
+            <JoinScreenPreview theme={theme} joinUrl={`/r/${room.slug}`} title={room.name} />
           </div>
         </div>
       )}
