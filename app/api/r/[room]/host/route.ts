@@ -12,12 +12,16 @@ import {
   deleteContent,
   deletePattern,
   addTime,
+  clearPhaseData,
+  clearUndo,
   deleteSubmission,
   dispatchAction,
   endSession,
   getFacilitatorState,
   getState,
+  listContent,
   pauseTimer,
+  phaseSequence,
   reassign,
   renamePattern,
   reorderPatterns,
@@ -27,8 +31,11 @@ import {
   setPhases,
   setReadaroundIndex,
   setTimer,
+  undoLastAction,
   updateContent,
   updateSubmission,
+  withLock,
+  writeUndo,
 } from "@/lib/store";
 import type { ContentType, ModeId, Role, SessionState } from "@/lib/types";
 
@@ -70,6 +77,12 @@ const COMMAND_CAP: Record<string, Capability> = {
   pauseTimer: "timer",
   resumeTimer: "timer",
   addTime: "timer",
+  // C3 recovery. undo is a nav move (advance). reset/reopen CLEAR a phase's data,
+  // so they sit one notch up at `curate` (cohost has it); none need the admin-only
+  // `configure` cap — which would lock both facilitator and cohost out.
+  undo: "advance",
+  resetPhase: "curate",
+  reopenPhase: "curate",
   addContent: "inject",
   updateContent: "inject",
   deleteContent: "inject",
@@ -204,11 +217,106 @@ export async function POST(
       if (!r.ok) return NextResponse.json({ error: r.reason ?? "Couldn't revise" }, { status: 502 });
       return NextResponse.json({ ok: true, suggestion: r.suggestion });
     }
-    case "setPhase":
+    case "setPhase": {
+      // C3 — release queued content ONLY on a forward move (Back must never dump
+      // queued slides onto the room), and snapshot the prior position for undo.
+      const target = String(a.phaseId ?? "");
+      const before = await getState(room);
+      const seq = await phaseSequence(room);
+      const curIdx = seq.indexOf(before.phaseId ?? "");
+      const forward = curIdx >= 0 && seq.indexOf(target) === curIdx + 1;
+      const releasedIds = forward
+        ? (await listContent(room)).filter((c) => c.queued).map((c) => c.id)
+        : [];
+      const written = await setPhase(target, room, { release: forward });
+      await writeUndo(
+        {
+          prevPhaseId: before.phaseId,
+          prevTimerEndsAt: before.timerEndsAt,
+          prevTimerRemainingMs: before.timerRemainingMs ?? null,
+          prevReadaroundIndex: before.readaroundIndex,
+          releasedIds,
+          label: target,
+          at: Date.now(),
+        },
+        room,
+      );
       return NextResponse.json({
         ok: true,
-        state: await navState(room, await setPhase(a.phaseId, room), role ?? "facilitator"),
+        state: await navState(room, written, role ?? "facilitator"),
       });
+    }
+    case "undo": {
+      const { state, undone } = await undoLastAction(room);
+      return NextResponse.json({
+        ok: true,
+        undone,
+        state: await navState(room, state, role ?? "facilitator"),
+      });
+    }
+    case "resetPhase": {
+      // Clear a contaminated phase's data and re-enter it clean, in place.
+      const before = await getState(room);
+      const phaseId = String(a.phaseId ?? before.phaseId ?? "");
+      if (!phaseId)
+        return NextResponse.json({ ok: false, reason: "no phase" });
+      const locked = await withLock(
+        room,
+        "clear:" + phaseId,
+        async () => {
+          await clearPhaseData(phaseId, room);
+          return setPhase(phaseId, room, { release: false });
+        },
+        { ttlSeconds: 10 },
+      );
+      if (!locked.ok)
+        return NextResponse.json(
+          { error: "Someone else just changed this phase — try again." },
+          { status: 409 },
+        );
+      await clearUndo(room); // a confirmed clear invalidates the nav undo
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, locked.value, role ?? "facilitator"),
+      });
+    }
+    case "reopenPhase": {
+      // Jump back to a past phase and clear it so it can be re-run.
+      const before = await getState(room);
+      const target = String(a.phaseId ?? "");
+      if (!target) return NextResponse.json({ ok: false, reason: "no phase" });
+      const locked = await withLock(
+        room,
+        "clear:" + target,
+        async () => {
+          await clearPhaseData(target, room);
+          return setPhase(target, room, { release: false });
+        },
+        { ttlSeconds: 10 },
+      );
+      if (!locked.ok)
+        return NextResponse.json(
+          { error: "Someone else just changed this phase — try again." },
+          { status: 409 },
+        );
+      // Nav undo so a mis-tapped reopen can bounce back (the clear stays final).
+      await writeUndo(
+        {
+          prevPhaseId: before.phaseId,
+          prevTimerEndsAt: before.timerEndsAt,
+          prevTimerRemainingMs: before.timerRemainingMs ?? null,
+          prevReadaroundIndex: before.readaroundIndex,
+          releasedIds: [],
+          label: target,
+          at: Date.now(),
+        },
+        room,
+      );
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, locked.value, role ?? "facilitator"),
+      });
+    }
     case "setTimer":
       return NextResponse.json({
         ok: true,
