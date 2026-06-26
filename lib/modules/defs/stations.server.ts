@@ -15,7 +15,14 @@
 // per-group notes are harvested as submissions tagged `g${groupIndex}:r${round}`.
 
 import { z } from "zod";
-import { groupOf, groupRound, stationFor } from "../groups";
+import {
+  appendExtras,
+  cohortTokens,
+  freezeCohort,
+  groupOf,
+  groupRound,
+  stationFor,
+} from "../groups";
 import type {
   ModuleContext,
   ModuleServerDef,
@@ -91,6 +98,22 @@ function readRound(votes: Record<string, unknown>): number {
     : 0;
 }
 
+// D4 — the intact touring groups, formed ONCE from the FROZEN cohort so a
+// mid-tour join can't reshuffle a group's membership; latecomers fold into the
+// smallest group. computeView and the note handler share this so a note's group
+// tag always matches the group the participant is shown.
+function buildGroups(
+  ctx: ModuleContext,
+  votes: Record<string, unknown>,
+): string[][] {
+  const groupSize = (ctx.config.groupSize as number | undefined) ?? 3;
+  const { cohort, extras } = cohortTokens(
+    votes,
+    ctx.participants.map((p) => p.token),
+  );
+  return appendExtras(groupRound(cohort, groupSize, 0), extras);
+}
+
 // ---- module ---------------------------------------------------------------
 
 export const stationsModule: ModuleServerDef<StationsConfig> = {
@@ -116,18 +139,20 @@ export const stationsModule: ModuleServerDef<StationsConfig> = {
     needsTimer: true,
     projectable: true,
   },
+  async onEnter(ctx) {
+    // Snapshot the roster so the intact touring groups never reshuffle on a join.
+    await freezeCohort(ctx.store, ctx.phase.id, ctx.participants.map((p) => p.token));
+  },
   async computeView(ctx) {
     const stations = (ctx.config.stations as string[]) ?? [];
-    const groupSize = (ctx.config.groupSize as number | undefined) ?? 3;
     const captureNotes = Boolean(ctx.config.captureNotes);
     const prompt = (ctx.config.prompt as string | undefined) || undefined;
 
     const votes = await ctx.store.readVotes(ctx.phase.id);
     const round = readRound(votes);
 
-    // Intact groups, formed ONCE (round 0) so membership never shifts.
-    const tokens = ctx.participants.map((p) => p.token);
-    const groups = groupRound(tokens, groupSize, 0);
+    // Intact groups, formed ONCE from the frozen cohort so membership never shifts.
+    const groups = buildGroups(ctx, votes);
 
     // Map a token → handle for rendering.
     const handleOf = new Map(ctx.participants.map((p) => [p.token, p.handle]));
@@ -210,14 +235,11 @@ export const stationsModule: ModuleServerDef<StationsConfig> = {
       const me = ctx.me;
       if (!me) return { ok: false, reason: "no participant" };
 
-      const tokens = ctx.participants.map((p) => p.token);
-      const groupSize = (ctx.config.groupSize as number | undefined) ?? 3;
-      const groups = groupRound(tokens, groupSize, 0);
-      const found = groupOf(groups, me.token);
-      if (!found) return { ok: false, reason: "no group" };
-
       const votes = await ctx.store.readVotes(ctx.phase.id);
       const round = readRound(votes);
+      const groups = buildGroups(ctx, votes);
+      const found = groupOf(groups, me.token);
+      if (!found) return { ok: false, reason: "no group" };
       await ctx.store.addSubmission(
         me.handle,
         text,

@@ -17,7 +17,15 @@
 // tagged `r${round}` when captureShared is on.
 
 import { z } from "zod";
-import { chunk, groupOf, oneTwoFourSize, sortedTokens } from "../groups";
+import {
+  appendExtras,
+  chunk,
+  cohortTokens,
+  freezeCohort,
+  groupOf,
+  oneTwoFourSize,
+  sortedTokens,
+} from "../groups";
 import type {
   ModuleServerDef,
   Role,
@@ -128,6 +136,11 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
     needsTimer: true,
     projectable: true,
   },
+  async onEnter(ctx) {
+    // Snapshot the roster at stage 0 so the pair/foursome nesting is computed
+    // from a fixed set — a join mid-progression can't reshuffle the fours.
+    await freezeCohort(ctx.store, ctx.phase.id, ctx.participants.map((p) => p.token));
+  },
   async computeView(ctx) {
     const prompt = (ctx.config.prompt as string) ?? "";
     const captureShared = ctx.config.captureShared !== false; // default true
@@ -135,18 +148,21 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
     const votes = await ctx.store.readVotes(ctx.phase.id);
     const round = readRound(votes);
     const size = oneTwoFourSize(round); // 1, 2, 4, Infinity
-    const tokens = ctx.participants.map((p) => p.token);
+    const live = ctx.participants.map((p) => p.token);
+    const { cohort, extras } = cohortTokens(votes, live);
 
-    // Whole-group stage: one group is the whole room.
+    // Whole-group stage: one group is the whole room (everyone, latecomers and
+    // all — at "All" no one is left out).
     const wholeRoom = round >= 3 || !Number.isFinite(size);
-    // Contiguous chunking of the stable token order so a person's pair nests
+    // Contiguous chunking of the FROZEN, sorted cohort so a person's pair nests
     // inside their foursome (the whole point of 1-2-4-All) — NOT the circle
-    // method, which would scatter pairs across different fours.
+    // method, which would scatter pairs across different fours. Latecomers fold
+    // into the smallest group so a pair can become a triad rather than reshuffle.
     const groups = wholeRoom
-      ? tokens.length > 0
-        ? [[...tokens]]
+      ? live.length > 0
+        ? [sortedTokens(live)]
         : []
-      : chunk(sortedTokens(tokens), size);
+      : appendExtras(chunk(cohort, size), extras);
 
     const handleByToken = new Map(
       ctx.participants.map((p) => [p.token, p.handle] as const),
@@ -193,7 +209,7 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
 
     // ---- facilitator / projector ----
     const groupCount = wholeRoom
-      ? tokens.length > 0
+      ? live.length > 0
         ? 1
         : 0
       : groups.length;

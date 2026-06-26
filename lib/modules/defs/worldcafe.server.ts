@@ -13,7 +13,12 @@
 // insights are harvested as submissions tagged `t${tableIndex}:r${round}`.
 
 import { z } from "zod";
-import { cafeRound } from "../groups";
+import {
+  appendCafeExtras,
+  cafeRound,
+  cohortTokens,
+  freezeCohort,
+} from "../groups";
 import type {
   ModuleContext,
   ModuleServerDef,
@@ -97,6 +102,23 @@ function tableCount(ctx: ModuleContext): number {
   return Math.max(1, Math.ceil(n / 4));
 }
 
+// D4 — the round's tables, computed from the FROZEN cohort (so hosts + seated
+// travellers never shift on a mid-session join) with latecomers folded in as
+// extra travellers. computeView and the note handler share this so a note's
+// table tag always matches what the participant is shown.
+function buildTables(
+  ctx: ModuleContext,
+  votes: Record<string, unknown>,
+  round: number,
+): { host: string | null; members: string[] }[] {
+  const numTables = tableCount(ctx);
+  const { cohort, extras } = cohortTokens(
+    votes,
+    ctx.participants.map((p) => p.token),
+  );
+  return appendCafeExtras(cafeRound(cohort, numTables, round), extras);
+}
+
 // ---- module ---------------------------------------------------------------
 
 export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
@@ -120,6 +142,10 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
     needsTimer: true,
     projectable: true,
   },
+  async onEnter(ctx) {
+    // Snapshot the roster so hosts + table membership can't reshuffle on a join.
+    await freezeCohort(ctx.store, ctx.phase.id, ctx.participants.map((p) => p.token));
+  },
   async computeView(ctx) {
     const prompt = (ctx.config.prompt as string) ?? "";
     const captureNotes = Boolean(ctx.config.captureNotes);
@@ -128,8 +154,7 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
     const round = readRound(votes);
 
     const numTables = tableCount(ctx);
-    const tokens = ctx.participants.map((p) => p.token);
-    const tables = cafeRound(tokens, numTables, round);
+    const tables = buildTables(ctx, votes, round);
 
     // token → handle lookup for mapping the deterministic table membership.
     const handleOf = new Map(ctx.participants.map((p) => [p.token, p.handle]));
@@ -218,9 +243,7 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
 
       const votes = await ctx.store.readVotes(ctx.phase.id);
       const round = readRound(votes);
-      const numTables = tableCount(ctx);
-      const tokens = ctx.participants.map((p) => p.token);
-      const tables = cafeRound(tokens, numTables, round);
+      const tables = buildTables(ctx, votes, round);
       const myIdx = tables.findIndex((t) => t.members.includes(me.token));
       if (myIdx === -1) return { ok: false, reason: "no table" };
 
