@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
       status: r.status,
       createdAt: r.createdAt,
       templateId: r.templateId,
+      isSample: Boolean(r.isSample),
     })),
   });
 }

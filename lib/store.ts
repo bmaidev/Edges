@@ -302,6 +302,18 @@ export async function setTimer(
   return writeState({ ...state, timerEndsAt: endsAt }, roomId);
 }
 
+// Replace the ENTIRE session state in a single write, with a fresh monotonic
+// rev. Unlike setPhase/setTimer/setReadaroundIndex (each a read-modify-write of
+// the state key), this takes no `getState` and so can't tear under eventual
+// consistency: the caller computes the whole target object once. Used by the
+// sample-room seeder to land a believable mid-session snapshot atomically.
+export async function replaceState(
+  next: SessionState,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  return writeState(next, roomId);
+}
+
 export async function setReadaroundIndex(
   index: number,
   roomId: string = DEFAULT_ROOM_ID,

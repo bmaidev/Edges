@@ -19,6 +19,70 @@ interface RoomRow {
   topic: string;
   status: string;
   createdAt: number;
+  isSample?: boolean;
+}
+
+// Inlined (not imported from lib/sample) so no server-only code — node:crypto,
+// @vercel/kv — is dragged into the admin client bundle.
+const SAMPLE_SLUG = "sample-demo";
+
+// Seed/reset the demo and open its surfaces. openHost always re-seeds (the only
+// way to obtain a usable facilitator code — rooms persist hashes only), so the
+// admin lands in a live-looking console with zero extra passcode entry.
+function useSampleActions(code: string) {
+  const [busy, setBusy] = useState<null | "host" | "screen" | "reset">(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function post(): Promise<string | null> {
+    const res = await fetch("/api/admin/sample", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setErr(d.error ?? "Couldn't prepare the demo. Try again.");
+      return null;
+    }
+    return (d.facilitatorCode as string) ?? null;
+  }
+
+  async function openHost() {
+    setBusy("host");
+    setErr(null);
+    const fc = await post();
+    setBusy(null);
+    if (fc)
+      window.open(
+        `/r/${SAMPLE_SLUG}/host?tour=1&code=${encodeURIComponent(fc)}`,
+        "_blank",
+        "noreferrer",
+      );
+  }
+
+  async function openScreen() {
+    setBusy("screen");
+    setErr(null);
+    // Only seed if missing/stale, so we don't rotate the code under an open host.
+    const st = await fetch(
+      `/api/admin/sample?code=${encodeURIComponent(code)}`,
+      { cache: "no-store" },
+    )
+      .then((r) => r.json())
+      .catch(() => ({ exists: false, stale: true }));
+    if (!st.exists || st.stale) await post();
+    setBusy(null);
+    window.open(`/r/${SAMPLE_SLUG}/screen?tour=1`, "_blank", "noreferrer");
+  }
+
+  async function reset() {
+    setBusy("reset");
+    setErr(null);
+    await post();
+    setBusy(null);
+  }
+
+  return { busy, err, openHost, openScreen, reset };
 }
 
 export default function AdminPage() {
@@ -81,6 +145,9 @@ function Admin() {
     );
   }
 
+  // The sample room is pinned separately; "zero real rooms" drives first-run.
+  const realRooms = rooms.filter((r) => !r.isSample);
+
   if (showWizard) {
     return (
       <main className="mx-auto w-full max-w-2xl p-6">
@@ -117,14 +184,84 @@ function Admin() {
         <summary className="cursor-pointer text-xs text-muted">Quick create (advanced)</summary>
         <CreateRoom code={code} onCreated={() => load(code)} />
       </details>
+
+      {realRooms.length === 0 && <FirstRunBanner code={code} />}
+
       <div className="mt-6 flex flex-col gap-3">
-        {rooms.length === 0 ? (
-          <p className="text-sm text-muted">No rooms yet. Create one above.</p>
+        <SampleCard code={code} />
+        {realRooms.length === 0 ? (
+          <p className="text-sm text-muted">
+            No rooms of your own yet — create one above, or poke the demo first.
+          </p>
         ) : (
-          rooms.map((r) => <RoomCard key={r.slug} room={r} code={code} />)
+          realRooms.map((r) => <RoomCard key={r.slug} room={r} code={code} />)
         )}
       </div>
     </main>
+  );
+}
+
+// First-run nudge (zero real rooms). Auto-offers but never auto-starts — the
+// calm ethos. Dismissible for the session.
+function FirstRunBanner({ code }: { code: string }) {
+  const [dismissed, setDismissed] = useState(false);
+  const { busy, err, openHost } = useSampleActions(code);
+  if (dismissed) return null;
+  return (
+    <section className="mt-5 rounded-xl border border-accent/40 bg-accent/5 p-4">
+      <p className="font-medium">New here?</p>
+      <p className="mt-1 text-sm text-muted">
+        We&apos;ve loaded a safe demo room you can&apos;t break — seven fake
+        participants, real messy ideas, a live timer. Open it and press Advance,
+        inject a slide, end the session and watch it vanish.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button onClick={openHost} disabled={busy !== null}>
+          {busy === "host" ? "Spinning up…" : "Try the demo room"}
+        </Button>
+        <button
+          onClick={() => setDismissed(true)}
+          className="text-sm text-muted underline"
+        >
+          Skip, I&apos;ll explore
+        </button>
+      </div>
+      {err && <p className="mt-2 text-sm text-[#ff8a8a]">{err}</p>}
+    </section>
+  );
+}
+
+// Pinned demo card — always at the top of the list, visually distinct.
+function SampleCard({ code }: { code: string }) {
+  const { busy, err, openHost, openScreen, reset } = useSampleActions(code);
+  return (
+    <div className="rounded-xl border border-dashed border-accent/60 bg-accent/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="flex items-center gap-2 font-medium">
+            <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+              Demo
+            </span>
+            Sample workshop
+          </p>
+          <p className="text-xs text-muted">
+            7 fake participants — safe to break
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3 text-xs text-accent underline">
+          <button onClick={openHost} disabled={busy !== null}>
+            {busy === "host" ? "opening…" : "open host"}
+          </button>
+          <button onClick={openScreen} disabled={busy !== null}>
+            {busy === "screen" ? "opening…" : "open screen"}
+          </button>
+          <button onClick={reset} disabled={busy !== null}>
+            {busy === "reset" ? "resetting…" : "reset sample"}
+          </button>
+        </div>
+      </div>
+      {err && <p className="mt-2 text-xs text-[#ff8a8a]">{err}</p>}
+    </div>
   );
 }
 
