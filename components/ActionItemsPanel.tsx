@@ -35,15 +35,27 @@ export function ActionItemsPanel({
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
           Action items
         </h2>
-        {items.length > 0 && (
-          <span className="text-xs text-muted">
-            {items.filter((a) => a.status === "open").length} open · {items.length} total
-          </span>
-        )}
+        <div className="flex items-center gap-3 text-xs">
+          {items.length > 0 && (
+            <span className="text-muted">
+              {items.filter((a) => a.status === "open").length} open · {items.length} total
+            </span>
+          )}
+          {items.length > 0 && (
+            <button
+              onClick={() =>
+                cmd("actionItem", { op: { kind: "promote", on: !state.actionItemsPromoted } })
+              }
+              className={`underline ${state.actionItemsPromoted ? "text-accent" : "text-muted"}`}
+            >
+              {state.actionItemsPromoted ? "✓ on the big screen" : "Show on big screen"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row">
