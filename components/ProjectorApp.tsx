@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { usePolledState } from "@/components/usePolledState";
+import { useChime } from "@/components/useChime";
+import { useTimerMilestones } from "@/components/useTimerMilestones";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LobbyScreen } from "@/components/LobbyScreen";
@@ -39,6 +41,17 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
   // E2 — present mode (fullscreen + wake-lock + auto-hiding chrome). Called here,
   // above the early "Connecting…" return, to keep hook order stable.
   const present = usePresentMode();
+  // C6 — room-felt timer cues on the projector. Chime only in present mode (a real
+  // gesture unlocked audio); previously the projector clock was entirely silent.
+  const chime = useChime();
+  const onWarn = useCallback(() => {
+    if (present.active) chime("warn");
+  }, [present.active, chime]);
+  const timerLevel = useTimerMilestones(
+    state?.timerEndsAt ?? null,
+    state?.timerRemainingMs ?? null,
+    onWarn,
+  );
 
   // The participant join link for this room — workshop members scan to walk in
   // (no passcode; handle is optional). apiBase is "/api/r/<slug>".
@@ -199,6 +212,8 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
           fallbackLabel={state.config?.label ?? state.modeName ?? state.topic}
           timerEndsAt={state.timerEndsAt}
           timerRemainingMs={state.timerRemainingMs}
+          lowLevel={timerLevel}
+          onElapsed={() => present.active && chime()}
         />
       )}
     </main>

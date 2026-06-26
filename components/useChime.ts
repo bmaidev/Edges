@@ -2,12 +2,16 @@
 
 import { useCallback, useRef } from "react";
 
-// Soft two-note chime via WebAudio — no asset, no autoplay surprise. Shared by
-// the participant status bar and the facilitate cockpit (chime-on-zero). A
-// nicety, never a requirement: any failure is swallowed.
+// Soft chime via WebAudio — no asset, no autoplay surprise. Shared by the
+// participant status bar, the facilitate cockpit (chime-on-zero), and the phase
+// dissolve. A nicety, never a requirement: any failure is swallowed.
+//
+// C6 — the optional variant softens the cue for a milestone: "warn" is a single
+// gentle note (a "2 minutes left" nudge), "done" the original two-note arrival.
+// The default is "done", so every existing bare `chime()` call is unchanged.
 export function useChime() {
   const ctxRef = useRef<AudioContext | null>(null);
-  return useCallback(() => {
+  return useCallback((variant: "done" | "warn" = "done") => {
     try {
       const Ctor =
         (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
@@ -16,7 +20,7 @@ export function useChime() {
       if (!Ctor) return;
       if (!ctxRef.current) ctxRef.current = new Ctor();
       const ctx = ctxRef.current;
-      [660, 880].forEach((freq, i) => {
+      (variant === "warn" ? [440] : [660, 880]).forEach((freq, i) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.frequency.value = freq;

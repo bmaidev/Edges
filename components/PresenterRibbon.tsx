@@ -14,16 +14,24 @@ export function PresenterRibbon({
   fallbackLabel,
   timerEndsAt,
   timerRemainingMs,
+  lowLevel = null,
+  onElapsed,
 }: {
   sequence: SequenceItem[];
   phaseId: string | null;
   fallbackLabel: string; // when there's no sequence (a single-mode / lobby run)
   timerEndsAt: number | null;
   timerRemainingMs: number | null;
+  // C6 — the room-felt low-time level (smallest breached threshold, or null) for a
+  // calm amber tint on the projector clock, + a chime when the clock hits zero
+  // (the projector was silent before).
+  lowLevel?: number | null;
+  onElapsed?: () => void;
 }) {
   const nav = phaseNav(sequence, phaseId);
   const hasTimer = timerEndsAt != null || timerRemainingMs != null;
   const paused = timerEndsAt == null && timerRemainingMs != null;
+  const lowTime = lowLevel != null;
   const nowLabel = nav.current?.label ?? fallbackLabel;
 
   // Above ~10 phases the dot-segments get too dense — collapse to a single bar.
@@ -80,11 +88,15 @@ export function PresenterRibbon({
           </span>
         )}
         {hasTimer && (
-          <span className="flex items-center gap-2 font-mono text-accent">
+          <span className={`flex items-center gap-2 font-mono ${lowTime ? "text-[#ffb454]" : "text-accent"}`}>
             {paused && (
               <span className="text-[10px] uppercase tracking-wide text-muted">paused</span>
             )}
-            <Countdown endsAt={timerEndsAt} remainingMs={timerRemainingMs} />
+            <Countdown
+              endsAt={timerEndsAt}
+              remainingMs={timerRemainingMs}
+              onElapsed={onElapsed}
+            />
           </span>
         )}
       </div>
