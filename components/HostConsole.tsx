@@ -15,6 +15,7 @@ import { ParticipationSignal } from "@/lib/modules/render-kit";
 import { ConnectionChip } from "@/components/ConnectionStrip";
 import { useConnection } from "@/components/useConnection";
 import { PreflightPill, PreflightSheet } from "@/components/PreflightPanel";
+import { HandoverPanel } from "@/components/HandoverPanel";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -418,7 +419,8 @@ export function HostConsole({
                 setConfirm({ kind: "reopen", phaseId, label, count })
               }
             />
-            <SessionControls state={s} cmd={cmd} />
+            <HandoverPanel state={s} apiBase={apiBase} code={code} />
+            <SessionControls cmd={cmd} />
           </>
         )}
       </div>
@@ -1188,28 +1190,10 @@ function PatternPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   );
 }
 
-function SessionControls({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
-  function exportJson() {
-    const data = {
-      mode: state.mode,
-      exportedAt: new Date().toISOString(),
-      patterns: state.patterns.map((p) => p.name),
-      injectedContent: state.allContent.map((c) => ({ type: c.type, title: c.title, body: c.body })),
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "edges-export.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+function SessionControls({ cmd }: { cmd: Cmd }) {
   const [confirming, setConfirming] = useState<"end" | "archive" | null>(null);
   return (
     <Panel title="Session controls">
-      <Button variant="ghost" onClick={exportJson}>
-        Download export
-      </Button>
       <Button variant="ghost" onClick={() => setConfirming("archive")}>
         Archive (save report + wipe)
       </Button>

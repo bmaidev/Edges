@@ -367,7 +367,7 @@ export interface RoomArchive {
 // Regenerated fresh at archive time, so it never depends on a live synthesis
 // surviving the wipe. Returns null when AI is unavailable or there's nothing
 // to synthesise.
-async function generateSessionReport(
+export async function generateSessionReport(
   topic: string,
   sessionName: string | null,
   submissions: { phaseId: string; text: string; tag: string | null }[],
@@ -432,11 +432,34 @@ function archiveKey(slug: string): string {
   return `rooms:archive:${slug}`;
 }
 
-// Snapshot the room's live data into a durable archive, then mark it archived.
-// The live session keys are wiped separately (endSession) by the caller.
-export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
+// A structural, AI-free report so the handover is never empty when no API key is
+// set — counts + the facilitator's curated pattern names, faithful to the data.
+function buildFallbackReport(
+  submissionCount: number,
+  patternNames: string[],
+): SessionReport {
+  return {
+    summary:
+      `${submissionCount} ${submissionCount === 1 ? "contribution" : "contributions"} across the session.` +
+      (patternNames.length
+        ? ` The facilitator grouped them into: ${patternNames.join(", ")}.`
+        : ""),
+    themes: patternNames.map((name) => ({ title: name, detail: "" })),
+    tensions: [],
+    decisions: [],
+    nextSteps: [],
+    generatedAt: Date.now(),
+  };
+}
+
+// Compose the durable archive snapshot from the LIVE room state. REUSES an
+// existing report rather than re-spending Opus (and never clobbers it) — the
+// report is generated once (by buildReport or the first archive) and carried
+// forward. Falls back to a structural report when AI is unavailable.
+async function composeArchive(slug: string): Promise<RoomArchive | null> {
   const room = await getRoom(slug);
   if (!room) return null;
+  const existing = await getArchive(slug);
   const fs = await getFacilitatorState(slug);
   const submissions = fs.submissions.map((s) => ({
     phaseId: s.phaseId,
@@ -445,33 +468,64 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
     tag: s.tag ?? null,
   }));
   const patternNames = fs.patterns.map((p) => p.name);
-  // Regenerate a whole-session AI report from the raw contributions (survives
-  // the live-data wipe, unlike any in-session synthesis stored in votes).
-  const report = await generateSessionReport(
-    room.topic ?? fs.topic ?? "",
-    fs.modeName,
-    submissions.map((s) => ({ phaseId: s.phaseId, text: s.text, tag: s.tag })),
-    patternNames,
-  );
-  const archive: RoomArchive = {
+  let report = existing?.report ?? null;
+  if (!report) {
+    report =
+      (await generateSessionReport(
+        room.topic ?? fs.topic ?? "",
+        fs.modeName,
+        submissions.map((s) => ({ phaseId: s.phaseId, text: s.text, tag: s.tag })),
+        patternNames,
+      )) ?? buildFallbackReport(submissions.length, patternNames);
+  }
+  return {
     slug,
     name: room.name,
-    archivedAt: Date.now(),
+    archivedAt: existing?.archivedAt ?? Date.now(),
     sessionName: fs.modeName,
     sequence: fs.sequence,
     patterns: patternNames.map((name) => ({ name })),
     submissions,
-    content: fs.allContent.map((c) => ({
-      type: c.type,
-      title: c.title,
-      body: c.body,
-    })),
+    content: fs.allContent.map((c) => ({ type: c.type, title: c.title, body: c.body })),
     participantCount: fs.participantCount,
     report,
   };
-  await db.set(archiveKey(slug), archive);
-  await updateRoom(slug, { status: "archived" });
-  return archive;
+}
+
+// F1 — build the client-ready report from the LIVE session WITHOUT wiping it, so
+// the facilitator can preview/export the handover mid-session. Serialised under
+// the room lock + read-merge-write, so a concurrent build/archive never clobbers.
+export async function buildReport(slug: string): Promise<RoomArchive | null> {
+  const res = await withLock(
+    slug,
+    "report",
+    async () => {
+      const archive = await composeArchive(slug);
+      if (archive) await db.set(archiveKey(slug), archive);
+      return archive;
+    },
+    { ttlSeconds: 30 },
+  );
+  return res.ok ? res.value : getArchive(slug);
+}
+
+// Snapshot the room's live data into a durable archive, then mark it archived.
+// The live session keys are wiped separately (endSession) by the caller. Reuses
+// any report already built (no double Opus spend, no clobber).
+export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
+  const res = await withLock(
+    slug,
+    "report",
+    async () => {
+      const archive = await composeArchive(slug);
+      if (!archive) return null;
+      await db.set(archiveKey(slug), archive);
+      await updateRoom(slug, { status: "archived" });
+      return archive;
+    },
+    { ttlSeconds: 30 },
+  );
+  return res.ok ? res.value : getArchive(slug);
 }
 
 export async function getArchive(slug: string): Promise<RoomArchive | null> {
