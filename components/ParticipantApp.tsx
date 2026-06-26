@@ -8,6 +8,7 @@ import { useConnection, type ConnState } from "@/components/useConnection";
 import { ConnectionStrip } from "@/components/ConnectionStrip";
 import { useResilientAct } from "@/components/useOfflineQueue";
 import { AttributionChip } from "@/components/AttributionChip";
+import { A11yProvider } from "@/components/A11yProvider";
 import { TakeawayScreen } from "@/components/TakeawayScreen";
 import { Button, Screen } from "@/components/ui";
 import { getClientRenderer } from "@/lib/modules/registry.client";
@@ -16,8 +17,18 @@ import { STRINGS } from "@/lib/strings";
 import type { PublicState } from "@/lib/types";
 
 // The participant experience for a room, parameterized by API base
-// (apiBase="/api/r/{slug}"). Mounted by /r/[room].
+// (apiBase="/api/r/{slug}"). Mounted by /r/[room]. Wrapped in the A11yProvider so
+// the per-device accessibility control + prefs apply to the whole participant
+// tree (never the admin/builder trees).
 export function ParticipantApp({ apiBase }: { apiBase: string }) {
+  return (
+    <A11yProvider>
+      <ParticipantInner apiBase={apiBase} />
+    </A11yProvider>
+  );
+}
+
+function ParticipantInner({ apiBase }: { apiBase: string }) {
   const [joined, setJoined] = useState(false);
   const [handle, setHandle] = useState("Anonymous");
   const [token, setToken] = useState<string | undefined>(undefined);
@@ -242,6 +253,20 @@ function PhaseScreen({
 }) {
   const { act, pending } = useResilientAct(apiBase, token, handle, state.phaseId ?? "");
   const pulse = useContentPulse(state.contentVersion);
+  // D2 — announce a phase change to screen readers (never on mount or a poll).
+  const [announce, setAnnounce] = useState("");
+  const prevPhase = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const pid = state.phaseId ?? null;
+    if (prevPhase.current === undefined) {
+      prevPhase.current = pid;
+      return;
+    }
+    if (pid !== prevPhase.current) {
+      prevPhase.current = pid;
+      setAnnounce(`Now: ${state.config?.label ?? "new phase"}`);
+    }
+  }, [state.phaseId, state.config?.label]);
   // C2 — re-pulse the prompt when the facilitator nudges the room (nudgedAt is a
   // rising timestamp, so it triggers the same gentle pulse as new content).
   const nudgePulse = useContentPulse(state.nudgedAt ?? 0);
@@ -285,6 +310,9 @@ function PhaseScreen({
   return (
     <Screen>
       <ConnectionStrip conn={conn} />
+      <div className="sr-only" role="status" aria-live="polite">
+        {announce}
+      </div>
       <StatusBar state={state} />
       <AttributionChip attribution={state.attribution} handle={handle} />
       <ErrorBoundary

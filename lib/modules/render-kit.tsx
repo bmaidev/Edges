@@ -64,10 +64,16 @@ export function StatusLine({
   onRetry?: () => void;
 }) {
   if (status === "sending")
-    return <p className="text-center text-xs text-muted">Sending…</p>;
+    return (
+      <p role="status" aria-live="polite" className="text-center text-xs text-muted">
+        Sending…
+      </p>
+    );
   if (status === "sent")
     return (
-      <p className="animate-fadeInUp text-center text-xs text-accent">{sentLabel}</p>
+      <p role="status" aria-live="polite" className="animate-fadeInUp text-center text-xs text-accent">
+        {sentLabel}
+      </p>
     );
   if (status === "error")
     return (
