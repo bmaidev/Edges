@@ -12,6 +12,7 @@ import {
   type ThemeDraft,
 } from "@/components/admin/ThemePanel";
 import { JoinScreenPreview } from "@/components/admin/JoinScreenPreview";
+import { TourCoach } from "@/components/TourCoach";
 
 interface RoomRow {
   slug: string;
@@ -101,6 +102,11 @@ function Admin() {
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  // Tour: explicit-start only (calm ethos). `tourSeen` is the durable per-admin
+  // flag that suppresses the first-run nudge across devices once toured.
+  const [tourSeen, setTourSeen] = useState(true); // assume seen until told otherwise
+  const [showTour, setShowTour] = useState(false);
+  const [tourKey, setTourKey] = useState(0);
 
   useEffect(() => {
     const c = params.get("code");
@@ -120,6 +126,33 @@ function Admin() {
     setRooms(data.rooms ?? []);
     setAuthed(true);
     setErr(null);
+    // Best-effort: has this admin already toured? (suppresses the first-run nudge)
+    fetch(`/api/admin/tour-seen?code=${encodeURIComponent(c)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((d) => setTourSeen(Boolean(d.seen)))
+      .catch(() => setTourSeen(false));
+  }, []);
+
+  const markTourSeen = useCallback(() => {
+    setTourSeen(true);
+    fetch("/api/admin/tour-seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    }).catch(() => {});
+  }, [code]);
+
+  const startTour = useCallback(() => {
+    try {
+      localStorage.removeItem("edges_tour_done_admin");
+      localStorage.removeItem("edges_tour_step_admin");
+    } catch {
+      /* ignore */
+    }
+    setTourKey((k) => k + 1);
+    setShowTour(true);
   }, []);
 
   useEffect(() => {
@@ -171,13 +204,28 @@ function Admin() {
 
   return (
     <main className="mx-auto w-full max-w-2xl p-6 lg:max-w-3xl">
+      {showTour && (
+        <TourCoach
+          key={tourKey}
+          surface="admin"
+          onComplete={() => {
+            setShowTour(false);
+            markTourSeen();
+          }}
+        />
+      )}
       <div className="flex items-center justify-between">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Rooms</h1>
-        <a href="/help?doc=admin-guide" className="text-sm text-accent underline">
-          📖 Guides
-        </a>
+        <div className="flex items-center gap-4 text-sm">
+          <button onClick={startTour} className="text-accent underline">
+            {tourSeen ? "Replay tour" : "Take the tour"}
+          </button>
+          <a href="/help?doc=admin-guide" className="text-accent underline">
+            📖 Guides
+          </a>
+        </div>
       </div>
-      <div className="mt-4">
+      <div className="mt-4" data-tour-id="create-workshop">
         <Button onClick={() => setShowWizard(true)}>＋ Create a workshop</Button>
       </div>
       <details className="mt-3">
@@ -185,9 +233,11 @@ function Admin() {
         <CreateRoom code={code} onCreated={() => load(code)} />
       </details>
 
-      {realRooms.length === 0 && <FirstRunBanner code={code} />}
+      {realRooms.length === 0 && !tourSeen && (
+        <FirstRunBanner onStartTour={startTour} onDismiss={markTourSeen} />
+      )}
 
-      <div className="mt-6 flex flex-col gap-3">
+      <div className="mt-6 flex flex-col gap-3" data-tour-id="sample-card">
         <SampleCard code={code} />
         {realRooms.length === 0 ? (
           <p className="text-sm text-muted">
@@ -201,32 +251,30 @@ function Admin() {
   );
 }
 
-// First-run nudge (zero real rooms). Auto-offers but never auto-starts — the
-// calm ethos. Dismissible for the session.
-function FirstRunBanner({ code }: { code: string }) {
-  const [dismissed, setDismissed] = useState(false);
-  const { busy, err, openHost } = useSampleActions(code);
-  if (dismissed) return null;
+// First-run nudge (zero real rooms, not yet toured). Auto-offers but never
+// auto-starts — the calm ethos. Skipping marks the durable seen flag so it
+// doesn't re-nag.
+function FirstRunBanner({
+  onStartTour,
+  onDismiss,
+}: {
+  onStartTour: () => void;
+  onDismiss: () => void;
+}) {
   return (
     <section className="mt-5 rounded-xl border border-accent/40 bg-accent/5 p-4">
       <p className="font-medium">New here?</p>
       <p className="mt-1 text-sm text-muted">
-        We&apos;ve loaded a safe demo room you can&apos;t break — seven fake
-        participants, real messy ideas, a live timer. Open it and press Advance,
-        inject a slide, end the session and watch it vanish.
+        Take the 5-minute tour — we&apos;ll point you at a safe demo room you
+        can&apos;t break: seven fake participants, real messy ideas, a live
+        timer. Press Advance, inject a slide, end the session and watch it vanish.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button onClick={openHost} disabled={busy !== null}>
-          {busy === "host" ? "Spinning up…" : "Try the demo room"}
-        </Button>
-        <button
-          onClick={() => setDismissed(true)}
-          className="text-sm text-muted underline"
-        >
+        <Button onClick={onStartTour}>Start tour</Button>
+        <button onClick={onDismiss} className="text-sm text-muted underline">
           Skip, I&apos;ll explore
         </button>
       </div>
-      {err && <p className="mt-2 text-sm text-[#ff8a8a]">{err}</p>}
     </section>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LobbyScreen } from "@/components/LobbyScreen";
+import { TourCoach } from "@/components/TourCoach";
 import { bootToken } from "@/lib/magicLink";
 import type { PublicState } from "@/lib/types";
 
@@ -36,6 +37,33 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
     setJoinUrl(`${window.location.origin}/r/${slug}`);
   }, [slug]);
 
+  // A3 tour: `?tour=1` shows a one-time "this is the big screen" ribbon that
+  // auto-hides after a few seconds OR on the next host phase advance (the polled
+  // phaseId change), and mounts the screen coach.
+  const [tour, setTour] = useState(false);
+  const [ribbon, setRibbon] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tour") === "1") {
+      setTour(true);
+      setRibbon(true);
+      const t = window.setTimeout(() => setRibbon(false), 6000);
+      return () => window.clearTimeout(t);
+    }
+  }, []);
+  const phaseId = state?.phaseId ?? null;
+  const seenPhase = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    // Skip the initial observation; only an actual advance dismisses the ribbon.
+    if (seenPhase.current === undefined) {
+      seenPhase.current = phaseId;
+      return;
+    }
+    if (phaseId !== seenPhase.current) {
+      seenPhase.current = phaseId;
+      setRibbon(false);
+    }
+  }, [phaseId]);
+
   if (!state) {
     return (
       <main className="flex min-h-screen items-center justify-center text-2xl text-muted">
@@ -51,6 +79,12 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
 
   return (
     <main className="flex min-h-screen flex-col">
+      {tour && <TourCoach surface="screen" />}
+      {ribbon && (
+        <div className="bg-accent/15 px-10 py-3 text-center text-lg text-accent">
+          This is what the room sees on the big screen.
+        </div>
+      )}
       <div className="flex items-center justify-between border-b border-border px-10 py-5 text-xl text-muted">
         <span>{state.config?.label ?? state.modeName ?? state.topic}</span>
         <span className="flex items-center gap-4">
