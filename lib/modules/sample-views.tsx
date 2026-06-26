@@ -23,6 +23,14 @@ import type {
   ScaleView,
   WordCloudView,
 } from "./views";
+// Fleet-module view shapes. type-only imports are erased before bundling, so the
+// zod/store inside these .server files never reaches the client.
+import type { SpectrogramView } from "./defs/spectrogram.server";
+import type { GradientView } from "./defs/gradient.server";
+import type { MarketplaceView } from "./defs/marketplace.server";
+import type { MinSpecsView } from "./defs/minspecs.server";
+import type { SynthesisFacilitatorView } from "./defs/synthesis.server";
+import type { NeedsFacilitatorView } from "./defs/needs.server";
 
 type Cfg = Record<string, unknown>;
 const str = (c: Cfg, k: string, d = "") => (typeof c[k] === "string" ? (c[k] as string) : d);
@@ -159,6 +167,93 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
       mine: null,
     };
   },
+  // ---- fleet modules (the unfamiliar ones B2 is most for) ----
+  spectrogram: (c): SpectrogramView => {
+    const poles = arr(c, "poleLabels");
+    return {
+      statement: str(c, "statement") || str(c, "label", "How strongly do you agree?"),
+      poleLabels: poles.length >= 2 ? [poles[0], poles[1]] : ["strongly disagree", "strongly agree"],
+      mode: "continuous",
+      buckets: 5,
+      distribution: [
+        { binCenter: 0.1, count: 1 },
+        { binCenter: 0.3, count: 2 },
+        { binCenter: 0.5, count: 1 },
+        { binCenter: 0.7, count: 3 },
+        { binCenter: 0.9, count: 2 },
+      ],
+      mean: 0.58,
+      count: 9,
+      mine: null,
+      allowReasons: Boolean(c.allowReasons),
+      beforeAfter: false,
+      stage: "after",
+      reasons: [],
+    };
+  },
+  gradient: (c): GradientView => {
+    const levels = ["✊ block", "concerns", "lukewarm", "support", "🖐 all in"];
+    return {
+      proposal: str(c, "proposal") || str(c, "label", "Do we have consent to proceed?"),
+      scale: (str(c, "scale") as GradientView["scale"]) || "fist5",
+      levels,
+      distribution: [0, 1, 2, 4, 3],
+      total: 10,
+      dissentCount: 1,
+      dissentLevels: [0, 1],
+      mine: null,
+    };
+  },
+  marketplace: (c): MarketplaceView => {
+    const budget = num(c, "budget", 100);
+    return {
+      prompt: str(c, "prompt") || str(c, "label", "Invest in the ideas you believe in"),
+      currencyLabel: str(c, "currencyLabel", "credits"),
+      budget,
+      remaining: Math.round(budget * 0.6),
+      ideas: [
+        { id: "i1", text: "A weekly demo to share progress", total: 220, mine: Math.round(budget * 0.4) },
+        { id: "i2", text: "Pair-programming Fridays", total: 140, mine: 0 },
+        { id: "i3", text: "A shared customer-call rota", total: 90, mine: 0 },
+      ],
+      showLeaderboard: true,
+    };
+  },
+  minspecs: (c): MinSpecsView => ({
+    phase: "expand",
+    prompt: str(c, "prompt") || str(c, "label", "What are the rules we must keep?"),
+    rules: [
+      { id: "r1", text: "Every decision has a named owner", keep: 6, cut: 1, survivor: true },
+      { id: "r2", text: "No meeting without an agenda", keep: 4, cut: 3, survivor: true },
+      { id: "r3", text: "Ship behind a flag", keep: 2, cut: 5, survivor: false },
+    ],
+  }),
+  synthesis: (): SynthesisFacilitatorView => ({
+    hasResult: true,
+    bullets: [
+      "The room keeps returning to trust as the unlock",
+      "Speed and quality are framed as a trade-off no one wants",
+    ],
+    tension: "Move fast vs. get it right",
+    inputCount: 12,
+    available: true,
+    promoted: true,
+    stale: false,
+  }),
+  needs: (): NeedsFacilitatorView => ({
+    hasResult: true,
+    needs: [
+      {
+        need: "Confidence the work will land",
+        jtbd: "When I commit to a plan, I want early signal it's working, so I can adjust without losing face.",
+        evidence: ["“we never know if it's working until too late”", "“I want a faster feedback loop”"],
+        confidence: "high",
+      },
+    ],
+    inputCount: 12,
+    available: true,
+    stale: false,
+  }),
 };
 
 // Returns a sample view for the module, or null when no factory exists yet (the

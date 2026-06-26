@@ -9,8 +9,9 @@ describe("getSampleView", () => {
   it("returns a view for every module that has a factory, null otherwise", () => {
     expect(getSampleView("poll", {})).not.toBeNull();
     expect(getSampleView("capture", {})).not.toBeNull();
+    expect(getSampleView("spectrogram", {})).not.toBeNull(); // fleet modules covered
     // a module without a factory degrades to null (caller shows a fallback)
-    expect(getSampleView("synthesis", {})).toBeNull();
+    expect(getSampleView("fishbowl", {})).toBeNull();
   });
 
   it("never throws on defaultConfig or on mutated configs", () => {
