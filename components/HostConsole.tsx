@@ -14,6 +14,7 @@ import {
 import { ParticipationSignal } from "@/lib/modules/render-kit";
 import { ConnectionChip } from "@/components/ConnectionStrip";
 import { useConnection } from "@/components/useConnection";
+import { PreflightPill, PreflightSheet } from "@/components/PreflightPanel";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -78,6 +79,7 @@ export function HostConsole({
   const [confirm, setConfirm] = useState<
     { kind: "reset" | "reopen"; phaseId: string; label: string; count: number } | null
   >(null);
+  const [showPreflight, setShowPreflight] = useState(false); // H2 sheet
   type Tab = "run" | "preview" | "content" | "patterns" | "session";
   const [tab, setTab] = useState<Tab>("run");
   const slug = apiBase.replace("/api/r/", "");
@@ -300,30 +302,49 @@ export function HostConsole({
               {t.label}
             </button>
           ))}
-          {/* H1 — room-wide "who's still with you", every phase. */}
-          {s.roomHealth && s.roomHealth.present > 0 && (
-            <span
-              className="ml-auto mr-3 shrink-0 text-xs text-muted tabular-nums"
-              title="Participants whose connection is fresh"
-            >
-              {s.roomHealth.here} of {s.roomHealth.present} with you
-            </span>
-          )}
-          {/* H1 — this device's honest connection state. */}
-          <span
-            className={`${s.roomHealth && s.roomHealth.present > 0 ? "" : "ml-auto"} mr-2 shrink-0`}
-          >
+          <div className="ml-auto flex shrink-0 items-center gap-3 pl-2">
+            {/* H2 — quiet pre-flight pill; appears only when something needs a look. */}
+            {s.readiness &&
+              s.readiness.checks.some(
+                (c) => c.severity === "blocker" || c.severity === "warning",
+              ) && (
+                <PreflightPill
+                  readiness={s.readiness}
+                  onOpen={() => setShowPreflight(true)}
+                />
+              )}
+            {/* H1 — room-wide "who's still with you", every phase. */}
+            {s.roomHealth && s.roomHealth.present > 0 && (
+              <span
+                className="text-xs text-muted tabular-nums"
+                title="Participants whose connection is fresh"
+              >
+                {s.roomHealth.here} of {s.roomHealth.present} with you
+              </span>
+            )}
+            {/* H1 — this device's honest connection state. */}
             <ConnectionChip conn={conn} />
-          </span>
-          {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
-          <a
-            href={`/r/${slug}/facilitate`}
-            className="shrink-0 whitespace-nowrap rounded-lg border border-accent/40 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
-          >
-            ⛶ Facilitate
-          </a>
+            {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
+            <a
+              href={`/r/${slug}/facilitate`}
+              className="whitespace-nowrap rounded-lg border border-accent/40 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+            >
+              ⛶ Facilitate
+            </a>
+          </div>
         </div>
       </div>
+
+      {showPreflight && s.readiness && (
+        <PreflightSheet
+          readiness={s.readiness}
+          onClose={() => setShowPreflight(false)}
+          onRemedy={(t) => {
+            setTab(t);
+            setShowPreflight(false);
+          }}
+        />
+      )}
 
       {cmdError && (
         <div className="bg-[#5a2a2a] px-4 py-2 text-center text-sm text-[#ffd7d7]">

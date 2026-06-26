@@ -111,7 +111,7 @@ export const promptrelayModule: ModuleServerDef<PromptRelayConfig> = {
   // The assembled prompt and the AI result are room-facing — everyone sees them
   // (contributor handles are stripped for non-facilitator roles in computeView).
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: { usesAi: true, gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

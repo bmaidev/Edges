@@ -186,7 +186,7 @@ export const synthesisModule: ModuleServerDef<SynthesisConfig> = {
     bulletCount: DEFAULT_BULLET_COUNT,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "none",
+  capabilities: { usesAi: true, gatherSource: "none",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

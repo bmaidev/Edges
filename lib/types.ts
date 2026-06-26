@@ -276,10 +276,29 @@ export interface ParticipationSignal {
   nudgedAt?: number; // central re-pulse field (Full vision); unused in MVP
 }
 
+// H2 — pre-flight readiness. Advisory only: surfaced as a pill+sheet, NEVER
+// physically gates advancing (facilitator authority is preserved). Severity
+// ordering is purely visual. Content-free, derived, never stored.
+export type Severity = "blocker" | "warning" | "info" | "pass";
+export interface ReadinessCheck {
+  id: string;
+  severity: Severity;
+  title: string;
+  detail?: string;
+  phaseId?: string;
+  remedyTab?: "session" | "content"; // which host tab helps fix it
+}
+export interface Readiness {
+  overall: Severity; // the worst severity among the checks
+  checks: ReadinessCheck[];
+}
+
 export interface FacilitatorState extends PublicState {
   submissions: Submission[];
   participants: Participant[];
   allContent: ContentItem[];
   // H1 — room-wide "who's still with you" (every phase). Derived, never stored.
   roomHealth?: { present: number; here: number } | null;
+  // H2 — pre-flight readiness for the built session. Advisory.
+  readiness?: Readiness | null;
 }

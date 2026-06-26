@@ -237,7 +237,7 @@ export const issuemapModule: ModuleServerDef<IssueMapConfig> = {
   // The map is room-facing (AI-organised, not raw personal submissions), so the
   // same payload is shown to everyone.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes",
+  capabilities: { usesAi: true, gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
