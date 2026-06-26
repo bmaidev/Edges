@@ -117,6 +117,20 @@ body.a11y-readable {
   font-family: var(--font-readable), system-ui, -apple-system, sans-serif;
 }
 
+/* E2 — present-mode letterbox: the CSS fallback when the Fullscreen API is denied
+   or unavailable. Pins the projector to the viewport over a black surround so the
+   wall still reads as a dedicated screen. `.controls-hidden` blanks the cursor
+   after a few idle seconds (driven by usePresentMode). */
+.cinema {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: #000;
+}
+.controls-hidden {
+  cursor: none;
+}
+
 /* Manual reduce-motion (in addition to the prefers-reduced-motion media query). */
 body.a11y-reduce-motion *,
 body.a11y-reduce-motion *::before,
