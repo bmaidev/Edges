@@ -20,7 +20,7 @@ import type { MinSpecsRule, MinSpecsView } from "./minspecs.server";
 
 // ---- participant ----------------------------------------------------------
 
-const MinSpecsParticipant: Renderer = ({ view, act }) => {
+const MinSpecsParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as MinSpecsView;
   const [text, setText] = useState("");
   const { status, setStatus } = useSend(act);
@@ -118,6 +118,7 @@ const MinSpecsParticipant: Renderer = ({ view, act }) => {
           </p>
         </div>
         <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
           value={text}
           onChange={setText}
           placeholder="A rule or must…"

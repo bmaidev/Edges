@@ -28,7 +28,7 @@ import type {
   StationsProjectorView,
 } from "./stations.server";
 
-const StationsParticipant: Renderer = ({ view, act }) => {
+const StationsParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as StationsParticipantView;
   const [text, setText] = useState("");
   const { status, setStatus } = useSend(act);
@@ -92,6 +92,7 @@ const StationsParticipant: Renderer = ({ view, act }) => {
           ) : (
             <div className="w-full max-w-sm pt-2 text-left">
               <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
                 value={text}
                 onChange={setText}
                 placeholder={`What stood out at ${v.stationName}?`}

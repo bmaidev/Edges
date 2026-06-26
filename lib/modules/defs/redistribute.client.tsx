@@ -46,7 +46,7 @@ function framing(mode: Mode): { intro: string; job: string; placeholder: string 
   }
 }
 
-const RedistributeParticipant: Renderer = ({ view, act }) => {
+const RedistributeParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as RedistributeParticipantView;
   const f = framing(v.mode);
   const [text, setText] = useState("");
@@ -107,7 +107,8 @@ const RedistributeParticipant: Renderer = ({ view, act }) => {
         {v.prompt && (
           <p className="text-base leading-snug text-white/90">{v.prompt}</p>
         )}
-        <VoiceTextarea value={text} onChange={setText} placeholder={f.placeholder} />
+        <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`} value={text} onChange={setText} placeholder={f.placeholder} />
         <StatusLine status={status} sentLabel="Sent." onRetry={submit} />
       </div>
       <StickyAction label="Submit" disabled={!text.trim()} onClick={submit} />

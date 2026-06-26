@@ -21,7 +21,7 @@ import type {
 
 // ---- participant ----------------------------------------------------------
 
-const PreworkParticipant: Renderer = ({ view, act }) => {
+const PreworkParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as PreworkView;
   const pv = v.for === "participant" ? (v as PreworkParticipantView) : null;
 
@@ -60,6 +60,7 @@ const PreworkParticipant: Renderer = ({ view, act }) => {
         <p className="text-lg font-medium leading-snug">{pv.prompt}</p>
 
         <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
           value={text}
           onChange={setText}
           placeholder={pv.placeholder}

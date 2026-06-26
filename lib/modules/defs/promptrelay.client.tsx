@@ -22,7 +22,7 @@ import type { PromptRelayView } from "./promptrelay.server";
 
 // ---- participant ----------------------------------------------------------
 
-const PromptRelayParticipant: Renderer = ({ view, act }) => {
+const PromptRelayParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as PromptRelayView;
   const kinds = v.segmentKinds.length > 0 ? v.segmentKinds : ["segment"];
   const [kind, setKind] = useState<string>(kinds[0]);
@@ -73,6 +73,7 @@ const PromptRelayParticipant: Renderer = ({ view, act }) => {
 
         <div className="flex flex-col gap-2">
           <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
             value={text}
             onChange={(next) => setText(next.slice(0, 2000))}
             placeholder={`Add a "${kind}" to the prompt…`}

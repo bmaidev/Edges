@@ -20,7 +20,7 @@ import type {
   Twentyfive10ResultsView,
 } from "./twentyfive10.server";
 
-const Twentyfive10Participant: Renderer = ({ view, act }) => {
+const Twentyfive10Participant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as Twentyfive10ParticipantView;
   // Hooks unconditional, before any early return.
   const [text, setText] = useState("");
@@ -76,6 +76,7 @@ const Twentyfive10Participant: Renderer = ({ view, act }) => {
             Just one. Make it bold — no one will know it&apos;s yours.
           </p>
           <VoiceTextarea
+            draftKey={`edges_draft:${token}:${phaseId}`}
             value={text}
             onChange={setText}
             placeholder="Your one bold idea…"
