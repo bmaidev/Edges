@@ -1,6 +1,6 @@
 {
   "name": "edges-v2",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A calm, privacy-first, multi-room facilitation platform. Named facilitation methods are configured chains of a few irreducible interaction primitives.",
   "license": "MIT",
