@@ -28,6 +28,7 @@ import {
   reorderPatterns,
   resumeTimer,
   setMode,
+  setSpotlight,
   tryNudge,
   setPhase,
   setPhases,
@@ -85,6 +86,9 @@ const COMMAND_CAP: Record<string, Capability> = {
   undo: "advance",
   resetPhase: "curate",
   reopenPhase: "curate",
+  // C4 — spotlight a response to the projector. A live nav-tier move (same as
+  // setPhase): facilitator + cohost can do it; NOT the admin-only `configure`.
+  spotlight: "advance",
   addContent: "inject",
   updateContent: "inject",
   deleteContent: "inject",
@@ -351,6 +355,18 @@ export async function POST(
           role ?? "facilitator",
         ),
       });
+    case "spotlight": {
+      // Parse the ref: a submission id wins; else a literal text; else clear.
+      // A blank/absent payload clears — so the same command both sets and dismisses.
+      let ref: import("@/lib/types").SpotlightRef | null = null;
+      if (typeof a.id === "string" && a.id) ref = { kind: "submission", id: a.id };
+      else if (typeof a.text === "string" && a.text.trim())
+        ref = { kind: "literal", text: a.text };
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setSpotlight(ref, room), role ?? "facilitator"),
+      });
+    }
     case "addContent":
       return NextResponse.json({
         ok: true,

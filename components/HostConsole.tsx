@@ -768,6 +768,22 @@ function SessionHeader({
           Clear
         </button>
       </div>
+      {/* C4 — a persistent reminder that something is on the big screen, with a
+          one-tap clear, available from any host tab (not just the submissions panel). */}
+      {state.spotlightRef && (
+        <div className="mt-2 flex items-center gap-2 rounded-md border border-accent/50 bg-accent/10 px-2.5 py-1.5 text-xs">
+          <span className="shrink-0 text-accent">● On screen</span>
+          <span className="min-w-0 flex-1 truncate text-muted">
+            {state.spotlight?.text ?? ""}
+          </span>
+          <button
+            className="shrink-0 rounded border border-border px-2 py-0.5 hover:border-accent"
+            onClick={() => cmd("spotlight", {})}
+          >
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1065,8 +1081,16 @@ function SubmissionsPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd })
       {subs.length === 0 ? (
         <Empty>No submissions in this phase yet.</Empty>
       ) : (
-        subs.map((s) => (
-          <div key={s.id} className="rounded-lg border border-border bg-surface p-3">
+        subs.map((s) => {
+          // C4 — is THIS card the one on the big screen right now?
+          const onScreen =
+            state.spotlightRef?.kind === "submission" &&
+            state.spotlightRef.id === s.id;
+          return (
+          <div
+            key={s.id}
+            className={`rounded-lg border bg-surface p-3 ${onScreen ? "border-accent ring-1 ring-accent/60" : "border-border"}`}
+          >
             <div className="flex items-center justify-between text-xs text-muted">
               <span>
                 {s.handle}
@@ -1080,6 +1104,15 @@ function SubmissionsPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd })
                 value={s.text}
                 onSave={(text) => cmd("updateSubmission", { id: s.id, text })}
               />
+              {/* C4 — push to / pull from the projector. Tapping the spotlit one clears it. */}
+              <button
+                className={onScreen ? "text-accent underline" : "text-muted underline hover:text-white"}
+                onClick={() =>
+                  cmd("spotlight", onScreen ? {} : { id: s.id })
+                }
+              >
+                {onScreen ? "on screen — tap to clear" : "spotlight"}
+              </button>
               <button
                 className="text-[#ff8a8a] underline"
                 onClick={() => cmd("deleteSubmission", { id: s.id })}
@@ -1088,7 +1121,8 @@ function SubmissionsPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd })
               </button>
             </div>
           </div>
-        ))
+          );
+        })
       )}
     </Panel>
   );

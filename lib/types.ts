@@ -190,10 +190,22 @@ export type TakeawayPayload = Omit<TakeawaySnapshot, "contributions"> & {
   yourContributions?: { phaseLabel: string; text: string }[];
 };
 
+// C4 — a spotlight reference: either a live submission (resolved to its current
+// text at read time, so a delete makes the overlay vanish cleanly) or a literal
+// string the facilitator typed. Room-level, cross-cutting — independent of the
+// active phase. Never carries a name to the room (see PublicState.spotlight).
+export type SpotlightRef =
+  | { kind: "submission"; id: string }
+  | { kind: "literal"; text: string; handle?: string | null };
+
 export interface SessionState {
   mode: ModeId | null;
   phaseId: string | null;
   timerEndsAt: number | null;
+  // C4 — the spotlighted response (a ref), or null. Lives on the state key so its
+  // sole writer is writeState and every set/clear bumps rev (authoritative-apply).
+  // Cleared on every relaunch/advance/end so a stale spotlight can't linger.
+  spotlight?: SpotlightRef | null;
   // F3 — set at end when a take-away is published. The token keys the snapshot.
   publishedTakeaway?: { token: string; publishedAt: number };
   // F2 — the action-item register. Lives ON the state key (not a side hash) so
@@ -350,6 +362,11 @@ export interface PublicState {
   // ("named" / "facilitators-only" / "none"). Transport-only, recomputed each
   // request (can't drift); never overclaims anonymity.
   attribution?: import("./modules/attribution").Attribution;
+  // C4 — the spotlighted response resolved for the room: text only. `handle` is
+  // ALWAYS null in v1 — the stored submission handle is not a reliable public-ness
+  // signal (an anonymous-by-design phase still stores a real handle), so the
+  // projector never shows a name. null when nothing is spotlighted.
+  spotlight?: { text: string; handle: string | null } | null;
 }
 
 // C2 — content-free participation signal. Every value is an integer count; no
@@ -392,4 +409,7 @@ export interface FacilitatorState extends PublicState {
   // a one-line peek at the next phase. Derived; never on PublicState.
   runsheets?: Record<string, RunSheet>;
   nextPeek?: string | null;
+  // C4 — the raw spotlight ref (host-only), so the cockpit can ring the active
+  // submission card + render the clear chip. Never on the participant/projector.
+  spotlightRef?: SpotlightRef | null;
 }
