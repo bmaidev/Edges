@@ -27,6 +27,7 @@ export interface RoomKeys {
   votes: string; // one hash for the whole room; field = `${phaseId}::${token}`
   words: string; // one list for the whole room; entries carry phaseId
   seen: string; // C2 liveness heartbeat hash; field = <token> -> epoch-ms
+  undo: string; // C3 depth-1 nav undo snapshot (nav only — never resurrects data)
 }
 
 // Room-scoped key factory. `room:{roomId}:…` namespaces every key per room.
@@ -44,5 +45,6 @@ export function roomKeys(roomId: string = DEFAULT_ROOM_ID): RoomKeys {
     votes: `${base}:votes:hash`,
     words: `${base}:words:list`,
     seen: `${base}:seen`,
+    undo: `${base}:undo`,
   };
 }

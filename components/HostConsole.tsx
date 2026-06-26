@@ -4,6 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { TourCoach } from "@/components/TourCoach";
 import { FacilitateCockpit } from "@/components/FacilitateCockpit";
+import { ConfirmSheet } from "@/components/recovery/ConfirmSheet";
+import { UndoToast } from "@/components/recovery/UndoToast";
+import {
+  currentPhaseResponseCount,
+  isCollectingPhase,
+  phaseAnswerCount,
+} from "@/components/recovery/recovery";
 import { ParticipationSignal } from "@/lib/modules/render-kit";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
@@ -64,6 +71,11 @@ export function HostConsole({
   const [codeInput, setCodeInput] = useState("");
   const [cmdError, setCmdError] = useState<string | null>(null);
   const [tour, setTour] = useState(false);
+  // C3 recovery UI state.
+  const [undoToast, setUndoToast] = useState<{ label: string; key: number } | null>(null);
+  const [confirm, setConfirm] = useState<
+    { kind: "reset" | "reopen"; phaseId: string; label: string; count: number } | null
+  >(null);
   type Tab = "run" | "preview" | "content" | "patterns" | "session";
   const [tab, setTab] = useState<Tab>("run");
   const slug = apiBase.replace("/api/r/", "");
@@ -235,9 +247,39 @@ export function HostConsole({
   return (
     <main className="mx-auto w-full max-w-2xl pb-24 lg:max-w-5xl">
       {coach}
+      {confirm && (
+        <ConfirmSheet
+          title={confirm.kind === "reset" ? "Re-run this phase?" : `Re-open “${confirm.label}”?`}
+          count={confirm.count}
+          confirmLabel={confirm.kind === "reset" ? "Re-run it" : "Re-open it"}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            cmd(confirm.kind === "reset" ? "resetPhase" : "reopenPhase", {
+              phaseId: confirm.phaseId,
+            });
+            setConfirm(null);
+            setUndoToast(null);
+          }}
+        />
+      )}
       <div className="sticky top-0 z-10 border-b border-border bg-bg/95 backdrop-blur">
         <SessionHeader state={s} cmd={cmd} role={role} />
-        <PhaseStepper state={s} cmd={cmd} />
+        <PhaseStepper
+          state={s}
+          cmd={cmd}
+          onMoved={(label) => setUndoToast({ label, key: Date.now() })}
+        />
+        {undoToast && (
+          <UndoToast
+            key={undoToast.key}
+            label={undoToast.label}
+            onUndo={() => {
+              cmd("undo");
+              setUndoToast(null);
+            }}
+            onDismiss={() => setUndoToast(null)}
+          />
+        )}
         <div className="flex items-center gap-1 overflow-x-auto px-2">
           {TABS.filter((t) => t.show).map((t) => (
             <button
@@ -277,6 +319,22 @@ export function HostConsole({
               {s.participation && (
                 <ParticipationSignal s={s.participation} />
               )}
+              {/* C3 — re-run a contaminated phase clean, in place. */}
+              {isCollectingPhase(s) && s.phaseId && (
+                <button
+                  onClick={() =>
+                    setConfirm({
+                      kind: "reset",
+                      phaseId: s.phaseId!,
+                      label: (s.config?.label as string) ?? "this phase",
+                      count: currentPhaseResponseCount(s),
+                    })
+                  }
+                  className="self-start text-xs text-muted underline hover:text-accent"
+                >
+                  ↻ Reset this phase
+                </button>
+              )}
               {role === "cohost" && (
                 <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted">
                   Co-host mode — you can drive the room, but ending, reconfiguring,
@@ -312,10 +370,56 @@ export function HostConsole({
         {activeTab === "content" && <InjectPanel state={s} cmd={cmd} />}
         {activeTab === "patterns" && <PatternPanel state={s} cmd={cmd} />}
         {activeTab === "session" && role !== "cohost" && (
-          <SessionControls state={s} cmd={cmd} />
+          <>
+            <RecoveryControls
+              state={s}
+              onReopen={(phaseId, label, count) =>
+                setConfirm({ kind: "reopen", phaseId, label, count })
+              }
+            />
+            <SessionControls state={s} cmd={cmd} />
+          </>
         )}
       </div>
     </main>
+  );
+}
+
+// C3 — re-open an earlier phase to run it again (its old responses are cleared
+// so it starts clean). Lists only phases before the current one.
+function RecoveryControls({
+  state,
+  onReopen,
+}: {
+  state: FacilitatorState;
+  onReopen: (phaseId: string, label: string, count: number) => void;
+}) {
+  const phases = state.sequence ?? [];
+  const idx = phases.findIndex((p) => p.id === state.phaseId);
+  const past = idx > 0 ? phases.slice(0, idx) : [];
+  if (!past.length) return null;
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <p className="text-sm font-semibold">Recover a phase</p>
+      <p className="mt-1 text-xs text-muted">
+        Re-open an earlier phase to run it again. Its old responses are cleared so
+        it starts clean — the other phases are untouched.
+      </p>
+      <div className="mt-3 flex flex-col gap-2">
+        {past.map((p) => (
+          <button
+            key={p.id}
+            onClick={() =>
+              onReopen(p.id, p.label, phaseAnswerCount(state.submissions ?? [], p.id))
+            }
+            className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:border-accent"
+          >
+            <span className="max-w-[70%] truncate">{p.label}</span>
+            <span className="text-xs text-accent">Re-open →</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -562,7 +666,15 @@ function SessionHeader({
             </a>
           </p>
           <p className="font-mono text-2xl leading-none text-accent">
-            <Countdown endsAt={state.timerEndsAt} />
+            <Countdown
+              endsAt={state.timerEndsAt}
+              remainingMs={state.timerRemainingMs}
+            />
+            {state.timerEndsAt == null && state.timerRemainingMs != null && (
+              <span className="ml-2 align-middle text-[10px] uppercase tracking-wide text-muted">
+                paused
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -589,19 +701,34 @@ function SessionHeader({
 
 // A clickable timeline of the whole sequence — see where you are at a glance,
 // step Back/Advance, or jump to any phase.
-function PhaseStepper({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
+function PhaseStepper({
+  state,
+  cmd,
+  onMoved,
+}: {
+  state: FacilitatorState;
+  cmd: Cmd;
+  onMoved?: (label: string) => void;
+}) {
   const phases = state.sequence ?? [];
   const idx = phases.findIndex((p) => p.id === state.phaseId);
   const prev = idx > 0 ? phases[idx - 1] : null;
   const next = idx >= 0 && idx < phases.length - 1 ? phases[idx + 1] : null;
+  // C3 — every nav move offers a 12s undo. Back no longer dumps queued content
+  // (the server releases only on a forward move).
+  const go = (p: { id: string; label: string }) => {
+    cmd("setPhase", { phaseId: p.id });
+    onMoved?.(p.label);
+  };
   return (
     <div className="px-4 py-2">
       <div className="flex items-center gap-2">
         <button
           disabled={!prev}
-          onClick={() => prev && cmd("setPhase", { phaseId: prev.id })}
+          onClick={() => prev && go(prev)}
           className="shrink-0 rounded-lg border border-border px-2 py-2 text-sm disabled:opacity-30"
-          aria-label="Previous phase"
+          aria-label="Previous phase (won't release queued content)"
+          title="Back — won't release queued content"
         >
           ←
         </button>
@@ -612,7 +739,7 @@ function PhaseStepper({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
             return (
               <button
                 key={p.id}
-                onClick={() => cmd("setPhase", { phaseId: p.id })}
+                onClick={() => go(p)}
                 title={p.label}
                 className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs transition-colors ${
                   current
@@ -631,7 +758,7 @@ function PhaseStepper({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
         <button
           data-tour-id="advance"
           disabled={!next}
-          onClick={() => next && cmd("setPhase", { phaseId: next.id })}
+          onClick={() => next && go(next)}
           className="shrink-0 rounded-lg border border-accent bg-accent/10 px-3 py-2 text-sm font-medium text-accent disabled:opacity-30"
         >
           Advance →

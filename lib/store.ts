@@ -61,6 +61,9 @@ interface Backend {
   hset<T>(key: string, field: string, value: T): Promise<void>;
   hget<T>(key: string, field: string): Promise<T | null>;
   hgetall<T>(key: string): Promise<Record<string, T>>;
+  // Atomic per-field delete (Redis HDEL) — clears specific fields without a
+  // whole-hash del window, so it never races writes to OTHER fields.
+  hdel(key: string, ...fields: string[]): Promise<void>;
 }
 
 // Defensive: list/hash values may come back as objects (auto-deserialized) or
@@ -126,6 +129,9 @@ if (useKv) {
       for (const [k, v] of Object.entries(all)) out[k] = coerce<T>(v);
       return out;
     },
+    async hdel(key: string, ...fields: string[]) {
+      if (fields.length) await client.hdel(key, ...fields);
+    },
   };
 } else {
   // Pin to globalThis so all route-module instances share one map in dev
@@ -171,6 +177,12 @@ if (useKv) {
     },
     async hgetall<T>(key: string): Promise<Record<string, T>> {
       return { ...((mem.get(key) as Record<string, T>) ?? {}) };
+    },
+    async hdel(key: string, ...fields: string[]) {
+      const h = mem.get(key) as Record<string, unknown> | undefined;
+      if (!h) return;
+      for (const f of fields) delete h[f];
+      mem.set(key, h);
     },
   };
 }
@@ -284,13 +296,18 @@ export async function setPhases(
   );
 }
 
+// C3 — `release` is direction-aware: queued content is released ONLY on a
+// forward move (the host route derives it from the sequence index). A backward
+// move (Back / Re-open) must NOT dump queued slides onto the room — the headline
+// footgun fix. Default true preserves the plain-advance behaviour for any other
+// caller.
 export async function setPhase(
   phaseId: string,
   roomId: string = DEFAULT_ROOM_ID,
+  opts: { release?: boolean } = {},
 ): Promise<SessionState> {
   const state = await getState(roomId);
-  // Release any queued content to the room on advance.
-  await releaseQueuedContent(roomId);
+  if (opts.release !== false) await releaseQueuedContent(roomId);
   return writeState(
     {
       ...state,
@@ -397,6 +414,15 @@ export async function replaceState(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   return writeState(next, roomId);
+}
+
+// C3 — ordered phase ids of the active sequence, so the host route can tell a
+// forward move from a backward one (direction-aware content release).
+export async function phaseSequence(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<string[]> {
+  const state = await getState(roomId);
+  return resolvePhases(state).map((p) => p.id);
 }
 
 export async function setReadaroundIndex(
@@ -666,15 +692,19 @@ export async function deleteContent(
 }
 
 // Release any queued content to visible (called on phase advance).
+// Returns the ids flipped queued→visible, so a forward move's release can be
+// re-queued by a nav undo.
 async function releaseQueuedContent(
   roomId: string = DEFAULT_ROOM_ID,
-): Promise<void> {
+): Promise<string[]> {
   const list = await listContent(roomId);
-  if (!list.some((c) => c.queued)) return;
+  const flipped = list.filter((c) => c.queued).map((c) => c.id);
+  if (!flipped.length) return [];
   await backend.set(
     roomKeys(roomId).content,
     list.map((c) => (c.queued ? { ...c, visible: true, queued: false } : c)),
   );
+  return flipped;
 }
 
 // ---- Patterns -------------------------------------------------------------
@@ -743,6 +773,103 @@ export async function deletePattern(
   );
 }
 
+// ---- C3 recovery: clear one phase's data + a nav-only depth-1 undo ---------
+
+// Clear EVERY response for one phase (a contaminated poll, a mis-started round)
+// without touching any other phase. Votes go via hdel of exactly this phase's
+// fields (prefix `${phaseId}::`), which also clears reserved markers
+// (__constraint__/__round__/__ai__/__stage__/__silent__) for free — so a
+// re-opened 1-2-4-All restarts at round 0 with no stale AI synthesis. Submissions
+// and words are filtered (no atomic predicate-delete exists). Bumps rev so the
+// cleared state pushes to every screen via authoritative-apply.
+export async function clearPhaseData(
+  phaseId: string,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const KEYS = roomKeys(roomId);
+  const votes = await backend.hgetall<unknown>(KEYS.votes);
+  const fields = Object.keys(votes).filter((k) => k.startsWith(`${phaseId}::`));
+  if (fields.length) await backend.hdel(KEYS.votes, ...fields);
+  const subs = await listSubmissions(roomId);
+  await backend.replaceList(
+    KEYS.submissions,
+    subs.filter((s) => s.phaseId !== phaseId),
+  );
+  const words = await backend.lrange<{ phaseId: string }>(KEYS.words);
+  await backend.replaceList(
+    KEYS.words,
+    words.filter((w) => w.phaseId !== phaseId),
+  );
+  const state = await getState(roomId);
+  return writeState({ ...state }, roomId); // rev bump so clients re-sync
+}
+
+// The depth-1 nav undo snapshot. NAV-ONLY by design: it records where the room
+// WAS (phase + timer + read-around position) and which content a forward move
+// released — never any submission text, vote value, or word. Undo restores
+// navigation and re-queues released content; a confirmed clear stays cleared.
+export interface UndoSnapshot {
+  prevPhaseId: string | null;
+  prevTimerEndsAt: number | null;
+  prevTimerRemainingMs: number | null;
+  prevReadaroundIndex: number;
+  releasedIds: string[];
+  label: string;
+  at: number;
+}
+
+export async function writeUndo(
+  snap: UndoSnapshot,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<void> {
+  await backend.set(roomKeys(roomId).undo, snap);
+}
+
+export async function readUndo(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<UndoSnapshot | null> {
+  return backend.get<UndoSnapshot>(roomKeys(roomId).undo);
+}
+
+export async function clearUndo(roomId: string = DEFAULT_ROOM_ID): Promise<void> {
+  await backend.del(roomKeys(roomId).undo);
+}
+
+// Restore the last nav move: re-queue any content it released, return to the
+// prior phase/timer/read-around index, then consume the snapshot. Never touches
+// response data — cleared answers are NOT resurrected.
+export async function undoLastAction(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<{ state: SessionState; undone: boolean }> {
+  const snap = await readUndo(roomId);
+  if (!snap) return { state: await getState(roomId), undone: false };
+
+  if (snap.releasedIds.length) {
+    const list = await listContent(roomId);
+    const ids = new Set(snap.releasedIds);
+    await backend.set(
+      roomKeys(roomId).content,
+      list.map((c) =>
+        ids.has(c.id) ? { ...c, visible: false, queued: true } : c,
+      ),
+    );
+  }
+
+  const state = await getState(roomId);
+  const restored = await writeState(
+    {
+      ...state,
+      phaseId: snap.prevPhaseId,
+      timerEndsAt: snap.prevTimerEndsAt,
+      timerRemainingMs: snap.prevTimerRemainingMs,
+      readaroundIndex: snap.prevReadaroundIndex,
+    },
+    roomId,
+  );
+  await clearUndo(roomId);
+  return { state: restored, undone: true };
+}
+
 // ---- End / wipe -----------------------------------------------------------
 
 export async function endSession(
@@ -757,6 +884,7 @@ export async function endSession(
     KEYS.votes,
     KEYS.words,
     KEYS.seen,
+    KEYS.undo,
   );
   await writeState({ ...DEFAULT_STATE, ended: true }, roomId);
 }
