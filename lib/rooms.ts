@@ -351,6 +351,9 @@ export interface RoomArchive {
   content: { type: string; title: string; body: string }[];
   participantCount: number;
   report?: SessionReport | null; // AI synthesis of the whole session
+  // F1 — a random, unguessable token gating the public report page. Minted once
+  // when the report is built; lets the facilitator share a read-only link.
+  reportToken?: string;
   // F2 — the captured action-item register (verbatim), carried into the handover.
   actionItems?: {
     text: string;
@@ -486,6 +489,7 @@ async function composeArchive(slug: string): Promise<RoomArchive | null> {
     content: fs.allContent.map((c) => ({ type: c.type, title: c.title, body: c.body })),
     participantCount: fs.participantCount,
     report,
+    reportToken: existing?.reportToken ?? randomBytes(16).toString("hex"),
     actionItems: (fs.actionItems ?? []).map((a) => ({
       text: a.text,
       ownerName: a.ownerName,
