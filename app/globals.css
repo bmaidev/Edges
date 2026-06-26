@@ -90,3 +90,39 @@ button {
     box-shadow: none !important;
   }
 }
+
+/* ===== D2 — per-device accessibility ====================================== */
+/* Text scaling: the whole rem tree reflows from one variable (default 1×). */
+html {
+  font-size: calc(100% * var(--a11y-scale, 1));
+}
+
+/* High-contrast + colour-safe: a body-level override of the theme vars beats the
+   :root room-theme injection, so ANY branded room becomes AA on-device. Flat
+   background (no gradient/grain) for maximum legibility. */
+body.a11y-contrast {
+  --c-bg: 0 0 0;
+  --c-surface: 18 18 22;
+  --c-accent: 255 214 102;
+  --c-muted: 222 222 238;
+  --c-border: 96 96 120;
+  background: #000 !important;
+}
+body.a11y-contrast .grain {
+  display: none !important;
+}
+
+/* Readable font (opt-in). */
+body.a11y-readable {
+  font-family: var(--font-readable), system-ui, -apple-system, sans-serif;
+}
+
+/* Manual reduce-motion (in addition to the prefers-reduced-motion media query). */
+body.a11y-reduce-motion *,
+body.a11y-reduce-motion *::before,
+body.a11y-reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}

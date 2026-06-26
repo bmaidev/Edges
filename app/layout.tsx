@@ -1,6 +1,16 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Hanken_Grotesk } from "next/font/google";
+import { Atkinson_Hyperlegible, Fraunces, Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
+
+// D2 — a high-legibility font participants can opt into (distinct letterforms,
+// designed for low vision). Loaded as a CSS variable; only applied on the
+// readable toggle.
+const readable = Atkinson_Hyperlegible({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-readable",
+  display: "swap",
+});
 
 // Refined editorial type: an optical serif for display moments + a warm, highly
 // legible grotesque for body/UI. Distinctive, not the generic system stack.
@@ -35,7 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable}`}>
+    <html lang="en" className={`${display.variable} ${sans.variable} ${readable.variable}`}>
       <body className="min-h-screen bg-bg text-white font-sans antialiased">
         {children}
         <div aria-hidden className="grain pointer-events-none fixed inset-0 z-0" />
