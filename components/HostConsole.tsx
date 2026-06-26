@@ -83,6 +83,7 @@ export function HostConsole({
     { kind: "reset" | "reopen"; phaseId: string; label: string; count: number } | null
   >(null);
   const [showPreflight, setShowPreflight] = useState(false); // H2 sheet
+  const [nudgeMsg, setNudgeMsg] = useState<string | null>(null); // C2 nudge toast
   type Tab = "run" | "preview" | "content" | "patterns" | "session";
   const [tab, setTab] = useState<Tab>("run");
   const slug = apiBase.replace("/api/r/", "");
@@ -364,9 +365,27 @@ export function HostConsole({
                 runsheet={s.runsheets?.[s.phaseId ?? ""]}
                 nextPeek={s.nextPeek}
               />
-              {/* C2 — read the room: "N of M responded" on every gather phase. */}
+              {/* C2 — read the room + nudge the not-yet-responded phones. */}
               {s.participation && (
-                <ParticipationSignal s={s.participation} />
+                <div className="flex flex-col gap-1">
+                  <ParticipationSignal
+                    s={s.participation}
+                    onNudge={
+                      (s.config as { nudgeable?: boolean } | null)?.nudgeable === false
+                        ? undefined
+                        : async () => {
+                            const res = await cmd("nudgeRoom", { phaseId: s.phaseId });
+                            const d = await res.json().catch(() => ({}));
+                            if (d.alreadyNudged) setNudgeMsg("Already nudged — give it a moment");
+                            else if (d.ok)
+                              setNudgeMsg(`Nudged ${d.nudged} ${d.nudged === 1 ? "phone" : "phones"}`);
+                            else setNudgeMsg(d.reason ?? null);
+                            setTimeout(() => setNudgeMsg(null), 3000);
+                          }
+                    }
+                  />
+                  {nudgeMsg && <p className="text-xs text-accent">{nudgeMsg}</p>}
+                </div>
               )}
               {/* C3 — re-run a contaminated phase clean, in place. */}
               {isCollectingPhase(s) && s.phaseId && (

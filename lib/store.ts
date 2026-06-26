@@ -668,6 +668,19 @@ export async function castVote(
   await backend.hset(roomKeys(roomId).votes, voteField(phaseId, token), value);
 }
 
+// C2 nudge — record a "nudge the room" on a phase, with a 15s cooldown. setNX
+// the cooldown key; only when fresh do we write the content-free __nudge__ marker
+// (a Date.now() in the votes hash, excluded from responder counts) which ticks
+// roomSignature so the re-pulse propagates. Returns false when within cooldown.
+export async function tryNudge(
+  phaseId: string,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<boolean> {
+  const fresh = await backend.setNX(`lock:${roomId}:nudgecd:${phaseId}`, 1, 15);
+  if (fresh) await castVote(phaseId, "__nudge__", Date.now(), roomId);
+  return fresh;
+}
+
 export async function readVotes(
   phaseId: string,
   roomId: string = DEFAULT_ROOM_ID,
@@ -1208,6 +1221,14 @@ export async function getPublicState(
     }
   }
 
+  // C2 nudge — read the active gather phase's nudge marker so the participant can
+  // re-pulse. Only on gather phases (one cheap read), never elsewhere.
+  let nudgedAt: number | null = null;
+  if (ctx && moduleId && getServerModule(moduleId)?.capabilities.gatherSource !== "none") {
+    const v = await readVotes(phase!.id, roomId);
+    nudgedAt = typeof v["__nudge__"] === "number" ? (v["__nudge__"] as number) : null;
+  }
+
   // F3 — when ended with a published take-away, attach the recap (handle-free)
   // for the keep screen. Null-degrades to a plain ended screen if the snapshot is
   // gone (TTL expiry / replication lag) — never a half card.
@@ -1242,6 +1263,7 @@ export async function getPublicState(
     patterns,
     clusterAssistAvailable: clusterAssistAvailable(),
     participation,
+    nudgedAt,
     // F2 — the register is facilitator-tier only for now (participants/projector
     // get null; a participant "your items" surface is a scoped follow).
     actionItems:

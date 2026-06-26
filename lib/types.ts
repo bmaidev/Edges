@@ -329,6 +329,9 @@ export interface PublicState {
   // and derived (never stored). null on non-gather phases / for roles that
   // shouldn't see it (participants; projector unless opted in above the floor).
   participation: ParticipationSignal | null;
+  // C2 nudge — the timestamp of the most recent "nudge the room" on the active
+  // gather phase, so a participant who hasn't answered can re-pulse the prompt.
+  nudgedAt?: number | null;
 }
 
 // C2 — content-free participation signal. Every value is an integer count; no

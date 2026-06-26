@@ -28,6 +28,7 @@ import {
   reorderPatterns,
   resumeTimer,
   setMode,
+  tryNudge,
   setPhase,
   setPhases,
   setReadaroundIndex,
@@ -102,6 +103,8 @@ const COMMAND_CAP: Record<string, Capability> = {
   // F2 — capture/manage action items (same tier as moduleAction; cohost can
   // capture, participant cannot; never the admin-only `configure`).
   actionItem: "advance",
+  // C2 — gently re-surface the prompt on phones that haven't answered.
+  nudgeRoom: "advance",
   // F1 — build a client-ready report mid-session (no wipe). Facilitator + admin,
   // not cohost; never the admin-only `configure` cap.
   buildReport: "end",
@@ -432,6 +435,25 @@ export async function POST(
       return NextResponse.json({
         ok: true,
         state: await navState(room, written, role ?? "facilitator"),
+      });
+    }
+    case "nudgeRoom": {
+      const phaseId = String(a.phaseId ?? "");
+      const fs = await getFacilitatorState(room);
+      if (fs.phaseId !== phaseId)
+        return NextResponse.json({ ok: false, reason: "not the active phase" });
+      if ((fs.config as { nudgeable?: boolean } | null)?.nudgeable === false)
+        return NextResponse.json({ ok: false, reason: "not nudgeable" });
+      const fresh = await tryNudge(phaseId, room);
+      if (!fresh) return NextResponse.json({ ok: true, alreadyNudged: true });
+      const nudged = Math.max(
+        0,
+        (fs.participation?.present ?? 0) - (fs.participation?.responded ?? 0),
+      );
+      return NextResponse.json({
+        ok: true,
+        nudged,
+        state: await navState(room, await getState(room), role ?? "facilitator"),
       });
     }
     case "buildReport": {

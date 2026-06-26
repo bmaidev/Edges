@@ -240,6 +240,9 @@ function PhaseScreen({
 }) {
   const act = useAct(apiBase, token, handle);
   const pulse = useContentPulse(state.contentVersion);
+  // C2 — re-pulse the prompt when the facilitator nudges the room (nudgedAt is a
+  // rising timestamp, so it triggers the same gentle pulse as new content).
+  const nudgePulse = useContentPulse(state.nudgedAt ?? 0);
 
   const Renderer =
     state.moduleId && state.view
@@ -291,7 +294,7 @@ function PhaseScreen({
           handle={handle}
           phaseId={state.phaseId ?? ""}
           act={act}
-          pulse={pulse}
+          pulse={pulse || nudgePulse}
         />
       </ErrorBoundary>
     </Screen>
