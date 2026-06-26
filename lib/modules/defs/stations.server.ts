@@ -110,7 +110,7 @@ export const stationsModule: ModuleServerDef<StationsConfig> = {
     prompt: "Explore this station together, then capture what stands out.",
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,

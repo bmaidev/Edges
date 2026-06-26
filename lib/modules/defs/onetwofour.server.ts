@@ -122,7 +122,7 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
     captureShared: true,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,

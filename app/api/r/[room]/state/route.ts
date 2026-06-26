@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFacilitatorState, getPublicState } from "@/lib/store";
+import {
+  getFacilitatorState,
+  getPublicState,
+  touchParticipant,
+} from "@/lib/store";
 import { getRoom, resolveRole } from "@/lib/rooms";
 import type { RoomBranding } from "@/lib/types";
 
@@ -49,6 +53,9 @@ export async function GET(
     return NextResponse.json({ ...state, topic: topic ?? state.topic, role: "projector", branding }, { headers });
   }
 
+  // C2 — record liveness for the presence signal. Fire-and-forget (throttled to
+  // one write per token per 15s) so it never adds latency or fails the poll.
+  if (token) void touchParticipant(token, room).catch(() => {});
   const state = await getPublicState(token, room, "participant");
   return NextResponse.json({ ...state, topic: topic ?? state.topic, role: "participant", branding }, { headers });
 }

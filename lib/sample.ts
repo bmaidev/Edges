@@ -97,13 +97,15 @@ export async function seedSample(): Promise<SeedResult> {
 
       const subIds: string[] = [];
       for (let i = 0; i < FIXTURE_SUBMISSIONS.length; i++) {
-        const handle = HANDLES[i % HANDLES.length];
+        const who = i % HANDLES.length;
         const sub = await addSubmission(
-          handle,
+          HANDLES[who],
           FIXTURE_SUBMISSIONS[i],
           "bluesky-ideas",
           null,
-          null,
+          // Attribute to the matching fake participant token so the C2
+          // participation signal reads as a believable "responded" count.
+          `sample-tok-${who}`,
           SAMPLE_SLUG,
         );
         subIds.push(sub.id);

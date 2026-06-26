@@ -101,7 +101,7 @@ export const preworkModule: ModuleServerDef<PreworkConfig> = {
   // Participants contribute; facilitator/cohost watch the running tally; the
   // projector shows anonymous progress only (no raw text ever).
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false, // explicitly async / unhurried — no countdown

@@ -168,7 +168,7 @@ export const gradientModule: ModuleServerDef<GradientConfig> = {
   },
   // Everyone can watch the gradient form; participants act on it.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

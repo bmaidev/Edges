@@ -97,7 +97,7 @@ export const equityModule: ModuleServerDef<EquityConfig> = {
   // Facilitator + cohost (+ admin) see it. It's *about* participants, so they
   // must never see it; the projector would expose it to the room, so hidden too.
   defaultVisibility: vis("hidden", "visible", "visible", "hidden"),
-  capabilities: {
+  capabilities: { gatherSource: "none",
     acceptsActions: false,
     liveResults: true,
     needsTimer: false,

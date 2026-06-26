@@ -115,7 +115,7 @@ export const lightningModule: ModuleServerDef<LightningConfig> = {
     topicPrompt: "What will you show? (optional)",
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,

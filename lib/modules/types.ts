@@ -95,6 +95,13 @@ export interface ModuleCapabilities {
   liveResults: boolean; // results can stream vs reveal-on-advance
   needsTimer: boolean;
   projectable: boolean; // has a projector renderer
+  // C2 — where this module's "responders" live, so the contract layer can derive
+  // a participation signal (N of M responded) for every gather phase without any
+  // per-module compute. Required, so a new module author must consciously choose.
+  //   "submissions" → addSubmission gather modules (capture, brainwrite, qna, …)
+  //   "votes"       → vote modules (poll, dotvote, rank, scale, matrix, wordcloud)
+  //   "none"        → display-only / non-gather (lobby, content, readaround, …)
+  gatherSource: "none" | "submissions" | "votes";
 }
 
 // The server half of a module.

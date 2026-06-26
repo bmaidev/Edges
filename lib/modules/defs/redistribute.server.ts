@@ -129,7 +129,7 @@ export const redistributeModule: ModuleServerDef<RedistributeConfig> = {
     prompt: "",
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,

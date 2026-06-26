@@ -87,7 +87,7 @@ export const mediaModule: ModuleServerDef<MediaConfig> = {
     .passthrough(),
   defaultConfig: { label: "Presentation" },
   defaultVisibility: vis(),
-  capabilities: {
+  capabilities: { gatherSource: "none",
     acceptsActions: true,
     liveResults: false,
     needsTimer: false,

@@ -93,7 +93,7 @@ export const marketplaceModule: ModuleServerDef<MarketplaceConfig> = {
     currencyLabel: "credits",
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

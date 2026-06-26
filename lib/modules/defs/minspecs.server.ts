@@ -103,7 +103,7 @@ export const minspecsModule: ModuleServerDef<MinSpecsConfig> = {
     prompt: "What must be true for us to succeed?",
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

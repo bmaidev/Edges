@@ -180,7 +180,7 @@ export const brainwriteModule: ModuleServerDef<BrainwriteConfig> = {
   },
   // Participants act; facilitator/cohost/projector watch the build live.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,

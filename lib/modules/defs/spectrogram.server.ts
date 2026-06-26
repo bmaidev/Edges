@@ -144,7 +144,7 @@ const spectrogram: ModuleServerDef<SpectrogramConfig> = {
     beforeAfter: false,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

@@ -114,7 +114,7 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
     captureNotes: true,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: {
+  capabilities: { gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,

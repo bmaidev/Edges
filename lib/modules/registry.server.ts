@@ -4,7 +4,9 @@
 
 import { z } from "zod";
 import type { ContentItem, ContentType, Participant } from "@/lib/types";
+import type { ParticipationSignal } from "@/lib/types";
 import type {
+  ModuleCapabilities,
   ModuleContext,
   ModuleKind,
   ModuleServerDef,
@@ -75,6 +77,57 @@ function visibleByTypes(
   return items.filter((c) => types.includes(c.type));
 }
 
+// ---- C2 participation signal (contract layer) -----------------------------
+// The two thresholds differ on purpose: the host has raw access so collapses
+// only at a truly empty room; the projector is a public surface so hides below
+// a small privacy floor.
+export const QUIET_MS = 25_000; // ~12 missed 2s polls; config-tunable
+export const TINY_ROOM = 1; // host collapses to "waiting for the room" at <=1
+export const PROJECTOR_FLOOR = 3; // projector shows a count only at >=3 present
+
+// Derive "N of M responded · K gone quiet" for a gather phase. Content-free:
+// every value is an integer count. Responders are DISTINCT participant tokens
+// (multiSubmit-safe), excluding `__`-prefixed pseudo-tokens (__nudge__,
+// __constraint__, __host__ …) and any non-participant, then clamped <= present
+// so the screen can never show "19 of 18". A missing heartbeat = liveness
+// unknown → counted present, never quiet (old sessions degrade gracefully).
+export async function computeParticipationSignal(
+  ctx: ModuleContext,
+  gatherSource: ModuleCapabilities["gatherSource"],
+  heartbeats: Record<string, number>,
+  now: number = Date.now(),
+): Promise<ParticipationSignal | null> {
+  if (gatherSource === "none") return null;
+
+  const present = ctx.participants.length;
+  const tokens = new Set(ctx.participants.map((p) => p.token));
+
+  let responded = 0;
+  if (gatherSource === "submissions") {
+    const r = new Set(
+      ctx.submissions
+        .filter((s) => s.phaseId === ctx.phase.id && s.token)
+        .map((s) => s.token as string)
+        .filter((t) => !t.startsWith("__") && tokens.has(t)),
+    );
+    responded = r.size;
+  } else {
+    const votes = await ctx.store.readVotes(ctx.phase.id);
+    responded = Object.keys(votes).filter(
+      (t) => !t.startsWith("__") && tokens.has(t),
+    ).length;
+  }
+  responded = Math.min(responded, present); // hard clamp — invariant guard
+
+  let quiet = 0;
+  for (const p of ctx.participants) {
+    const seen = heartbeats[p.token];
+    if (typeof seen === "number" && now - seen > QUIET_MS) quiet++;
+  }
+
+  return { present, responded, typing: 0, quiet };
+}
+
 // ---- module: lobby --------------------------------------------------------
 
 const lobby: ModuleServerDef = {
@@ -83,7 +136,7 @@ const lobby: ModuleServerDef = {
   schema: z.object({ label: z.string(), message: z.string().optional() }).passthrough(),
   defaultConfig: { label: "Lobby" },
   defaultVisibility: vis("visible", "hidden", "hidden", "visible"),
-  capabilities: { acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
   computeView(ctx): LobbyView {
     return {
       message: (ctx.config.message as string) ?? "",
@@ -106,7 +159,7 @@ const content: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Content" },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
   computeView(ctx): ContentView {
     const types = ctx.config.showContentTypes as ContentType[] | undefined;
     const items = visibleByTypes(ctx.visibleContent, types);
@@ -146,7 +199,7 @@ const capture: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Capture", prompt: "" },
   defaultVisibility: vis("visible", "visible", "visible", "hidden"),
-  capabilities: { acceptsActions: true, liveResults: false, needsTimer: true, projectable: false },
+  capabilities: { gatherSource: "submissions", acceptsActions: true, liveResults: false, needsTimer: true, projectable: false },
   async computeView(ctx): Promise<CaptureView> {
     const types = ctx.config.showContentTypes as ContentType[] | undefined;
     const deck = ctx.config.constraintDeck as string[] | undefined;
@@ -220,7 +273,7 @@ const allocate: ModuleServerDef = {
     allocate: { kind: "side", fixedOptions: ["A", "B"], header: "Pick one." },
   },
   defaultVisibility: vis("visible", "visible", "visible", "hidden"),
-  capabilities: { acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "none", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   computeView(ctx): AllocateView {
     const a = ctx.config.allocate as {
       kind: "lens" | "side";
@@ -273,7 +326,7 @@ const coordinator: ModuleServerDef = {
     coordinator: { kind: "pair", message: "You're paired with [PARTNER]." },
   },
   defaultVisibility: vis("visible", "visible", "visible", "hidden"),
-  capabilities: { acceptsActions: false, liveResults: false, needsTimer: false, projectable: false },
+  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: false, needsTimer: false, projectable: false },
   computeView(ctx): CoordinatorView {
     const c = ctx.config.coordinator as {
       kind: "lens-triad" | "pair";
@@ -321,7 +374,7 @@ const readaround: ModuleServerDef = {
     readaround: { source: "patterns" },
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: false, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: true, needsTimer: false, projectable: true },
   computeView(ctx): ReadAroundView {
     const r = ctx.config.readaround as {
       source: "submissions" | "patterns";
@@ -363,7 +416,7 @@ const close: ModuleServerDef = {
   schema: z.object({ label: z.string() }).passthrough(),
   defaultConfig: { label: "Close" },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
   computeView(ctx) {
     const mine = ctx.me
       ? ctx.submissions
@@ -391,7 +444,7 @@ const poll: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Poll", question: "", options: ["Yes", "No"] },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
     const c = ctx.config as Record<string, any>;
     const options: string[] = c.options ?? [];
@@ -459,7 +512,7 @@ const dotvote: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Dot vote", options: ["A", "B", "C"], dots: 3 },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
     const c = ctx.config as Record<string, any>;
     const options: string[] = c.options ?? [];
@@ -508,7 +561,7 @@ const rank: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Rank", items: ["First", "Second", "Third"] },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
     const c = ctx.config as Record<string, any>;
     const items: string[] = c.items ?? [];
@@ -556,7 +609,7 @@ const scale: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Scale", statements: ["Statement"], min: 1, max: 5 },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
     const c = ctx.config as Record<string, any>;
     const statements: string[] = c.statements ?? [];
@@ -613,7 +666,7 @@ const wordcloud: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Word cloud", prompt: "", maxWords: 3 },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
     const c = ctx.config as Record<string, any>;
     const words = await ctx.store.readWords(ctx.phase.id);
@@ -668,7 +721,7 @@ const qna: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Q&A", prompt: "Ask a question" },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "submissions", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
     // Questions are submissions for this phase; upvotes are a per-token list of
     // question ids (one hash entry per voter).
@@ -740,7 +793,7 @@ const matrix: ModuleServerDef = {
     max: 10,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
     const c = ctx.config as Record<string, any>;
     const votes = await ctx.store.readVotes(ctx.phase.id);
