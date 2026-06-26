@@ -205,7 +205,7 @@ const friction: ModuleServerDef<FrictionConfig> = {
     topNTensions: DEFAULT_TOP_N,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes",
+  capabilities: { usesAi: true, gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

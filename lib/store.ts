@@ -10,6 +10,8 @@ import {
 } from "./session";
 import { getMode, getPhase } from "./modes";
 import { computeRoomHealth } from "./health";
+import { computeReadiness } from "./preflight";
+import { aiAvailable } from "./ai";
 import {
   PROJECTOR_FLOOR,
   computeParticipationSignal,
@@ -1152,9 +1154,11 @@ export async function getFacilitatorState(
   roomId: string = DEFAULT_ROOM_ID,
   stateOverride?: SessionState,
 ): Promise<FacilitatorState> {
+  // Read state once and thread it through (avoids a second getState below).
+  const state = stateOverride ?? (await getState(roomId));
   const [pub, submissions, participants, allContent, heartbeats] =
     await Promise.all([
-      getPublicState(null, roomId, "facilitator", stateOverride),
+      getPublicState(null, roomId, "facilitator", state),
       listSubmissions(roomId),
       listParticipants(roomId),
       listContent(roomId),
@@ -1162,5 +1166,18 @@ export async function getFacilitatorState(
     ]);
   // H1 — room-wide health (every phase), from C2's existing liveness hash.
   const roomHealth = computeRoomHealth(participants, heartbeats);
-  return { ...pub, submissions, participants, allContent, roomHealth };
+  // H2 — advisory pre-flight readiness for the built session (pure compute).
+  const readiness = computeReadiness({
+    phases: resolvePhases(state).map((p) => ({
+      id: p.id,
+      moduleId: p.moduleId,
+      config: p.config,
+    })),
+    participantCount: participants.length,
+    isProd: process.env.NODE_ENV === "production",
+    kvConfigured: useKv,
+    aiConfigured: aiAvailable(),
+    blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+  });
+  return { ...pub, submissions, participants, allContent, roomHealth, readiness };
 }

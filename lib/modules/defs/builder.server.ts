@@ -173,7 +173,7 @@ export const builderModule: ModuleServerDef<BuilderConfig> = {
   // The generated artifact is room-facing (AI-authored, not a personal
   // submission), so the same payload is shown to everyone.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "none",
+  capabilities: { usesAi: true, gatherSource: "none",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

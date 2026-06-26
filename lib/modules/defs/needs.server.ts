@@ -173,7 +173,7 @@ export const needsModule: ModuleServerDef<NeedsConfig> = {
   // Facilitator + cohost (+ admin) visible; participant + projector hidden so
   // the off-the-record inference can never leak to the room.
   defaultVisibility: vis("hidden", "visible", "visible", "hidden"),
-  capabilities: { gatherSource: "votes",
+  capabilities: { usesAi: true, gatherSource: "votes",
     acceptsActions: true,
     liveResults: false,
     needsTimer: false,

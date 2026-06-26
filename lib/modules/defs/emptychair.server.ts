@@ -172,7 +172,7 @@ export const emptychairModule: ModuleServerDef<EmptychairConfig> = {
   // Questions are room-facing and the AI answers are an AI-imagined stand-in
   // (not personal submissions), so the same payload is shown to everyone.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: { usesAi: true, gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,

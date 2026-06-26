@@ -6,6 +6,9 @@ import { Button } from "@/components/ui";
 import { bootToken } from "@/lib/magicLink";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
 import { TEMPLATES } from "@/lib/templates";
+// H2 — single source of truth, shared with the pre-flight engine so the builder's
+// validation and the readiness check can never drift.
+import { LONG_TEXT, validatePhaseConfig } from "@/lib/preflight";
 import type { ModuleKind } from "@/lib/types";
 
 interface BuilderPhase {
@@ -92,8 +95,6 @@ interface FieldInfo {
   enums?: string[];
 }
 
-const LONG_TEXT =
-  /prompt|message|body|desc|question|instruction|statement|placeholder|headline|tagline|heading|note/i;
 
 function describeField(key: string, zt: any): FieldInfo {
   const optional = isOptional(zt);
@@ -141,14 +142,13 @@ function humanize(key: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+// Delegates to the shared pre-flight validator (kept as a thin local alias so the
+// rest of the builder is untouched).
 function validateConfig(
   moduleId: ModuleKind,
   config: unknown,
 ): { ok: boolean; msg?: string } {
-  const r = SERVER_MODULES[moduleId].schema.safeParse(config);
-  if (r.success) return { ok: true };
-  const issue = r.error.issues[0];
-  return { ok: false, msg: `${issue.path.join(".") || "config"}: ${issue.message}` };
+  return validatePhaseConfig(moduleId, config);
 }
 
 // ---- form field widgets ----------------------------------------------------
