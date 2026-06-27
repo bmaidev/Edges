@@ -21,7 +21,15 @@ import type {
   LobbyView,
   ReadAroundView,
 } from "./views";
-import { dotVoteView, pollView, rankView, scaleView } from "./vote-compute";
+import {
+  dotVoteView,
+  matrixView,
+  pollView,
+  qnaView,
+  rankView,
+  scaleView,
+  wordCloudView,
+} from "./vote-compute";
 // Fleet-built modules (research roadmap) — one self-contained def per file.
 import { brainwriteModule } from "./defs/brainwrite.server";
 import { marketplaceModule } from "./defs/marketplace.server";
@@ -592,21 +600,9 @@ const wordcloud: ModuleServerDef = {
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
   capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
-    const c = ctx.config as Record<string, any>;
+    // B2 faithfulness — shared shaper over the real words (preview uses the same).
     const words = await ctx.store.readWords(ctx.phase.id);
-    const freq: Record<string, number> = {};
-    for (const w of words) {
-      const norm = w.word.trim().toLowerCase();
-      if (norm) freq[norm] = (freq[norm] ?? 0) + 1;
-    }
-    const cloud = Object.entries(freq)
-      .map(([text, count]) => ({ text, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 60);
-    const mine = ctx.me
-      ? words.filter((w) => w.token === ctx.me!.token).map((w) => w.word)
-      : [];
-    return { prompt: c.prompt ?? "", words: cloud, mine };
+    return wordCloudView(ctx.config, words, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
     if (!action.token) return { ok: false, reason: "missing" };
@@ -647,27 +643,11 @@ const qna: ModuleServerDef = {
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
   capabilities: { gatherSource: "submissions", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
-    // Questions are submissions for this phase; upvotes are a per-token list of
-    // question ids (one hash entry per voter).
+    // B2 faithfulness — shared shaper. Questions are this phase's submissions;
+    // upvotes are a per-token list of question ids. Preview uses the same shaper.
     const questions = ctx.submissions.filter((s) => s.phaseId === ctx.phase.id);
     const votes = await ctx.store.readVotes(ctx.phase.id);
-    const counts: Record<string, number> = {};
-    for (const v of Object.values(votes)) {
-      const ids = Array.isArray(v) ? (v as string[]) : [];
-      for (const id of ids) counts[id] = (counts[id] ?? 0) + 1;
-    }
-    const myUpvotes: string[] = ctx.me
-      ? ((votes[ctx.me.token] as string[]) ?? [])
-      : [];
-    const list = questions
-      .map((q) => ({
-        id: q.id,
-        text: q.text,
-        votes: counts[q.id] ?? 0,
-        mine: myUpvotes.includes(q.id),
-      }))
-      .sort((a, b) => b.votes - a.votes || 0);
-    return { prompt: (ctx.config.prompt as string) ?? "", questions: list };
+    return qnaView(ctx.config, questions, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
     if (!action.token) return { ok: false, reason: "missing" };
@@ -719,23 +699,9 @@ const matrix: ModuleServerDef = {
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
   capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
-    const c = ctx.config as Record<string, any>;
+    // B2 faithfulness — shared shaper over the real votes (preview uses the same).
     const votes = await ctx.store.readVotes(ctx.phase.id);
-    const items = Object.values(votes)
-      .map((v) => v as { text: string; x: number; y: number })
-      .filter((v) => v && typeof v.text === "string");
-    const mine = (ctx.me ? votes[ctx.me.token] : null) as
-      | { text: string; x: number; y: number }
-      | null;
-    return {
-      prompt: c.prompt ?? "",
-      xLabel: c.xLabel ?? ["low", "high"],
-      yLabel: c.yLabel ?? ["low", "high"],
-      min: c.min ?? 0,
-      max: c.max ?? 10,
-      items,
-      mine: mine ?? null,
-    };
+    return matrixView(ctx.config, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
     if (!action.token) return { ok: false, reason: "missing" };
