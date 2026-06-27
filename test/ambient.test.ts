@@ -142,3 +142,27 @@ describe("lifecycle", () => {
     expect((await getState(slug)).ambient ?? null).toBeNull();
   });
 });
+
+// E3 — ambient is also PLACEABLE in a builder sequence (a scheduled break), not
+// just summoned live; the normal phase path renders it from its config.
+describe("placed ambient phase", () => {
+  it("renders the configured scene via the normal sequence path", async () => {
+    const { room } = await createRoom("T", "t");
+    const { setPhase } = await import("@/lib/store");
+    await setPhases(
+      [
+        { id: "p1", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } },
+        { id: "rest", moduleId: "ambient", config: { label: "Reset", kind: "hold", scene: "breathe", note: "Shoulders down" } },
+      ],
+      "S",
+      room.slug,
+    );
+    await setPhase("rest", room.slug); // a real advance, NOT setAmbient
+    const pub = await getPublicState(null, room.slug, "projector");
+    expect(pub.phaseId).toBe("rest"); // a normal sequence phase, not __ambient__
+    expect(pub.moduleId).toBe("ambient");
+    const view = pub.view?.data as { scene: string; note: string | null };
+    expect(view.scene).toBe("breathe");
+    expect(view.note).toBe("Shoulders down");
+  });
+});

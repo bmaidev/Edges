@@ -208,6 +208,8 @@ ${templateCatalog()}
 
 Design a session that achieves the goal. Start with a "lobby" phase and end with a "close" phase. For each phase pick the best module id and a sensible config. Capture/voting phases should have a clear "prompt" or "question".
 
+PACING — between two demanding or long phases (e.g. back-to-back deep small-group work), consider inserting a brief "ambient" phase (config: { "scene": "break" } for a timed pause, or "breathe" for a guided reset) so the room recovers its energy. Use sparingly — at most one or two across a session, never adjacent to the lobby or close.
+
 DEPENDENCIES — important: the modules marked "[needs sourcePhaseId …]" above ANALYSE earlier contributions. Each such phase MUST come AFTER a capture or pre-work phase, and its config.sourcePhaseId MUST be set to that earlier phase's exact id. A phase that produces contributions is one of: ${PRODUCERS_LIST}. Never place an analysis module before there is anything for it to read. Example: a "capture" phase with id "ideas", then a "marketplace"/"devil"/"friction" phase whose config includes "sourcePhaseId": "ideas".
 
 ${tg.text}
