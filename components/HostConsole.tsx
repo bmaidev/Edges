@@ -793,6 +793,31 @@ function SessionHeader({
           Clear
         </button>
       </div>
+      {/* E3 — calm break/hold controls. While ambient is on, the only control is
+          Resume (restores the exact prior phase + timer). */}
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted">Break:</span>
+        {state.moduleId === "ambient" ? (
+          <button
+            className="rounded border border-accent bg-accent/10 px-2 py-1 text-accent hover:border-accent"
+            onClick={() => cmd("resumeAmbient")}
+          >
+            ▶ Resume the session
+          </button>
+        ) : (
+          <>
+            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { kind: "break", durationSec: 300 })}>
+              ☕ Break 5m
+            </button>
+            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { kind: "break", durationSec: 600 })}>
+              Break 10m
+            </button>
+            <button className="rounded border border-border px-2 py-1 text-muted hover:border-accent" onClick={() => cmd("setAmbient", { kind: "hold" })}>
+              Hold
+            </button>
+          </>
+        )}
+      </div>
       {/* C4 — a persistent reminder that something is on the big screen, with a
           one-tap clear, available from any host tab (not just the submissions panel). */}
       {state.spotlightRef && (

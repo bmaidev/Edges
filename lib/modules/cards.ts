@@ -220,6 +220,13 @@ export const MODULE_CARDS = {
     bestFor: "Making an idea concrete enough to react to.",
     roomDoes: "Helps assemble a quick prototype.",
   },
+  // E3 — synthetic break/hold screen; never placed in the builder palette, but the
+  // catalog must stay exhaustive over ModuleKind.
+  ambient: {
+    whatItIs: "A calm break or holding screen between activities.",
+    bestFor: "A pause, a stretch break, or holding before the next step.",
+    roomDoes: "Rests — a serene screen, nothing to do.",
+  },
 } satisfies Record<ModuleKind, PlainCard>;
 
 export function getCard(id: ModuleKind): PlainCard {

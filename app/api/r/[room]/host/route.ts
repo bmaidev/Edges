@@ -28,9 +28,11 @@ import {
   renamePattern,
   reorderPatterns,
   resumeTimer,
+  setAmbient,
   setDriver,
   setMode,
   setSpotlight,
+  resumeAmbient,
   tryNudge,
   setPhase,
   setPhases,
@@ -101,6 +103,10 @@ const COMMAND_CAP: Record<string, Capability> = {
   claimDriver: "advance",
   handoffDriver: "advance",
   releaseDriver: "advance",
+  // E3 — a calm break/hold is a live nav move (facilitator + cohost), NOT the
+  // admin-only configure (it never touches the stored phase sequence).
+  setAmbient: "advance",
+  resumeAmbient: "advance",
   addContent: "inject",
   updateContent: "inject",
   deleteContent: "inject",
@@ -421,6 +427,21 @@ export async function POST(
         state: await navState(room, await setSpotlight(ref, room), role ?? "facilitator"),
       });
     }
+    // E3 — summon / leave a calm ambient break or hold.
+    case "setAmbient": {
+      const kind = a.kind === "hold" ? "hold" : "break";
+      const durationSec = typeof a.durationSec === "number" ? a.durationSec : null;
+      const note = typeof a.note === "string" ? a.note : undefined;
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setAmbient(kind, durationSec, note, room), role ?? "facilitator"),
+      });
+    }
+    case "resumeAmbient":
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await resumeAmbient(room), role ?? "facilitator"),
+      });
     // C5 — claim/hand off/release the driving baton (advisory; controls never block).
     case "claimDriver":
     case "handoffDriver": {
