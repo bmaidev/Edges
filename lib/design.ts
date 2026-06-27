@@ -133,6 +133,42 @@ function repairDependencies(phases: PhaseInstance[]): PhaseInstance[] {
   return repaired;
 }
 
+// B7 — deterministically guarantee the arc: a "lobby" first and a "close" last,
+// whatever the AI returned (a "make it shorter" transform must never drop the
+// open/close). Moves an existing lobby/close into place, or synthesises one from
+// the module default. Pure; ids kept unique.
+export function enforceArc(phases: PhaseInstance[]): PhaseInstance[] {
+  if (phases.length === 0) return phases;
+  const out = [...phases];
+  const ids = new Set(out.map((p) => p.id));
+  const uniqueId = (base: string): string => {
+    let id = base;
+    let n = 1;
+    while (ids.has(id)) id = `${base}-${n++}`;
+    ids.add(id);
+    return id;
+  };
+  // lobby first
+  if (out[0].moduleId !== "lobby") {
+    const i = out.findIndex((p) => p.moduleId === "lobby");
+    if (i > 0) out.unshift(out.splice(i, 1)[0]);
+    else {
+      const mod = getServerModule("lobby");
+      out.unshift({ id: uniqueId("lobby"), moduleId: "lobby", config: mod?.defaultConfig ?? { label: "Lobby" } });
+    }
+  }
+  // close last
+  if (out[out.length - 1].moduleId !== "close") {
+    const i = out.findIndex((p) => p.moduleId === "close");
+    if (i >= 0 && i < out.length - 1) out.push(out.splice(i, 1)[0]);
+    else {
+      const mod = getServerModule("close");
+      out.push({ id: uniqueId("close"), moduleId: "close", config: mod?.defaultConfig ?? { label: "Close" } });
+    }
+  }
+  return out;
+}
+
 // Propose a full session from a goal. Every returned phase references a real
 // module; any config that fails its zod schema is replaced with the module's
 // default so the result is always launchable.
@@ -183,8 +219,8 @@ Return JSON only, in this shape:
   if (!res.ok || !res.data) return { ok: false, reason: res.reason };
 
   const d = res.data;
-  const phases = repairDependencies(
-    buildPhases(Array.isArray(d.phases) ? d.phases : []),
+  const phases = enforceArc(
+    repairDependencies(buildPhases(Array.isArray(d.phases) ? d.phases : [])),
   );
   if (phases.length === 0) return { ok: false, reason: "No usable phases suggested." };
   return {
@@ -248,8 +284,8 @@ Return JSON only, in this shape:
   });
   if (!res.ok || !res.data) return { ok: false, reason: res.reason };
   const d = res.data;
-  const phases = repairDependencies(
-    buildPhases(Array.isArray(d.phases) ? d.phases : []),
+  const phases = enforceArc(
+    repairDependencies(buildPhases(Array.isArray(d.phases) ? d.phases : [])),
   );
   if (phases.length === 0) return { ok: false, reason: "Couldn't revise the session." };
   return {

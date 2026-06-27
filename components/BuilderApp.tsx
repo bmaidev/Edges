@@ -433,6 +433,10 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   const [aiBusy, setAiBusy] = useState<null | "suggest" | "critique" | "revise">(null);
   const [rationale, setRationale] = useState<string | null>(null);
   const [critique, setCritique] = useState<{ strengths: string[]; issues: string[] } | null>(null);
+  // B7 — AI design partner: transform the CURRENT design by a free-text instruction.
+  const [refineText, setRefineText] = useState("");
+  const [preTransform, setPreTransform] = useState<BuilderPhase[] | null>(null);
+  const [tally, setTally] = useState<{ bN: number; bM: number; aN: number; aM: number } | null>(null);
 
   const phaseIds = useMemo(() => phases.map((p) => p.id), [phases]);
 
@@ -455,6 +459,54 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   // Current phases for the AI endpoints (config is already an object).
   function parsedPhases() {
     return phases.map((p) => ({ id: p.id, moduleId: p.moduleId, config: p.config }));
+  }
+
+  const totalMinutes = (ps: { moduleId: ModuleKind; config: Record<string, unknown> }[]) =>
+    ps.reduce((sum, p) => sum + phaseMinutes({ moduleId: p.moduleId, config: p.config }).minutes, 0);
+
+  // B7 — transform the current design by an instruction (a preset chip or free
+  // text). Reuses the existing reviseSession AI command (which validates every
+  // returned phase + now enforces lobby-first/close-last), previews the result by
+  // loading it into the editor, and keeps a snapshot for one-tap Undo.
+  async function transform(instruction: string) {
+    if (!instruction.trim() || phases.length === 0) return;
+    if (!code.trim()) {
+      setMsg("Enter your admin or facilitator passcode above first — the AI tools need it.");
+      return;
+    }
+    setAiBusy("revise");
+    setMsg(null);
+    const snapshot = phases;
+    const before = { n: snapshot.length, m: Math.round(totalMinutes(snapshot)) };
+    try {
+      const res = await fetch(`${apiBase}/host`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: "reviseSession", phases: parsedPhases(), goal: instruction, code }),
+      });
+      const d = await res.json();
+      if (res.ok && d.suggestion) {
+        setPreTransform(snapshot);
+        loadSuggestion(d.suggestion);
+        const after = d.suggestion.phases ?? [];
+        setTally({ bN: before.n, bM: before.m, aN: after.length, aM: Math.round(totalMinutes(after)) });
+        setRefineText("");
+      } else {
+        setMsg(d.error ?? "Couldn't transform the design.");
+      }
+    } catch {
+      setMsg("Network error — try again.");
+    } finally {
+      setAiBusy(null);
+    }
+  }
+
+  function undoTransform() {
+    if (!preTransform) return;
+    setPhases(preTransform);
+    setPreTransform(null);
+    setTally(null);
+    setRationale(null);
   }
 
   async function suggest() {
@@ -791,6 +843,55 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
             <span className="text-xs text-muted">Enter your passcode above to enable AI design.</span>
           )}
         </div>
+
+        {/* B7 — transform the design in hand (distinct from generating from scratch). */}
+        {phases.length > 0 && (
+          <div className="mt-1 flex flex-col gap-2 rounded-lg border border-border bg-bg/40 p-3">
+            <span className="text-xs font-medium text-white/80">Refine this design with AI</span>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: "Make it shorter", instr: "Make this session about 20 minutes shorter — trim or merge phases, keep the essential arc." },
+                { label: "Add a warm-up", instr: "Add a short warm-up / opener near the start to settle the room." },
+                { label: "More interactive", instr: "Make this more interactive — replace passive phases with participatory ones where it fits." },
+              ].map((c) => (
+                <button
+                  key={c.label}
+                  onClick={() => transform(c.instr)}
+                  disabled={aiBusy !== null || !code.trim()}
+                  className="rounded-full border border-border px-2.5 py-1 text-xs hover:border-accent disabled:opacity-30"
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={refineText}
+                onChange={(e) => setRefineText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && transform(refineText)}
+                placeholder="…or describe a change (e.g. “adapt for 50 people”)"
+                className="min-w-0 flex-1 rounded border border-border bg-bg px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+              />
+              <button
+                onClick={() => transform(refineText)}
+                disabled={aiBusy !== null || !refineText.trim() || !code.trim()}
+                className="shrink-0 rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent disabled:opacity-30"
+              >
+                {aiBusy === "revise" ? "Transforming…" : "Transform"}
+              </button>
+            </div>
+            {tally && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted">
+                  {tally.bN} phases (~{tally.bM}m) → <span className="text-accent">{tally.aN} phases (~{tally.aM}m)</span>. Review below, then launch.
+                </span>
+                <button onClick={undoTransform} className="text-muted underline hover:text-white">
+                  Undo
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {rationale && (
           <p className="text-xs text-muted">
             <span className="text-accent">Why this shape:</span> {rationale}
