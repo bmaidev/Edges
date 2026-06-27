@@ -62,6 +62,7 @@ import { promptrelayRenderers } from "./defs/promptrelay.client";
 import { builderRenderers } from "./defs/builder.client";
 import { mediaRenderers } from "./defs/media.client";
 import { ambientRenderers } from "./defs/ambient.client";
+import { actionsRenderers } from "./defs/actions.client";
 
 // RendererProps/Renderer and the shared feedback helpers now live in
 // ./render-kit so per-module files can import the same contract.
@@ -1178,6 +1179,7 @@ export const CLIENT_MODULES: Record<ModuleKind, ClientModule> = {
   issuemap: { renderers: issuemapRenderers },
   promptrelay: { renderers: promptrelayRenderers },
   builder: { renderers: builderRenderers },
+  actions: { renderers: actionsRenderers },
 };
 
 export function getClientRenderer(

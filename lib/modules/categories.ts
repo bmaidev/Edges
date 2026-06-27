@@ -5,7 +5,7 @@
 import type { ModuleKind } from "@/lib/types";
 
 export const MODULE_CATEGORIES: { label: string; kinds: ModuleKind[] }[] = [
-  { label: "Structure", kinds: ["lobby", "content", "media", "ambient", "close"] },
+  { label: "Structure", kinds: ["lobby", "content", "media", "ambient", "actions", "close"] },
   { label: "Capture & surface", kinds: ["capture", "prework", "readaround"] },
   {
     label: "Group & dialogue",

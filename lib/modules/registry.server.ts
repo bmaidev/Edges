@@ -58,6 +58,7 @@ import { promptrelayModule } from "./defs/promptrelay.server";
 import { builderModule } from "./defs/builder.server";
 import { mediaModule } from "./defs/media.server";
 import { ambientModule } from "./defs/ambient.server";
+import { actionsModule } from "./defs/actions.server";
 
 const CONTENT_TYPES = ["case", "lens", "prompt", "argument", "note"] as const;
 
@@ -765,6 +766,7 @@ export const SERVER_MODULES: Record<ModuleKind, ModuleServerDef<any>> = {
   issuemap: issuemapModule,
   promptrelay: promptrelayModule,
   builder: builderModule,
+  actions: actionsModule,
 };
 
 export function getServerModule(id: ModuleKind): ModuleServerDef | null {

@@ -220,6 +220,12 @@ export const MODULE_CARDS = {
     bestFor: "Making an idea concrete enough to react to.",
     roomDoes: "Helps assemble a quick prototype.",
   },
+  // ---- output / commitment ----
+  actions: {
+    whatItIs: "Yours-first commitments — everyone captures their own actions.",
+    bestFor: "Closing — turning the session into things people will do.",
+    roomDoes: "Writes their own short commitments; theirs to keep.",
+  },
   // E3 — synthetic break/hold screen; never placed in the builder palette, but the
   // catalog must stay exhaustive over ModuleKind.
   ambient: {

@@ -67,6 +67,7 @@ import type { EquityFacilitatorView } from "./defs/equity.server";
 import type { IssueMapView } from "./defs/issuemap.server";
 import type { PersonaView } from "./defs/persona.server";
 import type { PromptRelayView } from "./defs/promptrelay.server";
+import type { ActionsParticipantView } from "./defs/actions.server";
 
 type Cfg = Record<string, unknown>;
 const str = (c: Cfg, k: string, d = "") => (typeof c[k] === "string" ? (c[k] as string) : d);
@@ -109,6 +110,27 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     ended: false,
     yourContributions: [{ text: "An idea you contributed earlier.", tag: null }],
   }),
+  // F2 — yours-first commitments. The preview shows the participant's own list
+  // (the payoff state) plus the soft room-momentum signal.
+  actions: (c): ActionsParticipantView => {
+    const maxItems = num(c, "maxItems", 5);
+    const askOwner = c.askOwner !== false;
+    const mine = [
+      { text: "Draft the one-pager and share it by Friday.", owner: "You" },
+      { text: "Book 20 minutes with Sam to align on scope.", owner: "You" },
+    ];
+    return {
+      for: "participant",
+      prompt: str(c, "prompt", "What's one thing you'll do differently?"),
+      maxLen: num(c, "maxLen", 200),
+      maxItems,
+      askOwner,
+      mine,
+      remaining: Math.max(0, maxItems - mine.length),
+      roomCount: 9,
+      contributorCount: 5,
+    };
+  },
   coordinator: (c): CoordinatorView => ({
     kind: "pair",
     message: str(c, "message") || "Pair up with the person next to you.",
