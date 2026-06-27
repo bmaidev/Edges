@@ -166,6 +166,8 @@ export const TIMED: Record<ModuleKind, boolean> = (() => {
     "stations",
     "twentyfive10",
     "worldcafe",
+    // E3 — a placed break / countdown wants a duration (the minutes input).
+    "ambient",
   ]);
   const out = {} as Record<ModuleKind, boolean>;
   for (const k of Object.keys(STAGE_OF) as ModuleKind[]) out[k] = timed.has(k);
