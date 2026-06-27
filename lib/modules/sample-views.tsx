@@ -7,6 +7,7 @@
 
 import type { ModuleKind } from "@/lib/types";
 import type { ContentItem } from "@/lib/types";
+import { pollView, samplePollVotes } from "./vote-compute";
 import type {
   AllocateView,
   CaptureView,
@@ -109,15 +110,17 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     };
   },
   poll: (c): PollView => {
+    // B2 faithfulness — the preview is the REAL pollView shaper over synthetic
+    // votes, not a hand-authored literal, so it can't drift from the live view.
     const options = arr(c, "options").length ? arr(c, "options") : ["Yes", "No", "Maybe"];
-    return {
-      question: str(c, "question") || str(c, "label", "Which option?"),
-      options,
-      multi: Boolean(c.multi),
-      total: 6,
-      counts: Object.fromEntries(options.map((o, i) => [o, [3, 2, 1, 1][i % 4]])),
-      mine: [options[0]],
-    };
+    const question = str(c, "question") || str(c, "label", "Which option?");
+    const multi = Boolean(c.multi);
+    return pollView(
+      { options, question, multi, reveal: "live" },
+      samplePollVotes(options, multi),
+      "me",
+      "participant",
+    );
   },
   dotvote: (c): DotVoteView => {
     const options = arr(c, "options").length ? arr(c, "options") : ["Idea A", "Idea B", "Idea C"];

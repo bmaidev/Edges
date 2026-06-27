@@ -21,6 +21,7 @@ import type {
   LobbyView,
   ReadAroundView,
 } from "./views";
+import { pollView } from "./vote-compute";
 // Fleet-built modules (research roadmap) — one self-contained def per file.
 import { brainwriteModule } from "./defs/brainwrite.server";
 import { marketplaceModule } from "./defs/marketplace.server";
@@ -447,40 +448,10 @@ const poll: ModuleServerDef = {
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
   capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
-    const c = ctx.config as Record<string, any>;
-    const options: string[] = c.options ?? [];
-    const multi = Boolean(c.multi);
-    const reveal = c.reveal ?? "live";
+    // B2 faithfulness — the SAME pure shaper the in-builder preview uses, over the
+    // real votes hash, so a preview can never drift from this live view.
     const votes = await ctx.store.readVotes(ctx.phase.id);
-    const counts: Record<string, number> = {};
-    options.forEach((o) => (counts[o] = 0));
-    let total = 0;
-    for (const v of Object.values(votes)) {
-      const arr = Array.isArray(v) ? v : [v];
-      let counted = false;
-      for (const opt of arr)
-        if (typeof opt === "string" && opt in counts) {
-          counts[opt]++;
-          counted = true;
-        }
-      if (counted) total++;
-    }
-    const show = reveal === "live" || ctx.role !== "participant";
-    const raw = ctx.me ? votes[ctx.me.token] : null;
-    const mine =
-      raw == null
-        ? null
-        : Array.isArray(raw)
-          ? raw.filter((x): x is string => typeof x === "string")
-          : [String(raw)];
-    return {
-      question: c.question ?? "",
-      options,
-      multi,
-      total,
-      counts: show ? counts : null,
-      mine,
-    };
+    return pollView(ctx.config, votes, ctx.me?.token ?? null, ctx.role);
   },
   async handleAction(ctx, action) {
     if (!action.token) return { ok: false, reason: "missing" };
