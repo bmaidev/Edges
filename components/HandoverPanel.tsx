@@ -81,6 +81,11 @@ export function HandoverPanel({
     headline: state.branding?.headline,
   };
 
+  // F1 — honest signal: when AI is unavailable the report is the AI-free
+  // structural digest (counts + the facilitator's curated pattern names), not a
+  // synthesis. Say so plainly so a sparse report never reads as a failure.
+  const isStructural = archive?.report?.kind === "structural";
+
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
@@ -101,6 +106,14 @@ export function HandoverPanel({
         )}
       </div>
       {err && <p className="text-sm text-[#ff8a8a]">{err}</p>}
+      {isStructural && (
+        <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted">
+          AI synthesis is off, so this is a <strong>structural digest</strong> —
+          contribution counts and your grouped pattern names, faithful to the
+          data. Set an <code>ANTHROPIC_API_KEY</code> to enable a written summary,
+          themes, tensions and next steps.
+        </p>
+      )}
 
       {open && archive && (
         <Modal title="Handover report" onClose={() => setOpen(false)}>
@@ -126,9 +139,17 @@ export function HandoverPanel({
               <ReportCurator archive={archive} apiBase={apiBase} code={code} onUpdate={setArchive} />
             </div>
           ) : (
-            <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg bg-[#f3f3f5] p-3">
-              <ReportDocument archive={archive} branding={branding} />
-            </div>
+            <>
+              {isStructural && (
+                <p className="mt-3 text-xs text-muted">
+                  Structural digest (AI synthesis off) — counts and your grouped
+                  pattern names.
+                </p>
+              )}
+              <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg bg-[#f3f3f5] p-3">
+                <ReportDocument archive={archive} branding={branding} />
+              </div>
+            </>
           )}
         </Modal>
       )}

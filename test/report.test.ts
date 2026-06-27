@@ -70,6 +70,14 @@ describe("buildReport (mid-session, no wipe)", () => {
     expect(a!.report!.themes.map((t) => t.title)).toContain("Momentum");
     expect(a!.report!.summary).toContain("2 contributions");
   });
+
+  it("marks the no-AI fallback as 'structural' so the handover can caption it", async () => {
+    const slug = "f1-kind";
+    await seedRoom(slug);
+    const a = await buildReport(slug);
+    // No ANTHROPIC_API_KEY in the test env → the structural fallback is used.
+    expect(a!.report!.kind).toBe("structural");
+  });
 });
 
 describe("archive reuses the built report (no double work, no clobber)", () => {
