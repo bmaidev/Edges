@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { usePresence } from "@/components/usePresence";
 import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip";
+import { NamePrompt } from "@/components/NamePrompt";
 import { DriverChip } from "@/components/DriverChip";
 import { CofacBanner } from "@/components/CofacBanner";
 import { RoomHealthChip, advanceHealthCaption } from "@/components/RoomHealthSheet";
@@ -379,6 +380,12 @@ export function HostConsole({
             </a>
           </div>
         </div>
+      </div>
+
+      {/* C5 — one-time, skippable ask for this operator's name (cross-room: once
+          set on this device it's reused in every room, so it's never re-asked). */}
+      <div className="px-4 pt-3">
+        <NamePrompt name={me.name} onSubmit={me.setName} />
       </div>
 
       {showPreflight && s.readiness && (
