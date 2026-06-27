@@ -5,6 +5,11 @@ import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
 import { useTimerMilestones } from "@/components/useTimerMilestones";
+import {
+  WelcomeBackCard,
+  deriveOrientation,
+  type Orientation,
+} from "@/components/WelcomeBackCard";
 import { useConnection, type ConnState } from "@/components/useConnection";
 import { ConnectionStrip } from "@/components/ConnectionStrip";
 import { useResilientAct } from "@/components/useOfflineQueue";
@@ -40,6 +45,18 @@ function ParticipantInner({ apiBase }: { apiBase: string }) {
   });
   // H1 — honest tri-state connection signal for this device.
   const conn = useConnection({ error, lastAppliedAt });
+
+  // D4-PR2 — orientation for a (re)joiner who lands mid-session. Latched on the
+  // FIRST applied state after joining (mount-scoped via the ref) so a normal
+  // lobby→phase advance never fires it — only a fresh load whose first state is
+  // already mid-sequence does.
+  const [orientation, setOrientation] = useState<Orientation | null>(null);
+  const orientationLatched = useRef(false);
+  useEffect(() => {
+    if (orientationLatched.current || !joined || !state) return;
+    orientationLatched.current = true;
+    setOrientation(deriveOrientation(state));
+  }, [joined, state]);
 
   // Per-room localStorage keys so different rooms don't clobber each other.
   const HK = `edges_handle:${apiBase}`;
@@ -127,6 +144,8 @@ function ParticipantInner({ apiBase }: { apiBase: string }) {
       token={token!}
       apiBase={apiBase}
       conn={conn}
+      orientation={orientation}
+      onDismissOrientation={() => setOrientation(null)}
     />
   );
 }
@@ -260,12 +279,16 @@ function PhaseScreen({
   token,
   apiBase,
   conn,
+  orientation,
+  onDismissOrientation,
 }: {
   state: PublicState;
   handle: string;
   token: string;
   apiBase: string;
   conn: ConnState;
+  orientation: Orientation | null;
+  onDismissOrientation: () => void;
 }) {
   const { act, pending } = useResilientAct(apiBase, token, handle, state.phaseId ?? "");
   const pulse = useContentPulse(state.contentVersion);
@@ -329,6 +352,9 @@ function PhaseScreen({
       <div className="sr-only" role="status" aria-live="polite">
         {announce}
       </div>
+      {orientation && (
+        <WelcomeBackCard orientation={orientation} onDismiss={onDismissOrientation} />
+      )}
       <StatusBar state={state} />
       <AttributionChip attribution={state.attribution} handle={handle} />
       <ErrorBoundary
