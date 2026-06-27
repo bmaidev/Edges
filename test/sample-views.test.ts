@@ -16,8 +16,12 @@ describe("getSampleView", () => {
     expect(getSampleView("friction", {})).not.toBeNull();
     expect(getSampleView("fishbowl", {})).not.toBeNull();
     expect(getSampleView("consult", {})).not.toBeNull();
-    // a module without a factory yet degrades to null (caller shows a fallback)
-    expect(getSampleView("media", {})).toBeNull();
+    expect(getSampleView("onetwofour", {})).not.toBeNull();
+    expect(getSampleView("media", {})).not.toBeNull();
+    // the non-placeable meta/synthetic modules legitimately have no preview
+    // factory and degrade to null (the caller shows a fallback).
+    expect(getSampleView("builder", {})).toBeNull();
+    expect(getSampleView("ambient", {})).toBeNull();
   });
 
   it("an AI-synthesis sample is in its hasResult 'payoff' state, marked available", () => {

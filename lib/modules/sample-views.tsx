@@ -38,6 +38,18 @@ import type { FishbowlView } from "./defs/fishbowl.server";
 import type { ConsultParticipantView } from "./defs/consult.server";
 import type { BrainwriteParticipantView } from "./defs/brainwrite.server";
 import type { PreworkParticipantView } from "./defs/prework.server";
+import type { OneTwoFourParticipantView } from "./defs/onetwofour.server";
+import type { StationsParticipantView } from "./defs/stations.server";
+import type { WorldCafeParticipantView } from "./defs/worldcafe.server";
+import type { RedistributeParticipantView } from "./defs/redistribute.server";
+import type { Twentyfive10ParticipantView } from "./defs/twentyfive10.server";
+import type { LightningView } from "./defs/lightning.server";
+import type { MediaView } from "./defs/media.server";
+import type { OpenSpaceView } from "./defs/openspace.server";
+import type { EquityFacilitatorView } from "./defs/equity.server";
+import type { IssueMapView } from "./defs/issuemap.server";
+import type { PersonaView } from "./defs/persona.server";
+import type { PromptRelayView } from "./defs/promptrelay.server";
 
 type Cfg = Record<string, unknown>;
 const str = (c: Cfg, k: string, d = "") => (typeof c[k] === "string" ? (c[k] as string) : d);
@@ -362,6 +374,144 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     prompt: str(c, "prompt") || str(c, "label", "Add your thoughts before we meet."),
     placeholder: str(c, "placeholder") || undefined,
     mine: [{ text: "One thing I'm hoping we resolve is the ownership question.", at: 0 }],
+  }),
+  // ---- rotation / grouping modules (participant phone view) ----
+  onetwofour: (c): OneTwoFourParticipantView => ({
+    round: 1,
+    stageLabel: "Compare in pairs",
+    prompt: str(c, "prompt") || str(c, "label", "What stands out to you?"),
+    groupMembers: ["You", "Ada"],
+    wholeRoom: false,
+    captureShared: c.captureShared !== false,
+    mySharedSubmitted: false,
+  }),
+  stations: (c): StationsParticipantView => {
+    const stations = arr(c, "stations").length ? arr(c, "stations") : ["Station A", "Station B", "Station C"];
+    return {
+      round: 0,
+      stationName: stations[0],
+      groupMembers: ["You", "Ada", "Bo"],
+      totalStations: stations.length,
+      prompt: str(c, "prompt") || undefined,
+      captureNotes: Boolean(c.captureNotes),
+      myNoteSubmitted: false,
+    };
+  },
+  worldcafe: (c): WorldCafeParticipantView => ({
+    round: 1,
+    prompt: str(c, "prompt") || str(c, "label", "What would real progress take?"),
+    tableIndex: 0,
+    isHost: false,
+    hostName: "Ada",
+    tablemates: ["Bo", "Cy"],
+    captureNotes: c.captureNotes !== false,
+    myNoteSubmitted: false,
+  }),
+  redistribute: (c): RedistributeParticipantView => ({
+    prompt: str(c, "prompt") || str(c, "label", "Improve the idea you've been handed."),
+    mode: (str(c, "mode") as RedistributeParticipantView["mode"]) || "improve",
+    assignedCard: { id: "c1", text: "A weekly demo so progress stays visible." },
+    myResponseSubmitted: false,
+  }),
+  twentyfive10: (c): Twentyfive10ParticipantView => ({
+    phase: "score",
+    round: 1,
+    passes: num(c, "passes", 3),
+    prompt: str(c, "prompt") || str(c, "label", "Score the idea in front of you (0–5)."),
+    maxScore: num(c, "maxScore", 5),
+    assignedCard: { id: "c1", text: "Run a blameless retro after every launch." },
+    myScoreForIt: null,
+  }),
+  // ---- timed / media / open-space ----
+  lightning: (c): LightningView => ({
+    topicPrompt: str(c, "topicPrompt") || undefined,
+    secondsPerSpeaker: num(c, "secondsPerSpeaker", 60),
+    queue: [{ handle: "Ada" }, { handle: "Bo" }, { handle: "Cy" }],
+    current: { handle: "Ada", topic: "One change I'd make tomorrow" },
+    next: { handle: "Bo" },
+    myPosition: 3,
+    iAmCurrent: false,
+  }),
+  media: (c): MediaView => ({
+    label: str(c, "label") || undefined,
+    card: { id: "m1", kind: "image", url: "", title: "A shared reference image" },
+    index: 0,
+    total: 3,
+  }),
+  openspace: (c): OpenSpaceView => {
+    const spaces = arr(c, "spaces").length ? arr(c, "spaces") : ["Table 1", "Table 2"];
+    return {
+      slots: num(c, "slots", 2),
+      spaces,
+      topics: [
+        { id: "t1", title: "How do we shorten the feedback loop?", signupCount: 4, cell: { slot: 0, space: spaces[0] } },
+        { id: "t2", title: "What should we stop doing?", signupCount: 2 },
+      ],
+      mySignups: ["t1"],
+      grid: { t1: { slot: 0, space: spaces[0] } },
+    };
+  },
+  // ---- facilitator analytics + AI modules (overview/projector shape) ----
+  equity: (): EquityFacilitatorView => ({
+    facilitatorOnly: false,
+    perPerson: [
+      { label: "Ada", count: 5 },
+      { label: "Bo", count: 3 },
+      { label: "Cy", count: 1 },
+      { label: "Dane", count: 0 },
+    ],
+    silentCount: 1,
+    total: 9,
+    participantCount: 4,
+    median: 2,
+    min: 0,
+    max: 5,
+    nudge: "Dane hasn't spoken yet — a direct, gentle invite can help.",
+    anonymized: false,
+  }),
+  issuemap: (): IssueMapView => ({
+    hasResult: true,
+    available: true,
+    stale: false,
+    inputCount: 12,
+    issues: [
+      {
+        id: "i1",
+        label: "Ownership",
+        summary: "Who is accountable when priorities collide?",
+        positions: [{ text: "A single DRI per initiative" }, { text: "Shared ownership by the team" }],
+        pinned: false,
+      },
+    ],
+    focusedId: null,
+  }),
+  persona: (): PersonaView => ({
+    hasResult: true,
+    available: true,
+    stale: false,
+    inputCount: 12,
+    reactions: [
+      {
+        persona: "The skeptical veteran",
+        reaction: "I've seen three of these initiatives stall. Show me it survives contact with a real deadline.",
+        wouldAdopt: 2,
+        objections: ["No time budgeted", "Unclear owner"],
+      },
+    ],
+    personas: [{ name: "The skeptical veteran", description: "Ten years in; has survived many reorgs." }],
+  }),
+  promptrelay: (c): PromptRelayView => ({
+    task: str(c, "task") || str(c, "label", "Draft a message to the wider team"),
+    segmentKinds: ["audience", "tone", "key point"],
+    segments: [
+      { kind: "audience", text: "the whole engineering org" },
+      { kind: "tone", text: "candid but hopeful" },
+      { kind: "key point", text: "we're changing how we plan, and why" },
+    ],
+    assembledPrompt: "Write to the whole engineering org, candid but hopeful, about how we're changing planning.",
+    hasResult: true,
+    available: true,
+    result: "Team — we're shifting to shorter planning cycles so we can course-correct sooner…",
   }),
 };
 
