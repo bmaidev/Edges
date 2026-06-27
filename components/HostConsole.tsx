@@ -1337,6 +1337,12 @@ function SessionControls({ cmd }: { cmd: Cmd }) {
   const [confirming, setConfirming] = useState<"end" | "archive" | null>(null);
   return (
     <Panel title="Session controls">
+      {/* C3 — point to the calm recovery controls (they live on the Run tab). */}
+      <p className="text-xs text-muted">
+        Need to recover a phase? Re-run or re-open it from the{" "}
+        <span className="text-accent">Run</span> tab — it clears that phase&apos;s
+        answers without touching the rest.
+      </p>
       <Button variant="ghost" onClick={() => setConfirming("archive")}>
         Archive (save report + wipe)
       </Button>
