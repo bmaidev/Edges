@@ -96,6 +96,35 @@ export function RehearsalTheatre({
     [post, sequence],
   );
 
+  const [castSize, setCastSize] = useState(8);
+  const [reseeding, setReseeding] = useState(false);
+
+  // B5 — re-roll the synthetic data (fresh contributions + tallies) at a chosen
+  // cast size, staying on the current phase + viewer.
+  const reseed = useCallback(
+    async (size: number) => {
+      setReseeding(true);
+      const res = await post({
+        command: "setCast",
+        phases,
+        castSize: size,
+        phaseId: sequence[idx]?.id,
+      });
+      if (res.ok) {
+        const d = await res.json();
+        const nextCast: CastMember[] = d.cast ?? [];
+        setCast(nextCast);
+        setSequence(d.sequence ?? []);
+        setProjector(d.projector ?? null);
+        setParticipant(d.participant ?? null);
+        setAsToken(nextCast[0]?.token ?? "");
+        setCastSize(size);
+      }
+      setReseeding(false);
+    },
+    [post, phases, sequence, idx],
+  );
+
   function close() {
     void post({ command: "end" }); // explicit teardown; 24h TTL is the backstop
     onClose();
@@ -176,6 +205,30 @@ export function RehearsalTheatre({
                 ))}
               </select>
             </label>
+            {/* B5 — re-roll the synthetic data + resize the cast. */}
+            <label className="flex items-center gap-1 text-muted">
+              Cast
+              <select
+                value={castSize}
+                onChange={(e) => reseed(Number(e.target.value))}
+                disabled={reseeding}
+                className="rounded border border-border bg-bg px-2 py-1 text-xs focus:border-accent focus:outline-none"
+              >
+                {[4, 6, 8, 10, 12].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              onClick={() => reseed(castSize)}
+              disabled={reseeding}
+              className="rounded border border-border px-2 py-1 hover:border-accent disabled:opacity-40"
+              title="Re-roll the synthetic responses"
+            >
+              {reseeding ? "Reseeding…" : "↻ Reseed"}
+            </button>
           </div>
 
           {/* the two room-facing surfaces */}

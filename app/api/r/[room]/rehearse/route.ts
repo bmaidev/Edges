@@ -77,6 +77,33 @@ export async function POST(
         ...(await surfaces(String(body.asToken ?? ""))),
       });
     }
+    // B5 — re-roll the synthetic data (new contributions/tallies, fresh roster) at
+    // a chosen cast size, WITHOUT leaving the theatre. A full teardown + reseed of
+    // the shadow, so it's as clean as a fresh start.
+    case "reseed":
+    case "setCast": {
+      const v = validatePhases(body.phases);
+      if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+      const castSize = Number(body.castSize ?? 8);
+      await tearDownRehearsal(shadowId);
+      const { tokens, handles } = await seedRehearsal(shadowId, v.phases, castSize);
+      const cast = tokens.map((t, i) => ({ token: t, handle: handles[i] }));
+      // Stay on the phase the facilitator was viewing, if it still exists.
+      const phaseId = typeof body.phaseId === "string" && v.phases.some((p) => p.id === body.phaseId)
+        ? body.phaseId
+        : v.phases[0]?.id;
+      if (phaseId) await setPhase(phaseId, shadowId);
+      return NextResponse.json({
+        ok: true,
+        cast,
+        sequence: v.phases.map((p) => ({
+          id: p.id,
+          moduleId: p.moduleId,
+          label: (p.config?.label as string) ?? p.moduleId,
+        })),
+        ...(await surfaces(tokens[0] ?? "")),
+      });
+    }
     case "end": {
       await tearDownRehearsal(shadowId);
       return NextResponse.json({ ok: true });
