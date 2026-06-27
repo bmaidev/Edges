@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { usePresence } from "@/components/usePresence";
 import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip";
+import { DriverChip } from "@/components/DriverChip";
 import { TourCoach } from "@/components/TourCoach";
 import { FacilitateCockpit } from "@/components/FacilitateCockpit";
 import { ConfirmSheet } from "@/components/recovery/ConfirmSheet";
@@ -290,10 +291,19 @@ export function HostConsole({
             myName={me.name}
             onRename={me.setName}
           />
+          <DriverChip
+            driver={s.driver}
+            driverStale={Boolean(s.driverStale)}
+            presence={s.presence ?? []}
+            myId={me.presenceId}
+            myName={me.name}
+            cmd={cmd}
+          />
         </div>
         <PhaseStepper
           state={s}
           cmd={cmd}
+          me={{ presenceId: me.presenceId, name: me.name }}
           onMoved={(label) => setUndoToast({ label, key: Date.now() })}
         />
         {undoToast && (
@@ -808,24 +818,50 @@ function SessionHeader({
 function PhaseStepper({
   state,
   cmd,
+  me,
   onMoved,
 }: {
   state: FacilitatorState;
   cmd: Cmd;
+  me?: { presenceId: string; name: string };
   onMoved?: (label: string) => void;
 }) {
   // E2 — share the one nav-maths helper with the presenter ribbon (identical
   // prev/next/done logic, proven by test/sequence.test.ts).
   const nav = phaseNav(state.sequence, state.phaseId);
   const { phases, index: idx, prev, next } = nav;
+  // C5 — soft take-over: if a LIVE co-host is driving and it isn't me, a nav move
+  // arms first (a one-tap "tap again to take over"); the second tap moves AND
+  // claims the baton in one rev-bumped write. Controls never hard-block.
+  const liveDriver = state.driver && !state.driverStale ? state.driver : null;
+  const someoneElseDriving = Boolean(
+    liveDriver && me?.presenceId && liveDriver.driverId !== me.presenceId,
+  );
+  const [armed, setArmed] = useState(false);
   // C3 — every nav move offers a 12s undo. Back no longer dumps queued content
   // (the server releases only on a forward move).
   const go = (p: { id: string; label: string }) => {
-    cmd("setPhase", { phaseId: p.id });
+    if (someoneElseDriving && !armed) {
+      setArmed(true);
+      window.setTimeout(() => setArmed(false), 4000);
+      return;
+    }
+    setArmed(false);
+    cmd(
+      "setPhase",
+      someoneElseDriving && me
+        ? { phaseId: p.id, claimDriverId: me.presenceId, claimDriverName: me.name }
+        : { phaseId: p.id },
+    );
     onMoved?.(p.label);
   };
   return (
     <div className="px-4 py-2">
+      {armed && someoneElseDriving && (
+        <p className="mb-1 text-xs text-[#ffb454]">
+          {liveDriver?.driverName || "A co-host"} is driving — tap again to take over.
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <button
           disabled={!prev}
