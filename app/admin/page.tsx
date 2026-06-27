@@ -13,6 +13,7 @@ import {
   type ThemeDraft,
 } from "@/components/admin/ThemePanel";
 import { JoinScreenPreview } from "@/components/admin/JoinScreenPreview";
+import { AnalyticsPanel } from "@/components/admin/AnalyticsPanel";
 import { TourCoach } from "@/components/TourCoach";
 
 interface RoomRow {
@@ -106,6 +107,8 @@ function Admin() {
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  // F4 — Rooms vs cross-session Analytics.
+  const [tab, setTab] = useState<"rooms" | "analytics">("rooms");
   // Tour: explicit-start only (calm ethos). `tourSeen` is the durable per-admin
   // flag that suppresses the first-run nudge across devices once toured.
   const [tourSeen, setTourSeen] = useState(true); // assume seen until told otherwise
@@ -229,30 +232,52 @@ function Admin() {
           </a>
         </div>
       </div>
-      <div className="mt-4" data-tour-id="create-workshop">
-        <Button onClick={() => setShowWizard(true)}>＋ Create a workshop</Button>
-      </div>
-      <details className="mt-3">
-        <summary className="cursor-pointer text-xs text-muted">Quick create (advanced)</summary>
-        <CreateRoom code={code} onCreated={() => load(code)} />
-      </details>
 
-      {realRooms.length === 0 && !tourSeen && (
-        <FirstRunBanner onStartTour={startTour} onDismiss={markTourSeen} />
+      {/* F4 — Rooms / Analytics tabs. */}
+      <div className="mt-3 flex gap-1 border-b border-border text-sm">
+        {(["rooms", "analytics"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`-mb-px border-b-2 px-3 py-1.5 ${
+              tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-white"
+            }`}
+          >
+            {t === "rooms" ? "Rooms" : "Analytics"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "analytics" ? (
+        <AnalyticsPanel code={code} />
+      ) : (
+        <>
+          <div className="mt-4" data-tour-id="create-workshop">
+            <Button onClick={() => setShowWizard(true)}>＋ Create a workshop</Button>
+          </div>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs text-muted">Quick create (advanced)</summary>
+            <CreateRoom code={code} onCreated={() => load(code)} />
+          </details>
+
+          {realRooms.length === 0 && !tourSeen && (
+            <FirstRunBanner onStartTour={startTour} onDismiss={markTourSeen} />
+          )}
+
+          <div className="mt-6 flex flex-col gap-3" data-tour-id="sample-card">
+            <SampleCard code={code} />
+            {realRooms.length === 0 ? (
+              <p className="text-sm text-muted">
+                No rooms of your own yet — create one above, or poke the demo first.
+              </p>
+            ) : (
+              realRooms.map((r) => (
+                <RoomCard key={r.slug} room={r} code={code} onChanged={() => load(code)} />
+              ))
+            )}
+          </div>
+        </>
       )}
-
-      <div className="mt-6 flex flex-col gap-3" data-tour-id="sample-card">
-        <SampleCard code={code} />
-        {realRooms.length === 0 ? (
-          <p className="text-sm text-muted">
-            No rooms of your own yet — create one above, or poke the demo first.
-          </p>
-        ) : (
-          realRooms.map((r) => (
-            <RoomCard key={r.slug} room={r} code={code} onChanged={() => load(code)} />
-          ))
-        )}
-      </div>
     </main>
   );
 }
