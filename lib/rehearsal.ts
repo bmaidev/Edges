@@ -28,7 +28,7 @@ export function isRehearsalRoom(id: string): boolean {
 }
 
 const CAST = ["Ada", "Bo", "Cy", "Dev", "Eli", "Fae", "Gus", "Hana", "Ivo", "Jo", "Kit", "Lun"];
-const SAMPLES = [
+const GENERIC_SAMPLES = [
   "A bold idea worth testing.",
   "What if we flipped the model entirely?",
   "The real constraint here is time, not money.",
@@ -38,6 +38,23 @@ const SAMPLES = [
   "We're solving the wrong problem.",
   "Give it to the people closest to it.",
 ];
+
+// B5 — topic-aware samples: weave the room's actual topic into the synthetic
+// contributions so the dry-run reads like THIS session, not a generic demo.
+// Deterministic + AI-free; falls back to the generic set when there's no topic.
+export function sampleTextsForTopic(topic: string): string[] {
+  const t = topic.trim().replace(/[.!?]+$/, "");
+  if (!t) return GENERIC_SAMPLES;
+  const short = t.length > 60 ? t.slice(0, 57).trimEnd() + "…" : t;
+  return [
+    `The real constraint on ${short} is time, not money.`,
+    `What if we approached ${short} completely differently?`,
+    `Start smaller on ${short} and learn faster.`,
+    `Name the elephant in the room about ${short}.`,
+    `Double down on what's already working for ${short}.`,
+    `We might be solving the wrong problem with ${short}.`,
+  ];
+}
 
 export const MIN_CAST = 4;
 export const MAX_CAST = 12;
@@ -137,7 +154,7 @@ async function seedVotePhase(
     }
     case "matrix": {
       await Promise.all(
-        voters.map((t, i) => cast(t, { text: SAMPLES[i % SAMPLES.length].slice(0, 30), x: (i * 2) % 10, y: (i * 3) % 10 })),
+        voters.map((t, i) => cast(t, { text: GENERIC_SAMPLES[i % GENERIC_SAMPLES.length].slice(0, 30), x: (i * 2) % 10, y: (i * 3) % 10 })),
       );
       break;
     }
@@ -160,10 +177,13 @@ export async function seedRehearsal(
   phases: PhaseInstance[],
   castSize: number,
   // B5 — seed canned AI results by default (free/instant preview); pass false to
-  // leave AI phases empty so a real generate can run during the rehearsal.
-  opts: { cannedAi?: boolean } = {},
+  // leave AI phases empty so a real generate can run during the rehearsal. `topic`
+  // (the room's topic) flavours the synthetic contributions so the dry-run reads
+  // like THIS session.
+  opts: { cannedAi?: boolean; topic?: string } = {},
 ): Promise<{ tokens: string[]; handles: string[] }> {
   const cannedAi = opts.cannedAi !== false;
+  const samples = sampleTextsForTopic(opts.topic ?? "");
   const n = Math.max(MIN_CAST, Math.min(castSize, MAX_CAST));
   await setPhases(phases, "Rehearsal", shadowId);
   const tokens: string[] = [];
@@ -181,7 +201,7 @@ export async function seedRehearsal(
     if (mod?.capabilities.gatherSource === "submissions") {
       const count = Math.min(6, n);
       for (let i = 0; i < count; i++) {
-        await addSubmission(handles[i], SAMPLES[i % SAMPLES.length], p.id, null, tokens[i], shadowId);
+        await addSubmission(handles[i], samples[i % samples.length], p.id, null, tokens[i], shadowId);
       }
     } else if (mod?.capabilities.gatherSource === "votes") {
       await seedVotePhase(shadowId, p, voters);
