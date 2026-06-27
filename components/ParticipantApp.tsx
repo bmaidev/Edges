@@ -357,6 +357,16 @@ function PhaseScreen({
       )}
       <StatusBar state={state} />
       <AttributionChip attribution={state.attribution} handle={handle} />
+      {/* D1 — a guaranteed per-phase instruction band (a facilitator-authored line
+          on the phase config), so the room always knows what to do this phase. */}
+      {(() => {
+        const instruction = (state.config as { instruction?: string } | null)?.instruction?.trim();
+        return instruction ? (
+          <p className="border-b border-border bg-accent/5 px-5 py-2.5 text-sm leading-relaxed text-white/90">
+            {instruction}
+          </p>
+        ) : null;
+      })()}
       <ErrorBoundary
         label={`participant:${state.moduleId ?? "?"}`}
         resetKey={`${state.phaseId}:${state.rev}`}
