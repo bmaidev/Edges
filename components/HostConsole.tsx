@@ -28,6 +28,7 @@ import { RunSheetPanel } from "@/components/RunSheetPanel";
 import { RunsheetPrint } from "@/components/RunsheetPrint";
 import { PhaseTimingPanel } from "@/components/PhaseTimingPanel";
 import { CofacSettings } from "@/components/CofacSettings";
+import { RoomRoster } from "@/components/RoomRoster";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -506,6 +507,8 @@ export function HostConsole({
               }
             />
             <HandoverPanel state={s} apiBase={apiBase} code={code} />
+            {/* D4 — who's in the room: live/quiet dots + join order. */}
+            <RoomRoster state={s} />
             {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
             <CofacSettings
               enabled={s.cofacEnabled ?? true}
