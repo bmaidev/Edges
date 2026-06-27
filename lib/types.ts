@@ -113,6 +113,11 @@ export interface PhaseConfig {
   };
   // tag submissions with the participant's current allocation
   tagWith?: "lens" | "side";
+  // C1 — the facilitator's private script line for this phase, shown only in the
+  // facilitate cockpit centre band. A distinct key from ambient's public `note`
+  // (the cue-card message); stripped for every non-host role (see
+  // scopeConfigForRole) so it never leaks to the room.
+  scriptNote?: string;
 }
 
 export interface Phase {

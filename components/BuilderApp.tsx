@@ -1179,6 +1179,23 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                   />
                 </label>
 
+                {/* C1 — a private script line for the facilitate cockpit. Never
+                    leaves the host (stripped for participant/projector). */}
+                <label className="mt-2 flex flex-col gap-1 text-xs">
+                  <span className="text-muted">
+                    Your script note for this phase (only you see it, in the cockpit)
+                  </span>
+                  <input
+                    value={(p.config.scriptNote as string) ?? ""}
+                    onChange={(e) =>
+                      setConfig(i, { ...p.config, scriptNote: e.target.value || undefined })
+                    }
+                    placeholder="e.g. Remind them this is silent — read the room before advancing."
+                    maxLength={240}
+                    className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                  />
+                </label>
+
                 {/* C2 — per-gather-phase room signals (passthrough config, read by
                     the store/host route). Only meaningful where the phase gathers. */}
                 {SERVER_MODULES[p.moduleId]?.capabilities.gatherSource !== "none" && (

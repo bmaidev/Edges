@@ -1419,15 +1419,20 @@ function storeFacade(roomId: string): ModuleStore {
   };
 }
 
-// B3 — only the host-tier roles (facilitator/admin/cohost) keep the private
-// run-sheet on a phase config; the room (participant/projector) gets it stripped.
+// B3/C1 — only the host-tier roles (facilitator/admin/cohost) keep the private
+// run-sheet AND the per-phase facilitator script note on a phase config; the room
+// (participant/projector) gets both stripped, so a private cue can never leak.
+// (scriptNote is distinct from ambient's public `note` cue-card message.)
 function scopeConfigForRole(
   config: Record<string, unknown> | null,
   role: Role,
 ): Record<string, unknown> | null {
-  return role === "participant" || role === "projector"
-    ? stripRunsheet(config)
-    : config;
+  if (role !== "participant" && role !== "projector") return config;
+  const stripped = stripRunsheet(config);
+  if (!stripped || !("scriptNote" in stripped)) return stripped;
+  const clone = { ...stripped };
+  delete clone.scriptNote;
+  return clone;
 }
 
 async function buildContext(
