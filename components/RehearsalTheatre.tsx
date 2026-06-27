@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Button } from "@/components/ui";
-import type { ModuleKind, PhaseInstance, PublicState } from "@/lib/types";
+import type { ModuleKind, PhaseInstance, PublicState, Readiness } from "@/lib/types";
 
 interface CastMember {
   token: string;
@@ -43,6 +43,10 @@ export function RehearsalTheatre({
   const [participant, setParticipant] = useState<PublicState | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
+  // B5 — ephemeral per-phase notes the facilitator jots during the walk (a rehearsal
+  // scratchpad; not persisted — the dry-run is throwaway).
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   const post = useCallback(
     async (extra: Record<string, unknown>) =>
@@ -76,6 +80,7 @@ export function RehearsalTheatre({
       setAsToken(d.cast?.[0]?.token ?? "");
       setProjector(d.projector ?? null);
       setParticipant(d.participant ?? null);
+      setReadiness(d.readiness ?? null);
       setLoading(false);
     })();
   }, [post, phases]);
@@ -117,6 +122,7 @@ export function RehearsalTheatre({
         setSequence(d.sequence ?? []);
         setProjector(d.projector ?? null);
         setParticipant(d.participant ?? null);
+        setReadiness(d.readiness ?? null);
         setAsToken(nextCast[0]?.token ?? "");
         setCastSize(size);
       }
@@ -231,6 +237,12 @@ export function RehearsalTheatre({
             </button>
           </div>
 
+          {/* B5 — the auto punch-list: issues found while walking the arc. */}
+          <PunchList readiness={readiness} onJump={(phaseId) => {
+            const i = sequence.findIndex((s) => s.id === phaseId);
+            if (i >= 0) goView(i, asToken);
+          }} />
+
           {/* the two room-facing surfaces */}
           <div className="grid flex-1 grid-rows-2 gap-3 overflow-y-auto p-4 lg:grid-cols-2 lg:grid-rows-1">
             <Surface title="On the big screen" state={projector} role="projector" />
@@ -242,8 +254,61 @@ export function RehearsalTheatre({
               handle={handleOf(asToken)}
             />
           </div>
+
+          {/* B5 — a scratchpad note for the current phase (ephemeral). */}
+          {sequence[idx] && (
+            <div className="border-t border-border px-5 py-2">
+              <input
+                value={notes[sequence[idx].id] ?? ""}
+                onChange={(e) => setNotes((n) => ({ ...n, [sequence[idx].id]: e.target.value }))}
+                placeholder={`Note for “${sequence[idx].label}” (just for this rehearsal)…`}
+                className="w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-muted focus:border-accent focus:text-white focus:outline-none"
+              />
+            </div>
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+// B5 — the punch list: the advisory issues the readiness engine found in the
+// built session, shown while rehearsing so they're caught before going live. Only
+// the actionable ones (blocker/warning); tap to jump to the offending phase.
+function PunchList({
+  readiness,
+  onJump,
+}: {
+  readiness: Readiness | null;
+  onJump: (phaseId: string) => void;
+}) {
+  const issues = (readiness?.checks ?? []).filter(
+    (c) => c.severity === "blocker" || c.severity === "warning",
+  );
+  if (issues.length === 0) {
+    return (
+      <div className="border-t border-border px-5 py-1.5 text-xs text-emerald-300">
+        ✓ Punch list clear — nothing flagged in this session.
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-1.5 text-xs">
+      <span className="font-semibold text-[#ffd27a]">Punch list · {issues.length}</span>
+      {issues.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => c.phaseId && onJump(c.phaseId)}
+          title={c.detail}
+          className={`rounded-full border px-2 py-0.5 ${
+            c.severity === "blocker"
+              ? "border-[#ff8a8a]/50 text-[#ff8a8a]"
+              : "border-amber-400/40 text-[#ffe2ad]"
+          } ${c.phaseId ? "hover:border-accent" : "cursor-default"}`}
+        >
+          {c.title}
+        </button>
+      ))}
     </div>
   );
 }
