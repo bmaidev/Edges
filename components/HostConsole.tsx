@@ -29,6 +29,7 @@ import { RunsheetPrint } from "@/components/RunsheetPrint";
 import { PhaseTimingPanel } from "@/components/PhaseTimingPanel";
 import { CofacSettings } from "@/components/CofacSettings";
 import { RoomRoster } from "@/components/RoomRoster";
+import { LatecomerPanel } from "@/components/LatecomerPanel";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -407,6 +408,8 @@ export function HostConsole({
                   timerRemainingMs: s.timerRemainingMs,
                 }}
               />
+              {/* D4 — seat latecomers waiting on a hold-policy grouping phase. */}
+              <LatecomerPanel state={s} cmd={cmd} />
               {/* C2 — read the room + nudge the not-yet-responded phones. */}
               {s.participation && (
                 <div className="flex flex-col gap-1">

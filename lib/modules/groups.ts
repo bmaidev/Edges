@@ -125,6 +125,11 @@ export function oneTwoFourSize(round: number): number {
 // folded in as appended extras, joining the smallest group without disturbing
 // anyone already placed.
 export const COHORT_KEY = "__cohort__";
+// D4 — the set of latecomers the facilitator has explicitly PLACED. Under the
+// "hold" policy a latecomer is parked (not folded into any seated group) until
+// the host taps Place; placing adds their token here. Same votes-hash storage as
+// the cohort, so it rides the existing freeze plumbing with zero new keys.
+export const PLACED_KEY = "__placed__";
 
 // The frozen cohort token list, or null if none has been snapshotted yet.
 export function readCohort(votes: Record<string, unknown>): string[] | null {
@@ -132,6 +137,14 @@ export function readCohort(votes: Record<string, unknown>): string[] | null {
   return Array.isArray(c) && c.every((x) => typeof x === "string")
     ? (c as string[])
     : null;
+}
+
+// The placed-latecomer token set (empty when none placed yet).
+export function readPlaced(votes: Record<string, unknown>): string[] {
+  const c = votes[PLACED_KEY];
+  return Array.isArray(c) && c.every((x) => typeof x === "string")
+    ? (c as string[])
+    : [];
 }
 
 // Resolve the effective grouping set: the frozen cohort if one exists (with the
@@ -142,12 +155,39 @@ export function readCohort(votes: Record<string, unknown>): string[] | null {
 export function cohortTokens(
   votes: Record<string, unknown>,
   liveTokens: string[],
+  // D4 — under the "hold" policy, a latecomer (live − cohort) only folds in once
+  // the facilitator has placed them (their token is in PLACED_KEY); the rest are
+  // parked. Default (no opts) is the original "append immediately" behaviour, so
+  // every existing caller is unchanged.
+  opts: { hold?: boolean } = {},
 ): { cohort: string[]; extras: string[] } {
   const frozen = readCohort(votes);
   const live = sortedTokens(liveTokens);
   if (!frozen || frozen.length === 0) return { cohort: live, extras: [] };
   const set = new Set(frozen);
-  return { cohort: frozen, extras: live.filter((t) => !set.has(t)) };
+  let extras = live.filter((t) => !set.has(t));
+  if (opts.hold) {
+    const placed = new Set(readPlaced(votes));
+    extras = extras.filter((t) => placed.has(t));
+  }
+  return { cohort: frozen, extras };
+}
+
+// D4 — the latecomers currently being HELD (live, not in the cohort, not yet
+// placed). Only meaningful under the hold policy; the host UI lists these with a
+// one-tap Place. Returns tokens in stable sorted order. Empty when no freeze yet
+// (pre-freeze everyone is in the live cohort, so there's nothing to hold).
+export function heldLatecomers(
+  votes: Record<string, unknown>,
+  liveTokens: string[],
+): string[] {
+  const frozen = readCohort(votes);
+  if (!frozen || frozen.length === 0) return [];
+  const cohortSet = new Set(frozen);
+  const placed = new Set(readPlaced(votes));
+  return sortedTokens(liveTokens).filter(
+    (t) => !cohortSet.has(t) && !placed.has(t),
+  );
 }
 
 // Fold latecomers into existing groups WITHOUT disturbing seated members: each

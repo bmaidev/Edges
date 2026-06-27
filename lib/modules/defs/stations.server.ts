@@ -110,6 +110,7 @@ function buildGroups(
   const { cohort, extras } = cohortTokens(
     votes,
     ctx.participants.map((p) => p.token),
+    { hold: ctx.config.latecomerHold === true },
   );
   return appendExtras(groupRound(cohort, groupSize, 0), extras);
 }

@@ -79,6 +79,9 @@ export interface OneTwoFourParticipantView {
   wholeRoom: boolean; // round 3 — the group is the whole room
   captureShared: boolean;
   mySharedSubmitted: boolean;
+  // D4 — true when this is a held latecomer under the hold policy: they're waiting
+  // for the facilitator to place them, so the client shows a calm waiting state.
+  held?: boolean;
 }
 
 export interface OneTwoFourSharedItem {
@@ -149,7 +152,8 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
     const round = readRound(votes);
     const size = oneTwoFourSize(round); // 1, 2, 4, Infinity
     const live = ctx.participants.map((p) => p.token);
-    const { cohort, extras } = cohortTokens(votes, live);
+    const hold = ctx.config.latecomerHold === true;
+    const { cohort, extras } = cohortTokens(votes, live, { hold });
 
     // Whole-group stage: one group is the whole room (everyone, latecomers and
     // all — at "All" no one is left out).
@@ -182,6 +186,7 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
         : false;
 
       let members: string[];
+      let held = false;
       if (!me) {
         members = [];
       } else if (round === 0) {
@@ -190,9 +195,16 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
         members = ctx.participants.map((p) => p.handle);
       } else {
         const found = groupOf(groups, me.token);
-        members = found
-          ? found.group.map((t) => handleByToken.get(t) ?? "—")
-          : [me.handle];
+        if (found) {
+          members = found.group.map((t) => handleByToken.get(t) ?? "—");
+        } else if (hold) {
+          // D4 — a held latecomer: not seated yet. Show the calm waiting state
+          // rather than a misleading solo group of just themselves.
+          held = true;
+          members = [me.handle];
+        } else {
+          members = [me.handle];
+        }
       }
 
       const view: OneTwoFourParticipantView = {
@@ -203,6 +215,7 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
         wholeRoom,
         captureShared,
         mySharedSubmitted,
+        held,
       };
       return view;
     }

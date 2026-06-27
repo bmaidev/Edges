@@ -31,6 +31,8 @@ import {
   setAmbient,
   setCofac,
   dismissCofac,
+  placeLatecomer,
+  holdLatecomer,
   setDriver,
   setLobbyCue,
   setMode,
@@ -138,6 +140,10 @@ const COMMAND_CAP: Record<string, Capability> = {
   // move (cohost can dismiss).
   cofacToggle: "configure",
   cofacDismiss: "advance",
+  // D4 — place / hold latecomers under the hold policy. A live nav-tier move
+  // (facilitator + cohost can seat a waiting latecomer).
+  placeLatecomer: "advance",
+  holdLatecomer: "advance",
   // F1 — build a client-ready report mid-session (no wipe). Facilitator + admin,
   // not cohost; never the admin-only `configure` cap.
   buildReport: "end",
@@ -503,6 +509,23 @@ export async function POST(
       return NextResponse.json({
         ok: true,
         state: await navState(room, await dismissCofac(phaseId, kind, room), role ?? "facilitator"),
+      });
+    }
+    case "placeLatecomer":
+    case "holdLatecomer": {
+      const phaseId = String(a.phaseId ?? "");
+      const tokens = Array.isArray(a.tokens)
+        ? (a.tokens as unknown[]).filter((t): t is string => typeof t === "string")
+        : [];
+      if (!phaseId || tokens.length === 0)
+        return NextResponse.json({ error: "Missing phaseId/tokens" }, { status: 400 });
+      const written =
+        command === "placeLatecomer"
+          ? await placeLatecomer(phaseId, tokens, room)
+          : await holdLatecomer(phaseId, tokens, room);
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, written, role ?? "facilitator"),
       });
     }
     case "addContent":

@@ -1132,6 +1132,24 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                   </div>
                 )}
 
+                {/* D4 — latecomer policy, only on the grouping modules (which
+                    freeze a cohort on entry). Hold parks late arrivals until you
+                    place them, instead of auto-folding them mid-activity. */}
+                {(p.moduleId === "onetwofour" ||
+                  p.moduleId === "worldcafe" ||
+                  p.moduleId === "stations") && (
+                  <label className="mt-2 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={p.config.latecomerHold === true}
+                      onChange={(e) =>
+                        setConfig(i, { ...p.config, latecomerHold: e.target.checked })
+                      }
+                    />
+                    Hold latecomers until I place them (instead of auto-grouping)
+                  </label>
+                )}
+
                 {/* C6 — author when the big screen goes amber + drains (minutes
                     left). Empty = the calm default (2:00). Only meaningful on a
                     timed phase. */}

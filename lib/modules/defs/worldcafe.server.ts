@@ -115,6 +115,7 @@ function buildTables(
   const { cohort, extras } = cohortTokens(
     votes,
     ctx.participants.map((p) => p.token),
+    { hold: ctx.config.latecomerHold === true },
   );
   return appendCafeExtras(cafeRound(cohort, numTables, round), extras);
 }
