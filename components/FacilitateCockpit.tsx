@@ -39,6 +39,26 @@ export function FacilitateCockpit({
   // C1 — hold a screen wake-lock for the whole live session so the laptop never
   // sleeps mid-facilitation. Released automatically when the cockpit unmounts/ends.
   useWakeLock(!s.ended);
+  // C1 — a persistent per-device chime-mute (some rooms want a silent cockpit).
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    try {
+      setMuted(localStorage.getItem("edges_cockpit_muted") === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const toggleMute = () => {
+    setMuted((m) => {
+      const next = !m;
+      try {
+        localStorage.setItem("edges_cockpit_muted", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   return (
     <main className="flex min-h-screen flex-col bg-[#070710] text-white">
@@ -73,7 +93,7 @@ export function FacilitateCockpit({
         <Countdown
           endsAt={s.timerEndsAt}
           remainingMs={s.timerRemainingMs}
-          onElapsed={chime}
+          onElapsed={muted ? undefined : chime}
           className={`font-mono text-[19vw] leading-none tracking-tight tabular-nums sm:text-[15vw] lg:text-[11rem] ${
             paused ? "text-white/40" : running ? "text-accent" : "text-white/25"
           }`}
@@ -120,6 +140,38 @@ export function FacilitateCockpit({
           )}
         </div>
       </section>
+
+      {/* C1 — jump-to-phase rail (tap any phase to go there) + chime mute. */}
+      {seq.length > 1 && (
+        <div className="flex items-center gap-2 px-8 pb-1">
+          <div className="flex flex-1 gap-1.5 overflow-x-auto py-1">
+            {seq.map((p, i) => (
+              <button
+                key={p.id}
+                onClick={() => cmd("setPhase", { phaseId: p.id })}
+                title={p.label}
+                className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  i === idx
+                    ? "border-accent bg-accent/15 text-accent"
+                    : i < idx
+                      ? "border-white/10 text-white/35"
+                      : "border-white/10 text-white/55 hover:border-accent"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={toggleMute}
+            title={muted ? "Chime is muted — tap to unmute" : "Mute the chime"}
+            aria-pressed={muted}
+            className="shrink-0 rounded-full border border-white/10 px-2.5 py-1 text-xs text-white/55 hover:border-accent"
+          >
+            {muted ? "🔇" : "🔔"}
+          </button>
+        </div>
+      )}
 
       {/* Band 3 — projector mirror + the one big action */}
       <section className="mt-auto grid gap-6 px-8 pb-8 lg:grid-cols-[1fr_minmax(0,22rem)] lg:items-end">
