@@ -707,8 +707,8 @@ export async function anonymousPhaseIds(
   const state = await getState(roomId);
   const out = new Set<string>();
   for (const p of resolvePhases(state)) {
-    if ((p.config as { anonymity?: string } | null)?.anonymity === "anonymous")
-      out.add(p.id);
+    const anon = (p.config as { anonymity?: string } | null)?.anonymity;
+    if (anon === "anonymous" || anon === "anonymous-strict") out.add(p.id);
   }
   return out;
 }
@@ -1598,7 +1598,8 @@ export async function getPublicState(
       const heartbeats = await readHeartbeats(roomId);
       const raw = await computeParticipationSignal(ctx, gatherSource, heartbeats);
       if (raw) {
-        const anonymous = (cfg as { anonymity?: string } | null)?.anonymity === "anonymous";
+        const anonAnon = (cfg as { anonymity?: string } | null)?.anonymity;
+        const anonymous = anonAnon === "anonymous" || anonAnon === "anonymous-strict";
         if (role === "participant") {
           participation = null; // participants never see breakdowns
         } else if (role === "projector") {
@@ -1622,6 +1623,8 @@ export async function getPublicState(
   const attribution = resolveAttribution(
     moduleId,
     moduleId ? getServerModule(moduleId)?.capabilities.gatherSource ?? "none" : "none",
+    (cfg as { anonymity?: import("./modules/attribution").AnonymitySetting } | null)
+      ?.anonymity,
   );
 
   // C2 nudge — read the active gather phase's nudge marker so the participant can
