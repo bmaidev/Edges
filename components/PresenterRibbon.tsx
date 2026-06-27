@@ -71,7 +71,11 @@ export function PresenterRibbon({
       {/* now / next */}
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <span className="text-[11px] uppercase tracking-wide text-accent">Now</span>
-        <span className="truncate text-lg font-semibold text-white/90">{nowLabel}</span>
+        {/* E2 — re-key on the phase so the label "breathes" once when it changes
+            (the a11y-reduce-motion class neutralises it for reduce-motion users). */}
+        <span key={phaseId ?? "none"} className="truncate text-lg font-semibold text-white/90 animate-nowBreathe">
+          {nowLabel}
+        </span>
         {nav.next && (
           <span className="hidden min-w-0 items-baseline gap-2 text-muted sm:flex">
             <span className="text-[11px] uppercase tracking-wide">Next</span>
