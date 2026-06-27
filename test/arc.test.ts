@@ -6,6 +6,8 @@ import {
   TIMED,
   acceptsTimerEdit,
   analyzeAgenda,
+  arcReadout,
+  budgetReadout,
   phaseMinutes,
 } from "@/lib/arc";
 import { timeBudget } from "@/lib/design";
@@ -79,6 +81,38 @@ describe("analyzeAgenda", () => {
     const a = analyzeAgenda([], 60);
     expect(a.points).toEqual([]);
     expect(a.totalMinutes).toBe(0);
+  });
+});
+
+describe("arcReadout (B1 named verdicts)", () => {
+  const ph = (moduleId: string) => ({ moduleId: moduleId as ModuleKind, config: {} });
+  it("healthy: open → diverge → converge → close", () => {
+    const a = analyzeAgenda([ph("lobby"), ph("capture"), ph("poll"), ph("close")], 120);
+    expect(arcReadout(a).verdict).toBe("healthy");
+  });
+  it("no-converge: diverges but never lands", () => {
+    const a = analyzeAgenda([ph("lobby"), ph("capture"), ph("close")], 120);
+    expect(arcReadout(a).verdict).toBe("no-converge");
+  });
+  it("inverted: converges before it diverges", () => {
+    const a = analyzeAgenda([ph("lobby"), ph("poll"), ph("capture"), ph("close")], 120);
+    expect(arcReadout(a).verdict).toBe("inverted");
+  });
+  it("flat: no diverge and no converge across several phases", () => {
+    const a = analyzeAgenda([ph("lobby"), ph("content"), ph("media"), ph("close")], 120);
+    expect(arcReadout(a).verdict).toBe("flat");
+  });
+});
+
+describe("budgetReadout (B1 delta copy)", () => {
+  const ph = (moduleId: string) => ({ moduleId: moduleId as ModuleKind, config: {} });
+  it("over → 'N min over — trim a phase'", () => {
+    const a = analyzeAgenda([ph("fishbowl"), ph("openspace")], 10); // 12+15 > 10
+    expect(budgetReadout(a)).toMatch(/min over — trim a phase/);
+  });
+  it("comfortably under → 'N min to spare'", () => {
+    const a = analyzeAgenda([ph("lobby")], 60); // ~2 min of 60
+    expect(budgetReadout(a)).toMatch(/min to spare/);
   });
 });
 

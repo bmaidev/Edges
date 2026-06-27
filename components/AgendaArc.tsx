@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { analyzeAgenda, type ArcStage } from "@/lib/arc";
+import { analyzeAgenda, arcReadout, budgetReadout, type ArcStage } from "@/lib/arc";
 import type { PhaseInstance } from "@/lib/types";
 
 const STAGE_COLOR: Record<ArcStage, string> = {
@@ -38,11 +38,25 @@ export function AgendaArc({
   const W = 100; // SVG viewBox width (responsive via preserveAspectRatio none)
   const H = 44;
   const n = a.points.length;
-  const x = (i: number) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
+  // B1 — minutes-weighted x: each dot sits at its phase's TIME midpoint, so the
+  // energy curve aligns with the proportional time bar above it (a 30-min phase
+  // occupies more horizontal room than a 5-min one).
+  const mid: number[] = [];
+  let acc = 0;
+  for (const pt of a.points) {
+    mid.push(acc + pt.minutes / 2);
+    acc += pt.minutes;
+  }
+  const x = (i: number) =>
+    a.totalMinutes > 0
+      ? (mid[i] / a.totalMinutes) * W
+      : n === 1
+        ? W / 2
+        : (i / (n - 1)) * W;
   const y = (e: number) => H - 6 - e * (H - 14); // higher energy = higher line
   const line = a.points.map((pt, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(pt.energy).toFixed(1)}`).join(" ");
 
-  const arcOk = a.hasOpen && a.hasDiverge && a.hasConverge && a.hasClose;
+  const readout = arcReadout(a);
 
   return (
     <section className="rounded-xl border border-border bg-surface p-3">
@@ -55,7 +69,8 @@ export function AgendaArc({
           {a.estimated ? "~" : ""}
           {a.totalMinutes} min{" "}
           <span className="text-muted/70">/ {a.budget} budget</span>
-          {a.overBudget && " · over"}
+          {" · "}
+          {budgetReadout(a)}
         </span>
       </div>
 
@@ -106,11 +121,9 @@ export function AgendaArc({
             {STAGE_LABEL[s]}
           </span>
         ))}
-        {!arcOk && (
-          <span className="text-muted/70">
-            · a full arc usually opens, diverges, converges, then closes
-          </span>
-        )}
+        <span className={readout.verdict === "healthy" ? "text-emerald-400/80" : "text-[#ffd27a]/90"}>
+          · {readout.text}
+        </span>
       </div>
     </section>
   );

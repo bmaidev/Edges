@@ -253,3 +253,34 @@ export function analyzeAgenda(
     hasClose: has("close"),
   };
 }
+
+// B1 — a named "does it breathe?" read-out classifying the arc shape (vs the
+// old boolean-only "full arc usually …" hint). Pure; covered by arc tests.
+export type ArcVerdict = "healthy" | "no-converge" | "inverted" | "flat" | "incomplete";
+
+export function arcReadout(a: ArcAnalysis): { verdict: ArcVerdict; text: string } {
+  const stages = a.points.map((p) => p.stage);
+  const firstDiverge = stages.indexOf("diverge");
+  const firstConverge = stages.indexOf("converge");
+  // Converging before diverging — narrowing before there's anything to narrow.
+  if (firstDiverge >= 0 && firstConverge >= 0 && firstConverge < firstDiverge)
+    return { verdict: "inverted", text: "Converges before it diverges — generate before you narrow." };
+  // Diverged but never landed it.
+  if (a.hasDiverge && !a.hasConverge)
+    return { verdict: "no-converge", text: "No convergence after your divergence — add a vote or synthesis to land it." };
+  // No shape at all across a few phases.
+  if (!a.hasDiverge && !a.hasConverge && a.points.length >= 3)
+    return { verdict: "flat", text: "Flat arc — consider a divergent then a convergent move." };
+  // The full canonical shape.
+  if (a.hasOpen && a.hasDiverge && a.hasConverge && a.hasClose)
+    return { verdict: "healthy", text: "Opens, diverges, converges, closes ✓" };
+  return { verdict: "incomplete", text: "A full arc usually opens, diverges, converges, then closes." };
+}
+
+// B1 — softened budget delta copy.
+export function budgetReadout(a: ArcAnalysis): string {
+  const delta = a.totalMinutes - a.budget;
+  if (delta > 0) return `${delta} min over — trim a phase`;
+  if (delta < -5) return `${-delta} min to spare`;
+  return "about right";
+}
