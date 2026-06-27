@@ -8,18 +8,32 @@
 
 import { z } from "zod";
 import type { ModuleServerDef } from "../types";
+import type { AmbientScene } from "@/lib/types";
 
 export interface AmbientConfig {
   label: string;
   kind: "break" | "hold";
+  scene?: AmbientScene;
+  startedAt?: number | null;
   note?: string;
 }
 
 export interface AmbientView {
   kind: "break" | "hold";
+  scene: AmbientScene;
   note: string | null;
   headline: string;
+  startedAt: number | null; // E3 — anchors the breathing pace (rAF-free, CSS-driven)
+  endsAt: number | null; // E3 — drives the countdown scene's big clock
 }
+
+const HEADLINE: Record<AmbientScene, string> = {
+  break: "Taking a short break",
+  hold: "We'll resume shortly",
+  breathe: "Let's take a breath",
+  countdown: "Back in a moment",
+  cuecard: "",
+};
 
 function vis() {
   const v = "visible" as const;
@@ -37,6 +51,7 @@ export const ambientModule: ModuleServerDef<AmbientConfig> = {
     .object({
       label: z.string(),
       kind: z.enum(["break", "hold"]),
+      scene: z.enum(["break", "hold", "breathe", "countdown", "cuecard"]).optional(),
       note: z.string().optional(),
     })
     .passthrough(),
@@ -51,10 +66,16 @@ export const ambientModule: ModuleServerDef<AmbientConfig> = {
   },
   computeView(ctx) {
     const cfg = ctx.config as unknown as AmbientConfig;
+    const scene: AmbientScene = cfg.scene ?? (cfg.kind === "hold" ? "hold" : "break");
+    const note = cfg.note?.trim() ? cfg.note.trim() : null;
     const view: AmbientView = {
       kind: cfg.kind === "hold" ? "hold" : "break",
-      note: cfg.note?.trim() ? cfg.note.trim() : null,
-      headline: cfg.kind === "hold" ? "We'll resume shortly" : "Taking a short break",
+      scene,
+      note,
+      // A cue card leads with the note itself; the others have a calm headline.
+      headline: scene === "cuecard" ? note ?? "" : HEADLINE[scene],
+      startedAt: typeof cfg.startedAt === "number" ? cfg.startedAt : null,
+      endsAt: ctx.state.timerEndsAt ?? null,
     };
     return view;
   },
