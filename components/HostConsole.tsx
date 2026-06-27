@@ -393,6 +393,11 @@ export function HostConsole({
               <RunSheetPanel
                 runsheet={s.runsheets?.[s.phaseId ?? ""]}
                 nextPeek={s.nextPeek}
+                timing={{
+                  plannedSec: s.config?.timerSeconds,
+                  timerEndsAt: s.timerEndsAt,
+                  timerRemainingMs: s.timerRemainingMs,
+                }}
               />
               {/* C2 — read the room + nudge the not-yet-responded phones. */}
               {s.participation && (
