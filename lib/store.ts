@@ -19,6 +19,7 @@ import {
 } from "./modules/runsheet";
 import { resolveAttribution } from "./modules/attribution";
 import { HEARTBEAT_THROTTLE_MS, isDriverLive, liveRoster } from "./presence";
+import { computeCofac } from "./cofac";
 import {
   PROJECTOR_FLOOR,
   computeParticipationSignal,
@@ -1644,5 +1645,8 @@ export async function getFacilitatorState(
     // C5 — the baton is stale when its console aged out (the next claim wins).
     // Derived on read; never written back here (the "no write in getState" rule).
     driverStale: state.driver ? !isDriverLive(state.driver, presence, Date.now()) : false,
+    // C7 — a deterministic, content-free co-facilitator nudge (host-only). Pure
+    // function of the counts/timer already in `pub`; no AI, no write, no cost.
+    cofac: computeCofac(pub, Date.now()),
   };
 }

@@ -5,6 +5,7 @@ import { usePolledState } from "@/components/usePolledState";
 import { usePresence } from "@/components/usePresence";
 import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip";
 import { DriverChip } from "@/components/DriverChip";
+import { CofacBanner } from "@/components/CofacBanner";
 import { TourCoach } from "@/components/TourCoach";
 import { FacilitateCockpit } from "@/components/FacilitateCockpit";
 import { ConfirmSheet } from "@/components/recovery/ConfirmSheet";
@@ -317,6 +318,8 @@ export function HostConsole({
             onDismiss={() => setUndoToast(null)}
           />
         )}
+        {/* C7 — a deterministic co-facilitator nudge (advisory; counts/timing only). */}
+        <CofacBanner cofac={s.cofac ?? null} phaseId={s.phaseId ?? ""} cmd={cmd} />
         <div className="flex items-center gap-1 overflow-x-auto px-2">
           {TABS.filter((t) => t.show).map((t) => (
             <button

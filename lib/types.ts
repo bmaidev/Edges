@@ -433,6 +433,9 @@ export interface FacilitatorState extends PublicState {
   // C5 — true when state.driver is set but no longer live (its presenceId aged out
   // of the roster, or the claim is stale). Derived on read; the next claim wins.
   driverStale?: boolean;
+  // C7 — at most one deterministic, content-free co-facilitator nudge (host-only;
+  // derived from counts + timings, never participant text). null when all is well.
+  cofac?: import("./cofac").CofacNudge | null;
 }
 
 // E3 — the calm ambient state. `break` runs a countdown; `hold` is open-ended.
