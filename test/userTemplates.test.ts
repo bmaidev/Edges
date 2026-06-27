@@ -86,6 +86,31 @@ describe("save / list / get / delete", () => {
     expect(await renameDesign(id, "   ")).toBe(false);
   });
 
+  it("B4 — a room-scoped design appears only in its own room's library", async () => {
+    const before = await listDesignMeta();
+    const g = await saveDesign("Global one", GOOD, { scope: "global" });
+    const r = await saveDesign("Room one", GOOD, { scope: "room", roomSlug: "room-A" });
+    expect(g.ok && r.ok).toBe(true);
+    const gid = g.ok ? g.id : "";
+    const rid = r.ok ? r.id : "";
+
+    // Room A sees both global + its own room-scoped design.
+    const inA = await listDesignMeta("room-A");
+    expect(inA.find((m) => m.id === gid)?.scope).toBe("global");
+    expect(inA.find((m) => m.id === rid)?.scope).toBe("room");
+
+    // Room B sees the global one but NOT room-A's room-scoped design.
+    const inB = await listDesignMeta("room-B");
+    expect(inB.some((m) => m.id === gid)).toBe(true);
+    expect(inB.some((m) => m.id === rid)).toBe(false);
+
+    // With no room context, only global designs (+ legacy scope-less = global).
+    const globalOnly = await listDesignMeta();
+    expect(globalOnly.some((m) => m.id === gid)).toBe(true);
+    expect(globalOnly.some((m) => m.id === rid)).toBe(false);
+    expect(globalOnly.length).toBeGreaterThanOrEqual(before.length + 1);
+  });
+
   it("two concurrent saves both survive the shared global index", async () => {
     const before = (await listDesignMeta()).length;
     const [a, b] = await Promise.all([

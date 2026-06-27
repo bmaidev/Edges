@@ -622,9 +622,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   // B5 — rehearsal theatre overlay.
   const [rehearsing, setRehearsing] = useState(false);
 
-  // B4 — the shared user-template library.
+  // B4 — the user-template library (global + this room's room-scoped designs).
   const [userDesigns, setUserDesigns] = useState<
-    { id: string; name: string; phaseCount: number }[]
+    { id: string; name: string; phaseCount: number; scope?: "global" | "room" }[]
   >([]);
   const loadDesigns = useCallback(async () => {
     if (!code.trim()) return;
@@ -643,13 +643,24 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
     if (phases.length === 0) return;
     const nm = window.prompt("Name this template:", name || "My session");
     if (!nm) return;
+    // B4 — scope: the shared library (every room, needs the admin code) or this
+    // room only. Default to room-only — the safer, no-extra-passcode choice.
+    const shared = window.confirm(
+      "Save to the SHARED library (visible in every room — needs the admin passcode)?\n\nOK = shared · Cancel = this room only",
+    );
     const res = await fetch(`${apiBase}/host`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: "saveDesign", name: nm, phases: parsedPhases(), code }),
+      body: JSON.stringify({
+        command: "saveDesign",
+        name: nm,
+        phases: parsedPhases(),
+        scope: shared ? "global" : "room",
+        code,
+      }),
     });
     if (res.ok) {
-      setMsg(`Saved “${nm}” to your templates.`);
+      setMsg(`Saved “${nm}” to ${shared ? "the shared library" : "this room"}.`);
       loadDesigns();
     } else {
       const d = await res.json().catch(() => ({}));
@@ -1041,6 +1052,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
             >
               {d.name}{" "}
               <span className="text-muted">· {d.phaseCount} phase{d.phaseCount === 1 ? "" : "s"}</span>
+              {d.scope === "room" && <span className="text-muted/60"> · this room</span>}
             </button>
             {/* B4 — share / duplicate / delete a saved design. */}
             <button
