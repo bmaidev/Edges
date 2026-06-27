@@ -68,11 +68,26 @@ describe("resolution + privacy", () => {
     expect(pub.spotlight).toBeNull();
   });
 
-  it("a literal spotlight shows its text, still handle-free", async () => {
+  it("a literal spotlight shows its text, still handle-free by default", async () => {
     const { slug } = await seeded();
     await setSpotlight({ kind: "literal", text: "On the wall" }, slug);
     const pub = await getPublicState(null, slug, "projector");
     expect(pub.spotlight).toEqual({ text: "On the wall", handle: null });
+  });
+
+  // C4 — opt-in attribution: ONLY an explicitly-attributed literal carries a name.
+  it("an attributed literal spotlight carries its name to the room", async () => {
+    const { slug } = await seeded();
+    await setSpotlight({ kind: "literal", text: "A named quote", handle: "Dana" }, slug);
+    const pub = await getPublicState(null, slug, "projector");
+    expect(pub.spotlight).toEqual({ text: "A named quote", handle: "Dana" });
+  });
+
+  it("a submission spotlight is NEVER attributed, even with a real stored handle", async () => {
+    const { slug, sub } = await seeded(); // sub was stored with handle "Dana"
+    await setSpotlight({ kind: "submission", id: sub.id }, slug);
+    const pub = await getPublicState(null, slug, "projector");
+    expect(pub.spotlight?.handle).toBeNull();
   });
 });
 
@@ -171,5 +186,26 @@ describe("host route gating + parse", () => {
     expect(res.status).toBe(200);
     const d = await res.json();
     expect(d.state.spotlight).toBeNull();
+  });
+
+  // C4 — the command attaches a name to a LITERAL spotlight only when one is passed.
+  it("a literal spotlight + handle flows the name to the room", async () => {
+    const { slug, passcodes } = await seeded();
+    const res = await hostPOST(
+      hostReq(slug, { command: "spotlight", code: passcodes.facilitator, text: "Quote", handle: "Dana" }),
+      { params: { room: slug } },
+    );
+    const d = await res.json();
+    expect(d.state.spotlight).toEqual({ text: "Quote", handle: "Dana" });
+  });
+
+  it("a SUBMISSION spotlight ignores any handle in the payload (never attributes)", async () => {
+    const { slug, sub, passcodes } = await seeded();
+    const res = await hostPOST(
+      hostReq(slug, { command: "spotlight", code: passcodes.facilitator, id: sub.id, handle: "Mallory" }),
+      { params: { room: slug } },
+    );
+    const d = await res.json();
+    expect(d.state.spotlight?.handle).toBeNull();
   });
 });

@@ -1435,7 +1435,12 @@ function resolveSpotlight(
   submissions: Submission[],
 ): { text: string; handle: string | null } | null {
   if (!ref) return null;
-  if (ref.kind === "literal") return { text: ref.text, handle: null };
+  // C4 — a LITERAL spotlight is the only attributable kind: it carries a name ONLY
+  // when the host explicitly opted in at spotlight time (the host route attaches a
+  // handle solely for a named, non-anonymous source). A submission spotlight is
+  // NEVER attributed — its stored handle is not a public-ness signal (an anonymous-
+  // by-design phase still stores a real handle), so the room must never see it.
+  if (ref.kind === "literal") return { text: ref.text, handle: ref.handle ?? null };
   const sub = submissions.find((s) => s.id === ref.id);
   return sub ? { text: sub.text, handle: null } : null;
 }
@@ -1676,7 +1681,7 @@ export async function roomSignature(
     state.spotlight
       ? state.spotlight.kind === "submission"
         ? `s:${state.spotlight.id}`
-        : `l:${state.spotlight.text.length}`
+        : `l:${state.spotlight.text.length}:${state.spotlight.handle ? "a" : ""}`
       : "",
     // C5 — tick the stream when the driving baton changes, so the chip updates
     // within ~1 SSE beat instead of waiting for the 2s poll.

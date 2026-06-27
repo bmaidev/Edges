@@ -1332,7 +1332,54 @@ function ReadAroundControls({ state, cmd }: { state: FacilitatorState; cmd: Cmd 
         </Button>
         <Button onClick={() => cmd("readaroundNext", { dir: 1 })}>Push next →</Button>
       </div>
+      {/* C4 — bloom the current item on the big screen (a literal spotlight). The
+          "with name" option appears ONLY when the item carries a handle — i.e. a
+          named, non-anonymous contribution — so an anonymous read-around can never
+          be attributed. */}
+      {ra?.item && <ReadAroundSpotlight item={ra.item} state={state} cmd={cmd} />}
     </Panel>
+  );
+}
+
+function ReadAroundSpotlight({
+  item,
+  state,
+  cmd,
+}: {
+  item: { text: string; tag?: string | null; handle?: string };
+  state: FacilitatorState;
+  cmd: Cmd;
+}) {
+  const onScreen =
+    state.spotlight?.text === item.text && state.spotlightRef?.kind === "literal";
+  if (onScreen) {
+    return (
+      <button
+        className="self-start text-xs text-accent underline"
+        onClick={() => cmd("spotlight", {})}
+      >
+        ● on the big screen — tap to clear
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-3 text-xs">
+      <button
+        className="text-muted underline hover:text-white"
+        onClick={() => cmd("spotlight", { text: item.text })}
+      >
+        ◌ spotlight on the big screen
+      </button>
+      {item.handle && (
+        <button
+          className="text-muted underline hover:text-white"
+          onClick={() => cmd("spotlight", { text: item.text, handle: item.handle })}
+          title={`Attribute this to ${item.handle}`}
+        >
+          spotlight with “{item.handle}”
+        </button>
+      )}
+    </div>
   );
 }
 
