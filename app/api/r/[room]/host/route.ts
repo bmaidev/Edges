@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { archiveRoom, buildReport, checkSuperAdmin, getRoom, publishTakeaway, saveBlueprint } from "@/lib/rooms";
+import { archiveRoom, buildReport, checkSuperAdmin, editReport, getRoom, publishTakeaway, regenerateReport, saveBlueprint, setReportMeta } from "@/lib/rooms";
 import {
   deleteDesign,
   getDesign,
@@ -161,6 +161,10 @@ const COMMAND_CAP: Record<string, Capability> = {
   // F1 — build a client-ready report mid-session (no wipe). Facilitator + admin,
   // not cohost; never the admin-only `configure` cap.
   buildReport: "end",
+  // F1 — curate the report before sharing (facilitator/admin, like buildReport).
+  editReport: "end",
+  setReportMeta: "end",
+  regenerateReport: "end",
   archive: "end",
   end: "end",
 };
@@ -706,6 +710,19 @@ export async function POST(
     case "buildReport": {
       // F1 — build the client-ready report from the LIVE session, no wipe.
       const archive = await buildReport(room);
+      return NextResponse.json({ ok: true, archive });
+    }
+    // F1 — inline curation of the built report (edit/drop/reorder/summary).
+    case "editReport": {
+      const archive = await editReport(room, a.edit as import("@/lib/report-edit").ReportEdit);
+      return NextResponse.json({ ok: true, archive });
+    }
+    case "setReportMeta": {
+      const archive = await setReportMeta(room, a.meta);
+      return NextResponse.json({ ok: true, archive });
+    }
+    case "regenerateReport": {
+      const archive = await regenerateReport(room);
       return NextResponse.json({ ok: true, archive });
     }
     case "archive": {

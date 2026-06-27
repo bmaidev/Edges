@@ -504,6 +504,9 @@ export interface RoomArchive {
     due?: string;
     status: "open" | "done";
   }[];
+  // F1 — report sharing preferences (quotes toggle + attribution). Defaults are
+  // off-the-record (no quotes, anonymous) until the facilitator opts in.
+  reportMeta?: import("./report-edit").ReportMeta;
 }
 
 // Generate a whole-session report from all submissions + curated patterns.
@@ -689,6 +692,77 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
 
 export async function getArchive(slug: string): Promise<RoomArchive | null> {
   return db.get<RoomArchive>(archiveKey(slug));
+}
+
+// F1 — apply one structured curation edit to the archive's report (rename/drop/
+// reorder/edit-summary). Under the same "report" lock as build/archive so a
+// concurrent regenerate can't clobber the edit. No-op (returns the archive) when
+// there's no report yet.
+export async function editReport(
+  slug: string,
+  edit: import("./report-edit").ReportEdit,
+): Promise<RoomArchive | null> {
+  const { applyReportEdit } = await import("./report-edit");
+  const res = await withLock(
+    slug,
+    "report",
+    async () => {
+      const archive = await getArchive(slug);
+      if (!archive?.report) return archive ?? null;
+      const next = { ...archive, report: applyReportEdit(archive.report, edit) };
+      await db.set(archiveKey(slug), next);
+      return next;
+    },
+    { ttlSeconds: 30 },
+  );
+  return res.ok ? res.value : getArchive(slug);
+}
+
+// F1 — set the report's sharing preferences (quotes toggle + attribution).
+export async function setReportMeta(
+  slug: string,
+  raw: unknown,
+): Promise<RoomArchive | null> {
+  const { normalizeReportMeta } = await import("./report-edit");
+  const res = await withLock(
+    slug,
+    "report",
+    async () => {
+      const archive = await getArchive(slug);
+      if (!archive) return null;
+      const next = { ...archive, reportMeta: normalizeReportMeta(raw) };
+      await db.set(archiveKey(slug), next);
+      return next;
+    },
+    { ttlSeconds: 30 },
+  );
+  return res.ok ? res.value : getArchive(slug);
+}
+
+// F1 — regenerate the AI report fresh from the archived submissions/patterns,
+// discarding prior edits (an explicit "redo the synthesis"). Preserves the
+// reportToken + reportMeta (sharing link + preferences survive a regenerate).
+export async function regenerateReport(slug: string): Promise<RoomArchive | null> {
+  const res = await withLock(
+    slug,
+    "report",
+    async () => {
+      const archive = await getArchive(slug);
+      if (!archive) return null;
+      const room = await getRoom(slug);
+      const report = await generateSessionReport(
+        room?.topic ?? "",
+        archive.sessionName,
+        archive.submissions.map((s) => ({ phaseId: s.phaseId, text: s.text, tag: s.tag })),
+        archive.patterns.map((p) => p.name),
+      );
+      const next = { ...archive, report: report ?? archive.report };
+      await db.set(archiveKey(slug), next);
+      return next;
+    },
+    { ttlSeconds: 60 },
+  );
+  return res.ok ? res.value : getArchive(slug);
 }
 
 // A1 — permanently delete a room: its durable record + index entry + archive,
