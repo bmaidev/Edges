@@ -87,6 +87,66 @@ export async function ensureDefaultWorkspace(): Promise<void> {
   await migrateLegacyIndex(LEGACY_DESIGN_INDEX, wsDesignIndexKey(DEFAULT_WORKSPACE_ID));
 }
 
+// ---- per-workspace index helpers (used by rooms.ts + userTemplates.ts) ------
+// One uniform family so every index mutator (room/metrics/design create, delete,
+// rename) edits exactly one key per workspace — no "is this the default?" branch.
+// Each ensures the default workspace's migration has run before touching an index.
+
+type IndexKind = "rooms" | "metrics" | "designs";
+
+function indexKeyFor(kind: IndexKind, workspaceId: string): string {
+  return kind === "rooms"
+    ? wsRoomsIndexKey(workspaceId)
+    : kind === "metrics"
+      ? wsMetricsIndexKey(workspaceId)
+      : wsDesignIndexKey(workspaceId);
+}
+
+export async function wsIndexList(kind: IndexKind, workspaceId: string): Promise<string[]> {
+  await ensureDefaultWorkspace();
+  return (await getDb().get<string[]>(indexKeyFor(kind, workspaceId))) ?? [];
+}
+
+export async function wsIndexAdd(kind: IndexKind, workspaceId: string, id: string): Promise<void> {
+  await ensureDefaultWorkspace();
+  const db = getDb();
+  const key = indexKeyFor(kind, workspaceId);
+  const idx = (await db.get<string[]>(key)) ?? [];
+  if (!idx.includes(id)) await db.set(key, [...idx, id]);
+}
+
+export async function wsIndexRemove(kind: IndexKind, workspaceId: string, id: string): Promise<void> {
+  await ensureDefaultWorkspace();
+  const db = getDb();
+  const key = indexKeyFor(kind, workspaceId);
+  const idx = (await db.get<string[]>(key)) ?? [];
+  if (idx.includes(id)) await db.set(key, idx.filter((x) => x !== id));
+}
+
+export async function wsIndexReplace(
+  kind: IndexKind,
+  workspaceId: string,
+  oldId: string,
+  newId: string,
+): Promise<void> {
+  await ensureDefaultWorkspace();
+  const db = getDb();
+  const key = indexKeyFor(kind, workspaceId);
+  const idx = (await db.get<string[]>(key)) ?? [];
+  await db.set(key, Array.from(new Set(idx.map((x) => (x === oldId ? newId : x)))));
+}
+
+// Empty a workspace's index, returning the ids it held (so the caller can delete
+// the underlying records).
+export async function wsIndexDrain(kind: IndexKind, workspaceId: string): Promise<string[]> {
+  await ensureDefaultWorkspace();
+  const db = getDb();
+  const key = indexKeyFor(kind, workspaceId);
+  const idx = (await db.get<string[]>(key)) ?? [];
+  await db.set(key, []);
+  return idx;
+}
+
 export async function getWorkspace(id: string): Promise<Workspace | null> {
   return getDb().get<Workspace>(workspaceKey(id));
 }
