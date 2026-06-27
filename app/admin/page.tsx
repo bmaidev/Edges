@@ -17,6 +17,7 @@ import { JoinScreenPreview } from "@/components/admin/JoinScreenPreview";
 import { AnalyticsPanel } from "@/components/admin/AnalyticsPanel";
 import { ReportDocument } from "@/lib/report/ReportDocument";
 import { reportToMarkdown } from "@/lib/report/markdown";
+import { ActionItemsExport } from "@/components/ActionItemsExport";
 import { TourCoach } from "@/components/TourCoach";
 
 interface RoomRow {
@@ -896,6 +897,8 @@ function RoomCard({
                   Copy as Markdown
                 </button>
               </div>
+              {/* F2 — send-after export of the captured action items. */}
+              <ActionItemsExport items={report.actionItems} slug={room.slug} />
               <div className="report-print overflow-hidden rounded-lg">
                 <ReportDocument archive={report} />
               </div>
