@@ -159,6 +159,40 @@ describe("B5 — reseed (teardown + fresh seed) at a new cast size", () => {
   });
 });
 
+describe("B5 — auto punch-list (readiness over the shadow session)", () => {
+  it("flags an empty required prompt as a blocker during rehearsal", async () => {
+    const { getFacilitatorState } = await import("@/lib/store");
+    const shadow = shadowRoomId("punch", "n4");
+    await tearDownRehearsal(shadow);
+    await seedRehearsal(
+      shadow,
+      [{ id: "c", moduleId: "capture", config: { label: "C", prompt: "   " } }], // blank prompt
+      6,
+    );
+    const fs = await getFacilitatorState(shadow);
+    const issue = fs.readiness?.checks.find((c) => c.id === "empty:c");
+    expect(issue?.severity).toBe("blocker");
+    await tearDownRehearsal(shadow);
+  });
+
+  it("a sound session has no blocker/warning issues in the punch list", async () => {
+    const { getFacilitatorState } = await import("@/lib/store");
+    const shadow = shadowRoomId("punch-ok", "n5");
+    await tearDownRehearsal(shadow);
+    await seedRehearsal(
+      shadow,
+      [{ id: "c", moduleId: "capture", config: { label: "C", prompt: "What stands out?" } }],
+      6,
+    );
+    const fs = await getFacilitatorState(shadow);
+    const actionable = (fs.readiness?.checks ?? []).filter(
+      (c) => c.severity === "blocker" || c.severity === "warning",
+    );
+    expect(actionable).toHaveLength(0);
+    await tearDownRehearsal(shadow);
+  });
+});
+
 describe("capability matrix", () => {
   it("facilitator + cohost can rehearse; participant + projector cannot", () => {
     expect(roleHasCapability("facilitator", "rehearse")).toBe(true);

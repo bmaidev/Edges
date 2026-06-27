@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoom } from "@/lib/rooms";
 import { requireCapability } from "@/lib/auth";
-import { getPublicState, setPhase } from "@/lib/store";
+import { getFacilitatorState, getPublicState, setPhase } from "@/lib/store";
 import {
   seedRehearsal,
   shadowRoomId,
@@ -49,6 +49,14 @@ export async function POST(
     return { projector, participant };
   }
 
+  // B5 — the auto-issue PUNCH LIST: the same advisory readiness engine the live
+  // pre-flight uses, run over the shadow's built session, so issues (empty prompts,
+  // dangling source refs, AI/media not configured) surface DURING the dry-run.
+  // Session-wide (not per-phase), so it's computed once at start/reseed.
+  async function punchList() {
+    return (await getFacilitatorState(shadowId)).readiness ?? null;
+  }
+
   switch (body.command) {
     case "start": {
       const v = validatePhases(body.phases);
@@ -66,6 +74,7 @@ export async function POST(
           moduleId: p.moduleId,
           label: (p.config?.label as string) ?? p.moduleId,
         })),
+        readiness: await punchList(),
         ...(await surfaces(tokens[0] ?? "")),
       });
     }
@@ -101,6 +110,7 @@ export async function POST(
           moduleId: p.moduleId,
           label: (p.config?.label as string) ?? p.moduleId,
         })),
+        readiness: await punchList(),
         ...(await surfaces(tokens[0] ?? "")),
       });
     }
