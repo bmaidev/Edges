@@ -30,6 +30,7 @@ import { PhaseTimingPanel } from "@/components/PhaseTimingPanel";
 import { CofacSettings } from "@/components/CofacSettings";
 import { RoomRoster } from "@/components/RoomRoster";
 import { LatecomerPanel } from "@/components/LatecomerPanel";
+import { HostArcStrip } from "@/components/HostArcStrip";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -511,6 +512,8 @@ export function HostConsole({
               }
             />
             <HandoverPanel state={s} apiBase={apiBase} code={code} />
+            {/* B1 — the agenda arc during the run: does it still breathe? */}
+            <HostArcStrip state={s} />
             {/* D4 — who's in the room: live/quiet dots + join order. */}
             <RoomRoster state={s} />
             {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
