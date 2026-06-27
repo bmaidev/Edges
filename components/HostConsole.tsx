@@ -6,6 +6,7 @@ import { usePresence } from "@/components/usePresence";
 import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip";
 import { DriverChip } from "@/components/DriverChip";
 import { CofacBanner } from "@/components/CofacBanner";
+import { RoomHealthChip, advanceHealthCaption } from "@/components/RoomHealthSheet";
 import { TourCoach } from "@/components/TourCoach";
 import { FacilitateCockpit } from "@/components/FacilitateCockpit";
 import { ConfirmSheet } from "@/components/recovery/ConfirmSheet";
@@ -320,6 +321,10 @@ export function HostConsole({
         )}
         {/* C7 — a deterministic co-facilitator nudge (advisory; counts/timing only). */}
         <CofacBanner cofac={s.cofac ?? null} phaseId={s.phaseId ?? ""} cmd={cmd} />
+        {/* H1 — a soft "people look disconnected" caption near Advance. */}
+        {advanceHealthCaption(s.roomHealth) && (
+          <p className="mx-2 mb-2 text-xs text-[#ffd27a]">{advanceHealthCaption(s.roomHealth)}</p>
+        )}
         <div className="flex items-center gap-1 overflow-x-auto px-2">
           {TABS.filter((t) => t.show).map((t) => (
             <button
@@ -346,15 +351,8 @@ export function HostConsole({
                   onOpen={() => setShowPreflight(true)}
                 />
               )}
-            {/* H1 — room-wide "who's still with you", every phase. */}
-            {s.roomHealth && s.roomHealth.present > 0 && (
-              <span
-                className="text-xs text-muted tabular-nums"
-                title="Participants whose connection is fresh"
-              >
-                {s.roomHealth.here} of {s.roomHealth.present} with you
-              </span>
-            )}
+            {/* H1 — room-wide "who's still with you" (tap to see who dropped). */}
+            {s.roomHealth && <RoomHealthChip health={s.roomHealth} />}
             {/* H1 — this device's honest connection state. */}
             <ConnectionChip conn={conn} />
             {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}

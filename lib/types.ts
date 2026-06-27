@@ -413,7 +413,11 @@ export interface FacilitatorState extends PublicState {
   participants: Participant[];
   allContent: ContentItem[];
   // H1 — room-wide "who's still with you" (every phase). Derived, never stored.
-  roomHealth?: { present: number; here: number } | null;
+  roomHealth?: {
+    present: number;
+    here: number;
+    dropped: { handle: string; since: number }[];
+  } | null;
   // H2 — pre-flight readiness for the built session. Advisory.
   readiness?: Readiness | null;
   // B3 — per-phase facilitator run-sheets (facilitator-only; phaseId -> notes) and
