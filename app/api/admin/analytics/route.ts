@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  checkSuperAdmin,
   clearSessionMetrics,
   listRooms,
   listSessionMetrics,
 } from "@/lib/rooms";
+import { resolveAdminContext } from "@/lib/auth";
 import { computeAnalytics } from "@/lib/analytics";
 import { computeMethodMetrics, metricsToCsv } from "@/lib/session-metrics";
 
@@ -18,12 +18,16 @@ export const dynamic = "force-dynamic";
 //   ?export=csv  → the raw (de-identified) metrics as a CSV download
 //   ?export=json → the raw metrics as JSON
 export async function GET(req: NextRequest) {
-  if (!checkSuperAdmin(req.nextUrl.searchParams.get("code")))
+  const ctx = await resolveAdminContext(
+    req.nextUrl.searchParams.get("code"),
+    req.nextUrl.searchParams.get("workspace"),
+  );
+  if (!ctx.ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const exportAs = req.nextUrl.searchParams.get("export");
   if (exportAs === "csv" || exportAs === "json") {
-    const metrics = await listSessionMetrics();
+    const metrics = await listSessionMetrics(ctx.workspaceId);
     if (exportAs === "csv") {
       return new NextResponse(metricsToCsv(metrics), {
         headers: {
@@ -40,20 +44,27 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const [rooms, metrics] = await Promise.all([listRooms(), listSessionMetrics()]);
+  const [rooms, metrics] = await Promise.all([
+    listRooms(ctx.workspaceId),
+    listSessionMetrics(ctx.workspaceId),
+  ]);
   return NextResponse.json({
     ...computeAnalytics(rooms),
     metrics: computeMethodMetrics(metrics),
   });
 }
 
-// POST { action: "clear" } — wipe the metrics history (the durable index).
+// POST { action: "clear" } — wipe THIS workspace's metrics history.
 export async function POST(req: NextRequest) {
-  if (!checkSuperAdmin(req.nextUrl.searchParams.get("code")))
+  const ctx = await resolveAdminContext(
+    req.nextUrl.searchParams.get("code"),
+    req.nextUrl.searchParams.get("workspace"),
+  );
+  if (!ctx.ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const body = await req.json().catch(() => ({}));
   if (body.action === "clear") {
-    await clearSessionMetrics();
+    await clearSessionMetrics(ctx.workspaceId);
     return NextResponse.json({ ok: true });
   }
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

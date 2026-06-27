@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { archiveRoom, buildReport, checkSuperAdmin, editReport, getRoom, previewTakeaway, publishTakeaway, regenerateReport, saveBlueprint, setReportMeta } from "@/lib/rooms";
+import { archiveRoom, buildReport, editReport, getRoom, previewTakeaway, publishTakeaway, regenerateReport, saveBlueprint, setReportMeta } from "@/lib/rooms";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
 import {
   deleteDesign,
   getDesign,
@@ -275,33 +276,37 @@ export async function POST(
     // B4 — save the builder's current design to the SHARED library. The global
     // scope needs the super-admin code (not just a per-room admin), or one room's
     // admin could pollute every room's library.
+    // Phase A — the shared library is PER WORKSPACE. The COMMAND_CAP `configure`
+    // gate already proves the caller is a privileged member of THIS room (hence
+    // this workspace), so saving/curating within the room's own workspace library
+    // needs no extra super-admin code; cross-tenant writes are impossible because
+    // every op is scoped to the room's workspace.
     case "saveDesign": {
-      // B4 — a GLOBAL (shared-library) save needs the super-admin code; a
-      // ROOM-scoped save is private to this room, so the room's `configure` tier
-      // (already required by COMMAND_CAP) suffices.
+      const ws = (await getRoom(room))?.workspaceId ?? DEFAULT_WORKSPACE_ID;
       const scope = a.scope === "room" ? "room" : "global";
-      if (scope === "global" && !checkSuperAdmin(a.code))
-        return NextResponse.json(
-          { error: "Saving to the shared library needs the admin passcode." },
-          { status: 403 },
-        );
       const res = await saveDesign(String(a.name ?? ""), a.phases, {
         scope,
         roomSlug: scope === "room" ? room : undefined,
+        workspaceId: ws,
       });
       if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
       return NextResponse.json({ ok: true, id: res.id });
     }
     case "deleteDesign": {
-      if (!checkSuperAdmin(a.code))
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      const ws = (await getRoom(room))?.workspaceId ?? DEFAULT_WORKSPACE_ID;
+      const d = await getDesign(String(a.id ?? ""));
+      // Only a design in THIS workspace can be deleted from here.
+      if (!d || (d.workspaceId ?? DEFAULT_WORKSPACE_ID) !== ws)
+        return NextResponse.json({ ok: false }, { status: 404 });
       const ok = await deleteDesign(String(a.id ?? ""));
       return NextResponse.json({ ok });
     }
-    // A5 — rename a saved workshop in the shared library (global → super-admin).
+    // A5 — rename a saved workshop in this workspace's library.
     case "renameDesign": {
-      if (!checkSuperAdmin(a.code))
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      const ws = (await getRoom(room))?.workspaceId ?? DEFAULT_WORKSPACE_ID;
+      const d = await getDesign(String(a.id ?? ""));
+      if (!d || (d.workspaceId ?? DEFAULT_WORKSPACE_ID) !== ws)
+        return NextResponse.json({ ok: false }, { status: 404 });
       const ok = await renameDesign(String(a.id ?? ""), String(a.name ?? ""));
       return NextResponse.json({ ok });
     }
@@ -329,18 +334,14 @@ export async function POST(
         phases: v.phases.map((p) => ({ id: p.id, moduleId: p.moduleId, label: (p.config.label as string) ?? p.moduleId })),
       });
     }
-    // B4 — commit an imported design to the shared library (global → super-admin).
+    // B4 — commit an imported design to THIS workspace's shared library.
     case "importDesign": {
-      if (!checkSuperAdmin(a.code))
-        return NextResponse.json(
-          { error: "Importing to the shared library needs the admin passcode." },
-          { status: 403 },
-        );
+      const ws = (await getRoom(room))?.workspaceId ?? DEFAULT_WORKSPACE_ID;
       const dec = decodeDesign(String(a.shareCode ?? ""));
       if (!dec.ok) return NextResponse.json({ ok: false, error: dec.error }, { status: 400 });
       // saveDesign re-validates every phase against its module schema (the security
       // gate), rebuilding each as exactly {id, moduleId, config}.
-      const res = await saveDesign(dec.name, dec.phases);
+      const res = await saveDesign(dec.name, dec.phases, { workspaceId: ws });
       if (!res.ok) return NextResponse.json({ ok: false, error: res.error }, { status: 400 });
       return NextResponse.json({ ok: true, id: res.id, name: dec.name });
     }

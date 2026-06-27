@@ -6,7 +6,7 @@ import { encodeDesign } from "@/lib/design-share";
 import { createRoom } from "@/lib/rooms";
 
 // B4 — the share envelope through the host route: export (any host), preview
-// (any host, no save), import (super-admin + the zod security gate).
+// (any host, no save), import (configure tier + the zod security gate, scoped per workspace).
 
 beforeAll(() => {
   process.env.ADMIN_PASSCODE = "test-super-admin-share";
@@ -22,7 +22,7 @@ function req(slug: string, body: Record<string, unknown>) {
 const GOOD = [{ id: "p1", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } }];
 
 describe("export / preview / import round-trip", () => {
-  it("exports a saved design, previews it (no save), then imports it (super-admin)", async () => {
+  it("exports a saved design, previews it (no save), then imports it (configure tier)", async () => {
     const { room, passcodes } = await createRoom("Share", "Topic");
     const saved = await saveDesign("Exportable", GOOD);
     const id = saved.ok ? saved.id : "";
@@ -46,9 +46,11 @@ describe("export / preview / import round-trip", () => {
     expect(pj.name).toBe("Exportable");
     expect(pj.phases[0].label).toBe("Ideas");
 
-    // Import — needs the super-admin passcode.
+    // Import — into THIS workspace's library, with the room's `configure` tier
+    // (facilitator/admin). Phase A scoped the library per workspace, so this no
+    // longer needs the super-admin passcode.
     const imp = await hostPOST(
-      req(room.slug, { command: "importDesign", code: process.env.ADMIN_PASSCODE, shareCode: code }),
+      req(room.slug, { command: "importDesign", code: passcodes.facilitator, shareCode: code }),
       { params: { room: room.slug } },
     );
     const ij = await imp.json();
@@ -57,11 +59,11 @@ describe("export / preview / import round-trip", () => {
     expect(reimported?.name).toBe("Exportable");
   });
 
-  it("import is forbidden without the super-admin passcode", async () => {
+  it("import is forbidden without the `configure` tier (a cohost can't)", async () => {
     const { room, passcodes } = await createRoom("Share2", "Topic");
     const code = encodeDesign({ name: "X", phases: GOOD });
     const res = await hostPOST(
-      req(room.slug, { command: "importDesign", code: passcodes.facilitator, shareCode: code }),
+      req(room.slug, { command: "importDesign", code: passcodes.cohost, shareCode: code }),
       { params: { room: room.slug } },
     );
     expect(res.status).toBe(403);

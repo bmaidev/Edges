@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
-import { checkSuperAdmin } from "@/lib/rooms";
+import { resolveAdminContext } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // Stores an image in Vercel Blob and returns its public URL — used by the admin
 // theme panel to set a room's logo without pasting a URL.
 export async function POST(req: NextRequest) {
-  if (!checkSuperAdmin(req.nextUrl.searchParams.get("code")))
+  if (!(await resolveAdminContext(req.nextUrl.searchParams.get("code"))).ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   if (!process.env.BLOB_READ_WRITE_TOKEN)

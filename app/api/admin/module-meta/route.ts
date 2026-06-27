@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkSuperAdmin } from "@/lib/rooms";
+import { resolveAdminContext } from "@/lib/auth";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // agenda as plain-language prose WITHOUT importing the server registry into
 // client code (keeps the server/client module boundary intact). Super-admin gated.
 export async function GET(req: NextRequest) {
-  if (!checkSuperAdmin(req.nextUrl.searchParams.get("code")))
+  if (!(await resolveAdminContext(req.nextUrl.searchParams.get("code"))).ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const meta: Record<string, { name: string; description: string }> = {};
   for (const [id, mod] of Object.entries(SERVER_MODULES)) {

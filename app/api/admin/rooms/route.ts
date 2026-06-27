@@ -1,24 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   blueprintSummary,
-  checkSuperAdmin,
   createRoom,
   duplicateRoom,
+  getRoom,
   listRooms,
   SlugError,
   SlugTakenError,
 } from "@/lib/rooms";
+import { resolveAdminContext } from "@/lib/auth";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/admin/rooms?code=ADMIN -> list rooms (no passcode hashes exposed).
+// GET /api/admin/rooms?code=ADMIN[&workspace=ID] -> list the workspace's rooms.
 export async function GET(req: NextRequest) {
-  const code = req.nextUrl.searchParams.get("code");
-  if (!checkSuperAdmin(code))
+  const ctx = await resolveAdminContext(
+    req.nextUrl.searchParams.get("code"),
+    req.nextUrl.searchParams.get("workspace"),
+  );
+  if (!ctx.ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const rooms = await listRooms();
+  const rooms = await listRooms(ctx.workspaceId);
   return NextResponse.json({
     rooms: rooms.map((r) => ({
       slug: r.slug,
@@ -49,18 +54,23 @@ export async function POST(req: NextRequest) {
     slug?: string;
     duplicateOf?: string;
     code?: string;
+    workspace?: string;
   };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  if (!checkSuperAdmin(body.code))
+  const ctx = await resolveAdminContext(body.code, body.workspace);
+  if (!ctx.ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   // A5 — duplicate an existing room's DESIGN into a fresh room (new passcodes,
-  // no participant data carried over).
+  // no participant data carried over). The source must belong to THIS workspace.
   if (body.duplicateOf) {
+    const src = await getRoom(body.duplicateOf);
+    if (!src || (src.workspaceId ?? DEFAULT_WORKSPACE_ID) !== ctx.workspaceId)
+      return NextResponse.json({ error: "No such room" }, { status: 404 });
     const dup = await duplicateRoom(body.duplicateOf);
     if (!dup)
       return NextResponse.json({ error: "No such room" }, { status: 404 });
@@ -77,6 +87,7 @@ export async function POST(req: NextRequest) {
       body.topic ?? "",
       body.templateId ?? null,
       body.slug ?? null,
+      ctx.workspaceId,
     );
     return NextResponse.json({
       slug: room.slug,

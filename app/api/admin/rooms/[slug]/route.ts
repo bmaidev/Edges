@@ -1,27 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  checkSuperAdmin,
   deleteRoom,
   getArchive,
   getRoom,
   regenerateRoleCode,
   renameRoom,
   updateRoom,
+  type Room,
 } from "@/lib/rooms";
 import type { RoomTheme, ShareableTier } from "@/lib/rooms";
+import { resolveAdminContext } from "@/lib/auth";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Phase A — gate by workspace AND assert the room belongs to it. A 404 (not 403)
+// on a cross-workspace slug avoids disclosing that the room exists in another
+// tenant. Returns the room on success, or a ready NextResponse on failure.
+async function authRoom(
+  code: string | null | undefined,
+  requestedWorkspace: string | null | undefined,
+  slug: string,
+): Promise<{ room: Room } | { error: NextResponse }> {
+  const ctx = await resolveAdminContext(code, requestedWorkspace);
+  if (!ctx.ok)
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  const room = await getRoom(slug);
+  if (!room || (room.workspaceId ?? DEFAULT_WORKSPACE_ID) !== ctx.workspaceId)
+    return { error: NextResponse.json({ error: "No such room" }, { status: 404 }) };
+  return { room };
+}
 
 // GET /api/admin/rooms/[slug]?code=ADMIN -> room meta + archive (report).
 export async function GET(
   req: NextRequest,
   { params }: { params: { slug: string } },
 ) {
-  if (!checkSuperAdmin(req.nextUrl.searchParams.get("code")))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  const room = await getRoom(params.slug);
-  if (!room) return NextResponse.json({ error: "No such room" }, { status: 404 });
+  const g = await authRoom(
+    req.nextUrl.searchParams.get("code"),
+    req.nextUrl.searchParams.get("workspace"),
+    params.slug,
+  );
+  if ("error" in g) return g.error;
+  const { room } = g;
   const archive = await getArchive(params.slug);
   return NextResponse.json({
     room: { slug: room.slug, name: room.name, topic: room.topic, status: room.status, theme: room.theme },
@@ -36,21 +58,21 @@ export async function GET(
   });
 }
 
-// POST /api/admin/rooms/[slug] { code, action:"regenerate", role } -> rotate one
-// role's passcode, returning the new plaintext ONCE. Super-admin gated. The
-// admin tier is not a shareable link, so it cannot be regenerated here.
+// POST /api/admin/rooms/[slug] { code, action:"regenerate"|"rename", … } ->
+// rotate one role's passcode, or change the room's address. The admin tier is not
+// a shareable link, so it cannot be regenerated here.
 export async function POST(
   req: NextRequest,
   { params }: { params: { slug: string } },
 ) {
-  let body: { code?: string; action?: string; role?: string; slug?: string };
+  let body: { code?: string; action?: string; role?: string; slug?: string; workspace?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  if (!checkSuperAdmin(body.code))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const g = await authRoom(body.code, body.workspace, params.slug);
+  if ("error" in g) return g.error;
 
   // A4 — change the room's address (slug). Non-live rooms only; old links/QRs
   // redirect to the new slug. The record (+ a draft's session state) moves.
@@ -88,14 +110,15 @@ export async function PATCH(
     name?: string;
     theme?: RoomTheme;
     status?: "draft" | "live" | "archived";
+    workspace?: string;
   };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  if (!checkSuperAdmin(body.code))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const g = await authRoom(body.code, body.workspace, params.slug);
+  if ("error" in g) return g.error;
 
   const patch: {
     name?: string;
@@ -120,8 +143,12 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { slug: string } },
 ) {
-  if (!checkSuperAdmin(req.nextUrl.searchParams.get("code")))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const g = await authRoom(
+    req.nextUrl.searchParams.get("code"),
+    req.nextUrl.searchParams.get("workspace"),
+    params.slug,
+  );
+  if ("error" in g) return g.error;
   const ok = await deleteRoom(params.slug);
   if (!ok) return NextResponse.json({ error: "No such room" }, { status: 404 });
   return NextResponse.json({ ok: true });

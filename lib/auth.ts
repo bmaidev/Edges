@@ -1,6 +1,7 @@
 // Role → capability mapping and the room-scoped gate used by host routes.
 
 import { resolveRole } from "./rooms";
+import { resolveWorkspace } from "./workspaces";
 import type { Role } from "./types";
 
 export type Capability =
@@ -57,6 +58,23 @@ export const CAPABILITIES: Record<Role, Set<Capability>> = {
 
 export function roleHasCapability(role: Role, cap: Capability): boolean {
   return CAPABILITIES[role].has(cap);
+}
+
+// Phase A — the admin-portal gate, workspace-aware. Resolves a code to the
+// workspace it administers: the env super-admin → the default workspace (and may
+// TARGET any workspace via `requestedWorkspaceId`); a workspace admin code → its
+// own workspace only (a mismatched request is ignored, never honoured). Replaces
+// the bare `checkSuperAdmin` gate on every /api/admin route so the data those
+// routes read/write can be scoped to `workspaceId`.
+export async function resolveAdminContext(
+  code: string | null | undefined,
+  requestedWorkspaceId?: string | null,
+): Promise<{ ok: boolean; workspaceId: string; isSuperAdmin: boolean }> {
+  const { workspaceId, isSuperAdmin } = await resolveWorkspace(code);
+  if (!workspaceId) return { ok: false, workspaceId: "", isSuperAdmin: false };
+  const effective =
+    isSuperAdmin && requestedWorkspaceId ? requestedWorkspaceId : workspaceId;
+  return { ok: true, workspaceId: effective, isSuperAdmin };
 }
 
 // Resolve the caller's role in a room and check a capability in one step.
