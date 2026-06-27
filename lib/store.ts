@@ -799,6 +799,28 @@ export async function readHeartbeats(
   return backend.hgetall<number>(roomKeys(roomId).seen);
 }
 
+// H2 — projector liveness. The big screen already polls /state?role=projector
+// every 2s; that poll stamps this single "last seen" timestamp (throttled), so
+// pre-flight can tell a CONNECTED projector from a LOST one (the screen crashed /
+// the laptop slept) and warn before the facilitator presents to a dark wall.
+const PROJECTOR_THROTTLE_SECONDS = 8;
+export async function heartbeatProjector(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<void> {
+  const ok = await backend.setNX(
+    `${roomKeys(roomId).projector}:touch`,
+    1,
+    PROJECTOR_THROTTLE_SECONDS,
+  );
+  if (!ok) return;
+  await backend.set(roomKeys(roomId).projector, Date.now());
+}
+export async function readProjectorSeen(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<number | null> {
+  return (await backend.get<number>(roomKeys(roomId).projector)) ?? null;
+}
+
 // C5 — host-presence heartbeat. A host console writes its presence on the
 // privileged /state poll; role is the SERVER-resolved tier (never client-sent).
 // Throttled like touchParticipant so 2s polls don't hammer KV. The whole record
@@ -1262,6 +1284,7 @@ export async function endSession(
     KEYS.undo,
     KEYS.hostPresence, // C5 — the "burn now" wipe clears co-facilitator presence too
     KEYS.phaseLog, // F4 — the timing log is off-the-record too; wiped with the rest
+    KEYS.projector, // H2 — drop projector liveness so a new run starts clean
   );
   await writeState({ ...DEFAULT_STATE, ended: true }, roomId);
 }
@@ -1716,7 +1739,7 @@ export async function getFacilitatorState(
 ): Promise<FacilitatorState> {
   // Read state once and thread it through (avoids a second getState below).
   const state = stateOverride ?? (await getState(roomId));
-  const [pub, submissions, participants, allContent, heartbeats, presence] =
+  const [pub, submissions, participants, allContent, heartbeats, presence, projectorSeen] =
     await Promise.all([
       getPublicState(null, roomId, "facilitator", state),
       listSubmissions(roomId),
@@ -1724,6 +1747,7 @@ export async function getFacilitatorState(
       listContent(roomId),
       readHeartbeats(roomId),
       readHostPresence(roomId),
+      readProjectorSeen(roomId),
     ]);
   // F4 — plan-vs-actual phase timing, from the content-free advance log.
   const phaseLog = await readPhaseLog(roomId);
@@ -1741,6 +1765,8 @@ export async function getFacilitatorState(
     kvConfigured: useKv,
     aiConfigured: aiAvailable(),
     blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+    projectorSeen,
+    now: Date.now(),
   });
   // B3 — derive the facilitator-only run-sheets (phaseId -> notes) and a one-line
   // peek at the next phase, from the same phase configs (never on PublicState).

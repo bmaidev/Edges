@@ -130,4 +130,24 @@ describe("usesAi guard (regression: AI defs must declare it)", () => {
     expect(LONG_TEXT.test("prompt")).toBe(true);
     expect(LONG_TEXT.test("label")).toBe(false);
   });
+
+  // H2 — the "presenting to a dark screen" guard.
+  it("a never-connected projector is NOT flagged (projector-less sessions are fine)", () => {
+    const r = run([capture("p1")], { projectorSeen: null, now: 1_000_000 });
+    expect(r.checks.some((c) => c.id === "projector")).toBe(false);
+  });
+
+  it("a fresh projector heartbeat is NOT flagged", () => {
+    const now = 1_000_000;
+    const r = run([capture("p1")], { projectorSeen: now - 3000, now });
+    expect(r.checks.some((c) => c.id === "projector")).toBe(false);
+  });
+
+  it("a STALE projector (was here, now silent) → a warning, never a blocker", () => {
+    const now = 1_000_000;
+    const r = run([capture("p1")], { projectorSeen: now - 30_000, now });
+    const c = r.checks.find((x) => x.id === "projector");
+    expect(c?.severity).toBe("warning");
+    expect(r.overall).not.toBe("blocker"); // advisory only — never blocks advancing
+  });
 });

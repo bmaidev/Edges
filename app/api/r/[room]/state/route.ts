@@ -3,6 +3,7 @@ import {
   getFacilitatorState,
   getPublicState,
   heartbeatHost,
+  heartbeatProjector,
   touchParticipant,
 } from "@/lib/store";
 import { getRoom, resolveRole } from "@/lib/rooms";
@@ -61,6 +62,9 @@ export async function GET(
   }
 
   if (wantProjector) {
+    // H2 — the big screen's own poll is its heartbeat (throttled, fire-and-forget),
+    // so pre-flight can tell a live projector from a lost one.
+    void heartbeatProjector(room).catch(() => {});
     const state = await getPublicState(null, room, "projector");
     return NextResponse.json({ ...state, topic: topic ?? state.topic, role: "projector", branding }, { headers });
   }

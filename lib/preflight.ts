@@ -90,7 +90,17 @@ export interface PreflightInput {
   kvConfigured: boolean;
   aiConfigured: boolean;
   blobConfigured: boolean;
+  // H2 — projector liveness: the last time the big screen polled (epoch ms), or
+  // null if no projector has ever connected, plus `now` to age it. A null is NOT
+  // flagged (plenty of sessions run without a projector); a STALE one is — the
+  // screen was here and dropped, the "presenting to a dark wall" failure.
+  projectorSeen?: number | null;
+  now?: number;
 }
+
+// A projector that hasn't polled in this long is treated as lost (it beats on its
+// own 2s poll, throttled to ≤8s, so ~3 missed beats).
+export const PROJECTOR_LOST_MS = 20_000;
 
 const RANK: Record<Severity, number> = { blocker: 3, warning: 2, info: 1, pass: 0 };
 
@@ -201,7 +211,24 @@ export function computeReadiness(input: PreflightInput): Readiness {
     }
   });
 
-  // 7) Who's here (neutral context).
+  // 7) Projector connection — the "presenting to a dark screen" guard. Only fires
+  // once a projector HAS connected and then gone quiet (a null is left silent, so
+  // a projector-less session is never nagged).
+  if (input.projectorSeen != null) {
+    const age = (input.now ?? input.projectorSeen) - input.projectorSeen;
+    if (age > PROJECTOR_LOST_MS) {
+      checks.push({
+        id: "projector",
+        severity: "warning",
+        title: "The projector looks disconnected",
+        detail:
+          "The big screen was connected but has stopped responding — it may have slept or closed. Re-open the screen link before you present.",
+        remedyTab: "session",
+      });
+    }
+  }
+
+  // 8) Who's here (neutral context).
   checks.push({
     id: "joined",
     severity: "info",
