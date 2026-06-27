@@ -16,6 +16,7 @@ export function AttributionChip({
   const [open, setOpen] = useState(false);
   if (!attribution || attribution === "none") return null;
   const named = attribution === "named";
+  const strict = attribution === "anonymous-strict";
 
   return (
     <div className="px-5 pt-2">
@@ -26,14 +27,18 @@ export function AttributionChip({
         className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
           named
             ? "border-accent/40 text-accent"
-            : "border-border text-muted"
+            : strict
+              ? "border-emerald-400/40 text-emerald-300"
+              : "border-border text-muted"
         }`}
       >
-        <span aria-hidden>{named ? "👤" : "🙈"}</span>
+        <span aria-hidden>{named ? "👤" : strict ? "🔒" : "🙈"}</span>
         {named ? (
           <>
             Named — shared as <span className="font-medium">{handle}</span>
           </>
+        ) : strict ? (
+          "Anonymous — even to the facilitators"
         ) : (
           "Facilitators only"
         )}
@@ -47,6 +52,12 @@ export function AttributionChip({
             <>
               Your response is shown to the whole room with your name (
               <span className="text-white/80">{handle}</span>).
+            </>
+          ) : strict ? (
+            <>
+              This phase is off-the-record: your response is stored with{" "}
+              <span className="text-white/80">no link to you at all</span> — not
+              even the facilitators can see who wrote it.
             </>
           ) : (
             <>

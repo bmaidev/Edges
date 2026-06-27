@@ -199,9 +199,11 @@ const capture: ModuleServerDef = {
       timerSeconds: z.number().optional(),
       multiSubmit: z.boolean().optional(),
       tagWith: z.enum(["lens", "side"]).optional(),
-      // "anonymous" strips the handle from stored submissions, so even the
-      // facilitator's raw view can't attribute who said what (off-the-record).
-      anonymity: z.enum(["named", "anonymous"]).optional(),
+      // "anonymous" strips the displayed handle from stored submissions;
+      // "anonymous-strict" additionally drops the participant TOKEN at write, so
+      // not even the facilitators can re-link a response to a person (the
+      // token→handle map has nothing to join on). Off-the-record, provably.
+      anonymity: z.enum(["named", "anonymous", "anonymous-strict"]).optional(),
       // Optional deck of constraints the facilitator can inject mid-phase.
       constraintDeck: z.array(z.string()).optional(),
       contentHeading: z.string().optional(),
@@ -256,8 +258,14 @@ const capture: ModuleServerDef = {
       if (tagWith === "lens") tag = ctx.me.lens ?? null;
       else if (tagWith === "side") tag = ctx.me.side ?? null;
     }
-    if (ctx.config.anonymity === "anonymous") handle = "Anonymous";
-    await ctx.store.addSubmission(handle, text, ctx.phase.id, tag, action.token);
+    // D1 — anonymity at write. "anonymous" hides the handle; "anonymous-strict"
+    // ALSO drops the token, so the submission carries no link to a person at all.
+    const anonymity = ctx.config.anonymity;
+    if (anonymity === "anonymous" || anonymity === "anonymous-strict")
+      handle = "Anonymous";
+    const writeToken =
+      anonymity === "anonymous-strict" ? null : action.token;
+    await ctx.store.addSubmission(handle, text, ctx.phase.id, tag, writeToken);
     return { ok: true };
   },
 };

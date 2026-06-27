@@ -6,11 +6,17 @@ import type { FacilitatorState } from "@/lib/types";
 // the room sees this phase — the attribution regime (mirroring the participant's
 // AttributionChip) and the instruction line, if any. So the lead never has to
 // guess whether responses are named, and never overclaims anonymity.
-const REGIME: Record<string, { label: string; cls: string }> = {
-  named: { label: "Room sees names", cls: "border-accent/40 text-accent" },
+const REGIME: Record<string, { label: string; cls: string; icon: string }> = {
+  named: { label: "Room sees names", cls: "border-accent/40 text-accent", icon: "👤" },
   "facilitators-only": {
     label: "Room sees responses anonymously (you can still see who)",
     cls: "border-border text-muted",
+    icon: "🙈",
+  },
+  "anonymous-strict": {
+    label: "Off-the-record — you can't see who either (token dropped at write)",
+    cls: "border-emerald-400/40 text-emerald-300",
+    icon: "🔒",
   },
 };
 
@@ -24,7 +30,7 @@ export function HostParityBadge({ state }: { state: FacilitatorState }) {
     <div className="flex flex-col gap-1.5">
       {regime && (
         <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${regime.cls}`}>
-          <span aria-hidden>{attribution === "named" ? "👤" : "🙈"}</span>
+          <span aria-hidden>{regime.icon}</span>
           {regime.label}
         </span>
       )}
