@@ -234,7 +234,12 @@ export function HostConsole({
     return (
       <>
         {coach}
-        <ModeSelector cmd={cmd} apiBase={apiBase} />
+        <ModeSelector
+          cmd={cmd}
+          apiBase={apiBase}
+          lobbyCue={s.lobbyCue ?? ""}
+          lobbyCountVisible={s.lobbyCountVisible ?? true}
+        />
       </>
     );
 
@@ -680,7 +685,17 @@ function ModuleControlPanel({
   );
 }
 
-function ModeSelector({ cmd, apiBase }: { cmd: Cmd; apiBase: string }) {
+function ModeSelector({
+  cmd,
+  apiBase,
+  lobbyCue,
+  lobbyCountVisible,
+}: {
+  cmd: Cmd;
+  apiBase: string;
+  lobbyCue: string;
+  lobbyCountVisible: boolean;
+}) {
   // apiBase is "/api/r/{slug}"; the builder lives at "/r/{slug}/build".
   const slug = apiBase.replace("/api/r/", "");
   return (
@@ -690,6 +705,14 @@ function ModeSelector({ cmd, apiBase }: { cmd: Cmd; apiBase: string }) {
         Participants see the lobby until you pick one. Or build a custom session
         from any modules.
       </p>
+
+      {/* E1 — author the front-of-room lobby before you begin: the welcome line
+          the room reads while joining, and whether the live headcount shows. */}
+      <LobbyAuthor
+        cmd={cmd}
+        cue={lobbyCue}
+        countVisible={lobbyCountVisible}
+      />
       {Object.values(MODES).map((m) => (
         <button
           key={m.id}
@@ -724,6 +747,54 @@ function ModeSelector({ cmd, apiBase }: { cmd: Cmd; apiBase: string }) {
         + Build a custom session
       </a>
     </main>
+  );
+}
+
+// E1 — the front-of-room lobby authoring card. The cue commits on blur (so typing
+// doesn't spam writes); the count toggle commits immediately. Both ride the host
+// `setLobbyCue` command (authoritative-apply), so the projector lobby updates within
+// a beat. Seeded from the live state; a placeholder shows the calm default.
+function LobbyAuthor({
+  cmd,
+  cue,
+  countVisible,
+}: {
+  cmd: Cmd;
+  cue: string;
+  countVisible: boolean;
+}) {
+  const [draft, setDraft] = useState(cue);
+  // Re-seed if the live value changes underneath us (another co-host edited it).
+  useEffect(() => setDraft(cue), [cue]);
+  const commitCue = () => {
+    if (draft !== cue) cmd("setLobbyCue", { cue: draft.trim() });
+  };
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-5">
+      <p className="text-sm font-semibold">Front-of-room lobby</p>
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        <span>Welcome line on the join screen</span>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitCue}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          placeholder="Find a seat — we'll begin shortly."
+          maxLength={200}
+          className="rounded-lg border border-border bg-bg px-3 py-2 text-sm text-white focus:border-accent focus:outline-none"
+        />
+      </label>
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input
+          type="checkbox"
+          checked={countVisible}
+          onChange={(e) => cmd("setLobbyCue", { countVisible: e.target.checked })}
+        />
+        Show the live “{`{n}`} here” count on the big screen
+      </label>
+    </div>
   );
 }
 
