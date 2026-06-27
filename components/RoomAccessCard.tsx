@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui";
+import { PasscodeReveal } from "@/components/PasscodeReveal";
 import { buildLink, type LinkRole } from "@/lib/magicLink";
 
 type ShareRole = "facilitator" | "cohost" | "projector";
@@ -37,7 +38,6 @@ export function RoomAccessCard({
 }) {
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
-  const [showCode, setShowCode] = useState<string | null>(null);
   const [showQr, setShowQr] = useState<string | null>(null);
   const [pending, setPending] = useState<ShareRole | null>(null);
 
@@ -124,14 +124,7 @@ export function RoomAccessCard({
                   >
                     {showQr === k ? "Hide QR" : "QR"}
                   </button>
-                  {!isJoin && (
-                    <button
-                      onClick={() => setShowCode(showCode === k ? null : k)}
-                      className="text-xs text-muted underline decoration-dotted"
-                    >
-                      {showCode === k ? "Hide code" : "Show code"}
-                    </button>
-                  )}
+                  {!isJoin && code && <PasscodeReveal code={code} />}
                   {!isJoin && onRegenerate && (
                     <button
                       onClick={() => regen(row.role as ShareRole)}
@@ -146,9 +139,6 @@ export function RoomAccessCard({
                   <div className="mt-3 inline-block rounded-lg bg-white p-2">
                     <QRCodeSVG value={link} size={120} />
                   </div>
-                )}
-                {showCode === k && code && (
-                  <p className="mt-2 break-all font-mono text-xs text-muted">{code}</p>
                 )}
               </>
             ) : (
