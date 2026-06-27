@@ -136,6 +136,29 @@ describe("B5 — vote-phase response seeding", () => {
   });
 });
 
+describe("B5 — reseed (teardown + fresh seed) at a new cast size", () => {
+  it("re-rolls cleanly without accumulating prior data", async () => {
+    const shadow = shadowRoomId("reseed", "n3");
+    const phases: PhaseInstance[] = [
+      { id: "c", moduleId: "capture", config: { label: "C", prompt: "Go" } },
+    ];
+    await tearDownRehearsal(shadow);
+    const first = await seedRehearsal(shadow, phases, 8);
+    expect(first.tokens).toHaveLength(8);
+    const subs1 = (await listSubmissions(shadow)).length;
+
+    // A reseed = teardown + a fresh seed at a new size; counts reflect the NEW
+    // cast only (no accumulation from the prior run).
+    await tearDownRehearsal(shadow);
+    const second = await seedRehearsal(shadow, phases, 4);
+    expect(second.tokens).toHaveLength(4);
+    expect((await listParticipants(shadow)).length).toBe(4); // not 12
+    const subs2 = (await listSubmissions(shadow)).length;
+    expect(subs2).toBeLessThanOrEqual(subs1); // fewer (smaller cast), never additive
+    await tearDownRehearsal(shadow);
+  });
+});
+
 describe("capability matrix", () => {
   it("facilitator + cohost can rehearse; participant + projector cannot", () => {
     expect(roleHasCapability("facilitator", "rehearse")).toBe(true);
