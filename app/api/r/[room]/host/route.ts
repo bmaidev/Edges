@@ -262,12 +262,19 @@ export async function POST(
     // scope needs the super-admin code (not just a per-room admin), or one room's
     // admin could pollute every room's library.
     case "saveDesign": {
-      if (!checkSuperAdmin(a.code))
+      // B4 — a GLOBAL (shared-library) save needs the super-admin code; a
+      // ROOM-scoped save is private to this room, so the room's `configure` tier
+      // (already required by COMMAND_CAP) suffices.
+      const scope = a.scope === "room" ? "room" : "global";
+      if (scope === "global" && !checkSuperAdmin(a.code))
         return NextResponse.json(
-          { error: "Saving a shared template needs the admin passcode." },
+          { error: "Saving to the shared library needs the admin passcode." },
           { status: 403 },
         );
-      const res = await saveDesign(String(a.name ?? ""), a.phases);
+      const res = await saveDesign(String(a.name ?? ""), a.phases, {
+        scope,
+        roomSlug: scope === "room" ? room : undefined,
+      });
       if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
       return NextResponse.json({ ok: true, id: res.id });
     }

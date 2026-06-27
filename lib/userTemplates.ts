@@ -15,11 +15,18 @@ import { withLock } from "./store";
 import { getServerModule } from "./modules/registry.server";
 import type { ModuleKind, PhaseInstance } from "./types";
 
+// B4 — a design is GLOBAL (the shared library, reusable in every room — the
+// default, and what the A5 post-wipe rescue surfaces everywhere) or ROOM-scoped
+// (private to the room that saved it, kept out of other rooms' libraries).
+export type DesignScope = "global" | "room";
+
 export interface UserTemplate {
   id: string;
   name: string;
   phases: PhaseInstance[];
   createdAt: number;
+  scope?: DesignScope; // absent = "global" (back-compat)
+  roomSlug?: string; // the owning room, when scope === "room"
 }
 // Lightweight list projection — never ships the full phase configs.
 export interface UserTemplateMeta {
@@ -27,6 +34,7 @@ export interface UserTemplateMeta {
   name: string;
   phaseCount: number;
   createdAt: number;
+  scope: DesignScope;
 }
 
 const INDEX_KEY = "rooms:designidx";
@@ -84,30 +92,46 @@ export function validatePhases(
 export async function saveDesign(
   name: string,
   rawPhases: unknown,
+  // B4 — scope defaults to "global" (back-compat + the A5 rescue). A "room" scope
+  // pins the design to `roomSlug` so it only appears in that room's library.
+  opts: { scope?: DesignScope; roomSlug?: string } = {},
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const v = validatePhases(rawPhases);
   if (!v.ok) return v;
   const clean = name.trim().slice(0, 80) || "Untitled design";
+  const scope: DesignScope = opts.scope === "room" ? "room" : "global";
   return withDesignLock(async () => {
     const db = getDb();
     const index = (await db.get<string[]>(INDEX_KEY)) ?? [];
     if (index.length >= MAX_DESIGNS)
       return { ok: false as const, error: "The template library is full." };
     const id = newId();
-    const tpl: UserTemplate = { id, name: clean, phases: v.phases, createdAt: Date.now() };
+    const tpl: UserTemplate = {
+      id,
+      name: clean,
+      phases: v.phases,
+      createdAt: Date.now(),
+      scope,
+      ...(scope === "room" && opts.roomSlug ? { roomSlug: opts.roomSlug } : {}),
+    };
     await db.set(designKey(id), tpl);
     await db.set(INDEX_KEY, [...index, id]);
     return { ok: true as const, id };
   });
 }
 
-export async function listDesignMeta(): Promise<UserTemplateMeta[]> {
+// B4 — list designs VISIBLE to a room: every global design, plus the room's own
+// room-scoped ones. With no roomSlug, only global designs (the safe default).
+export async function listDesignMeta(roomSlug?: string): Promise<UserTemplateMeta[]> {
   const db = getDb();
   const index = (await db.get<string[]>(INDEX_KEY)) ?? [];
   const out: UserTemplateMeta[] = [];
   for (const id of index) {
     const tpl = await db.get<UserTemplate>(designKey(id));
-    if (tpl) out.push({ id: tpl.id, name: tpl.name, phaseCount: tpl.phases.length, createdAt: tpl.createdAt });
+    if (!tpl) continue;
+    const scope: DesignScope = tpl.scope === "room" ? "room" : "global";
+    if (scope === "room" && tpl.roomSlug !== roomSlug) continue; // not this room's
+    out.push({ id: tpl.id, name: tpl.name, phaseCount: tpl.phases.length, createdAt: tpl.createdAt, scope });
   }
   return out.sort((a, b) => b.createdAt - a.createdAt);
 }

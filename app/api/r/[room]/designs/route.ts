@@ -29,5 +29,6 @@ export async function GET(
     if (!design) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ design });
   }
-  return NextResponse.json({ designs: await listDesignMeta() });
+  // B4 — show global designs + THIS room's room-scoped ones.
+  return NextResponse.json({ designs: await listDesignMeta(room) });
 }
