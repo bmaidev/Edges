@@ -22,6 +22,13 @@ export function CofacBanner({
   if (!cofac) return null;
   const key = `${phaseId}:${cofac.kind}`;
   if (dismissedKey === key) return null;
+  // C7 — dismiss locally for an instant hide AND persist server-side so the nudge
+  // stays gone across polls / reloads / co-host devices (the server suppresses it
+  // from `cofac` on the next state).
+  const dismiss = () => {
+    setDismissedKey(key);
+    void cmd("cofacDismiss", { phaseId, kind: cofac.kind });
+  };
 
   return (
     <div
@@ -35,7 +42,7 @@ export function CofacBanner({
         <button
           onClick={() => {
             void cmd(cofac.action!.command, cofac.action!.args);
-            setDismissedKey(key);
+            dismiss();
           }}
           className="shrink-0 rounded border border-accent bg-accent/10 px-2 py-1 text-accent hover:border-accent"
         >
@@ -43,7 +50,7 @@ export function CofacBanner({
         </button>
       )}
       <button
-        onClick={() => setDismissedKey(key)}
+        onClick={dismiss}
         className="shrink-0 text-muted underline hover:text-white"
       >
         dismiss

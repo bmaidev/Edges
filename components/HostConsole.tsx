@@ -27,6 +27,7 @@ import { ActionItemsPanel } from "@/components/ActionItemsPanel";
 import { RunSheetPanel } from "@/components/RunSheetPanel";
 import { RunsheetPrint } from "@/components/RunsheetPrint";
 import { PhaseTimingPanel } from "@/components/PhaseTimingPanel";
+import { CofacSettings } from "@/components/CofacSettings";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -505,6 +506,12 @@ export function HostConsole({
               }
             />
             <HandoverPanel state={s} apiBase={apiBase} code={code} />
+            {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
+            <CofacSettings
+              enabled={s.cofacEnabled ?? true}
+              sensitivity={s.cofacSensitivity ?? "standard"}
+              cmd={cmd}
+            />
             {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
             <PhaseTimingPanel state={s} />
             <RunsheetPrint state={s} slug={slug} />
