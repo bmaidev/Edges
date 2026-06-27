@@ -10,8 +10,25 @@ describe("getSampleView", () => {
     expect(getSampleView("poll", {})).not.toBeNull();
     expect(getSampleView("capture", {})).not.toBeNull();
     expect(getSampleView("spectrogram", {})).not.toBeNull(); // fleet modules covered
-    // a module without a factory degrades to null (caller shows a fallback)
-    expect(getSampleView("fishbowl", {})).toBeNull();
+    // B2 — the AI-synthesis family now previews illustratively.
+    expect(getSampleView("devil", {})).not.toBeNull();
+    expect(getSampleView("emptychair", {})).not.toBeNull();
+    expect(getSampleView("friction", {})).not.toBeNull();
+    expect(getSampleView("fishbowl", {})).not.toBeNull();
+    expect(getSampleView("consult", {})).not.toBeNull();
+    // a module without a factory yet degrades to null (caller shows a fallback)
+    expect(getSampleView("media", {})).toBeNull();
+  });
+
+  it("an AI-synthesis sample is in its hasResult 'payoff' state, marked available", () => {
+    const d = getSampleView("devil", {}) as {
+      hasResult: boolean;
+      available: boolean;
+      objections: unknown[];
+    };
+    expect(d.hasResult).toBe(true);
+    expect(d.available).toBe(true);
+    expect(d.objections.length).toBeGreaterThan(0);
   });
 
   it("never throws on defaultConfig or on mutated configs", () => {
