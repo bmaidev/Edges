@@ -31,6 +31,7 @@ import { CofacSettings } from "@/components/CofacSettings";
 import { RoomRoster } from "@/components/RoomRoster";
 import { LatecomerPanel } from "@/components/LatecomerPanel";
 import { HostArcStrip } from "@/components/HostArcStrip";
+import { HostParityBadge } from "@/components/HostParityBadge";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -412,6 +413,8 @@ export function HostConsole({
                   timerRemainingMs: s.timerRemainingMs,
                 }}
               />
+              {/* D1 — parity: exactly what the room sees this phase (attribution + instruction). */}
+              <HostParityBadge state={s} />
               {/* D4 — seat latecomers waiting on a hold-policy grouping phase. */}
               <LatecomerPanel state={s} cmd={cmd} />
               {/* C2 — read the room + nudge the not-yet-responded phones. */}
