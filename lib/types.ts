@@ -230,6 +230,9 @@ export interface SessionState {
   // the state key so a change bumps rev and rides authoritative-apply.
   lobbyCue?: string | null;
   lobbyCountVisible?: boolean;
+  // D2 — host-set high-contrast / colour-safe mode for the PROJECTOR (the shared
+  // wall has no per-device a11y prefs, so the facilitator drives it for everyone).
+  projectorA11y?: boolean;
   // F3 — set at end when a take-away is published. The token keys the snapshot.
   publishedTakeaway?: { token: string; publishedAt: number };
   // F2 — the action-item register. Lives ON the state key (not a side hash) so
@@ -396,6 +399,8 @@ export interface PublicState {
   // host preview both reflect the facilitator's authoring without a re-fetch.
   lobbyCue?: string | null;
   lobbyCountVisible?: boolean;
+  // D2 — host-driven projector high-contrast / colour-safe mode (default false).
+  projectorA11y?: boolean;
 }
 
 // C2 — content-free participation signal. Every value is an integer count; no

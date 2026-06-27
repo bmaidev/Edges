@@ -518,6 +518,15 @@ export function HostConsole({
               }
             />
             <HandoverPanel state={s} apiBase={apiBase} code={code} />
+            {/* D2 — drive the big screen's high-contrast mode for the room. */}
+            <label className="flex w-fit items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={s.projectorA11y === true}
+                onChange={(e) => cmd("setProjectorA11y", { on: e.target.checked })}
+              />
+              High-contrast big screen (colour-safe, for the whole room)
+            </label>
             {/* B1 — the agenda arc during the run: does it still breathe? */}
             <HostArcStrip state={s} />
             {/* D4 — who's in the room: live/quiet dots + join order. */}
