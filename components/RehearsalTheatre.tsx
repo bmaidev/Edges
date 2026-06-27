@@ -106,6 +106,8 @@ export function RehearsalTheatre({
   // B5 — default to a canned AI preview (free/instant); toggling on lets a real
   // generate run (when an API key is present).
   const [realAi, setRealAi] = useState(false);
+  // B5 — on a phone the two surfaces don't fit side by side; tab between them.
+  const [mobileTab, setMobileTab] = useState<"projector" | "participant">("projector");
 
   // B5 — re-roll the synthetic data (fresh contributions + tallies) at a chosen
   // cast size, staying on the current phase + viewer.
@@ -260,16 +262,35 @@ export function RehearsalTheatre({
             if (i >= 0) goView(i, asToken);
           }} />
 
-          {/* the two room-facing surfaces */}
-          <div className="grid flex-1 grid-rows-2 gap-3 overflow-y-auto p-4 lg:grid-cols-2 lg:grid-rows-1">
-            <Surface title="On the big screen" state={projector} role="projector" />
-            <Surface
-              title={`On ${handleOf(asToken)}'s phone`}
-              state={participant}
-              role="participant"
-              token={asToken}
-              handle={handleOf(asToken)}
-            />
+          {/* B5 — mobile: a tab toggle between the two surfaces (desktop shows both). */}
+          <div className="flex gap-1 px-4 pt-3 text-xs lg:hidden">
+            {(["projector", "participant"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setMobileTab(t)}
+                className={`flex-1 rounded-lg border px-3 py-1.5 ${
+                  mobileTab === t ? "border-accent bg-accent/15 text-accent" : "border-border text-muted"
+                }`}
+              >
+                {t === "projector" ? "Big screen" : `${handleOf(asToken)}'s phone`}
+              </button>
+            ))}
+          </div>
+
+          {/* the two room-facing surfaces — tabbed on mobile, side-by-side on desktop */}
+          <div className="grid flex-1 gap-3 overflow-y-auto p-4 lg:grid-cols-2">
+            <div className={mobileTab === "projector" ? "" : "hidden lg:block"}>
+              <Surface title="On the big screen" state={projector} role="projector" />
+            </div>
+            <div className={mobileTab === "participant" ? "" : "hidden lg:block"}>
+              <Surface
+                title={`On ${handleOf(asToken)}'s phone`}
+                state={participant}
+                role="participant"
+                token={asToken}
+                handle={handleOf(asToken)}
+              />
+            </div>
           </div>
 
           {/* B5 — a scratchpad note for the current phase (ephemeral). */}
