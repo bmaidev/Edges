@@ -243,6 +243,7 @@ export function HostConsole({
         <ModeSelector
           cmd={cmd}
           apiBase={apiBase}
+          code={code}
           lobbyCue={s.lobbyCue ?? ""}
           lobbyCountVisible={s.lobbyCountVisible ?? true}
         />
@@ -723,11 +724,13 @@ function ModuleControlPanel({
 function ModeSelector({
   cmd,
   apiBase,
+  code,
   lobbyCue,
   lobbyCountVisible,
 }: {
   cmd: Cmd;
   apiBase: string;
+  code: string;
   lobbyCue: string;
   lobbyCountVisible: boolean;
 }) {
@@ -740,6 +743,10 @@ function ModeSelector({
         Participants see the lobby until you pick one. Or build a custom session
         from any modules.
       </p>
+
+      {/* A5 — your saved workshops: one-tap re-launch from any room's setup,
+          even after a wipe (the designs outlive the room). */}
+      <SavedBlueprints apiBase={apiBase} code={code} cmd={cmd} />
 
       {/* E1 — author the front-of-room lobby before you begin: the welcome line
           the room reads while joining, and whether the live headcount shows. */}
@@ -782,6 +789,75 @@ function ModeSelector({
         + Build a custom session
       </a>
     </main>
+  );
+}
+
+// A5 — your saved workshops, surfaced right on the setup screen so a design you
+// built once can be re-launched in one tap — including as the post-wipe rescue
+// (the saved blueprints live in the durable library, not the 24h room). Launch is
+// the `advance`-tier setDesign command (any host can re-run a saved workshop); it
+// also stamps a fresh blueprint onto the room.
+type SavedDesign = { id: string; name: string; phaseCount: number; createdAt: number };
+function SavedBlueprints({
+  apiBase,
+  code,
+  cmd,
+}: {
+  apiBase: string;
+  code: string;
+  cmd: Cmd;
+}) {
+  const [designs, setDesigns] = useState<SavedDesign[] | null>(null);
+  const [launching, setLaunching] = useState<string | null>(null);
+  useEffect(() => {
+    if (!code) return;
+    let live = true;
+    fetch(`${apiBase}/designs?code=${encodeURIComponent(code)}`)
+      .then((r) => (r.ok ? r.json() : { designs: [] }))
+      .then((d) => {
+        if (live) setDesigns(d.designs ?? []);
+      })
+      .catch(() => {
+        if (live) setDesigns([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [apiBase, code]);
+
+  if (!designs || designs.length === 0) return null;
+  // Newest first — your most recent workshops are the likeliest re-run.
+  const sorted = [...designs].sort((a, b) => b.createdAt - a.createdAt);
+
+  return (
+    <section className="flex flex-col gap-2 rounded-xl border border-accent/40 bg-accent/5 p-4">
+      <h2 className="text-sm font-semibold">Your saved workshops</h2>
+      <p className="text-xs text-muted">
+        Re-launch a design you built earlier — these outlive the room, so they&apos;re
+        here even after a session ends.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {sorted.map((d) => (
+          <button
+            key={d.id}
+            disabled={launching !== null}
+            onClick={async () => {
+              setLaunching(d.id);
+              const res = await cmd("setDesign", { id: d.id });
+              if (!res.ok) setLaunching(null);
+            }}
+            className="rounded-xl border border-border bg-surface p-3 text-left transition-colors hover:border-accent disabled:opacity-50"
+          >
+            <p className="font-semibold">{d.name}</p>
+            <p className="mt-0.5 text-xs text-muted">
+              {launching === d.id
+                ? "Starting…"
+                : `${d.phaseCount} ${d.phaseCount === 1 ? "phase" : "phases"} · Start →`}
+            </p>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
