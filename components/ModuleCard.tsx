@@ -30,8 +30,10 @@ export function PaletteChip({
   );
 }
 
-// The full triple, shown above a placed phase's config form.
-export function PlacedPhaseCard({ moduleId }: { moduleId: ModuleKind }) {
+// B6 — the full method card triple (what it is / best for / the room does), the
+// single source of truth shared by the builder's placed-phase card AND the /help
+// method reference, so the docs can never drift from the real cards.
+export function ModuleCardBody({ moduleId }: { moduleId: ModuleKind }) {
   const card = getCard(moduleId);
   return (
     <div className="mt-1 grid gap-1 text-xs sm:grid-cols-3">
@@ -41,6 +43,9 @@ export function PlacedPhaseCard({ moduleId }: { moduleId: ModuleKind }) {
     </div>
   );
 }
+
+// The triple above a placed phase's config form (alias kept for the builder).
+export const PlacedPhaseCard = ModuleCardBody;
 
 function Cell({ label, body }: { label: string; body: string }) {
   return (

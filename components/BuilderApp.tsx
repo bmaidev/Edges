@@ -16,6 +16,7 @@ import { RoomMockup } from "@/components/RoomMockup";
 import { RehearsalTheatre } from "@/components/RehearsalTheatre";
 import { ShareImportPanel } from "@/components/ShareImportPanel";
 import { acceptsTimerEdit, phaseMinutes, phaseStage } from "@/lib/arc";
+import { MODULE_CATEGORIES } from "@/lib/modules/categories";
 import type { ModuleKind } from "@/lib/types";
 
 // B1 — arc-stage dot colours (shared with AgendaArc's palette).
@@ -36,26 +37,8 @@ interface BuilderPhase {
 
 // Palette grouped into scannable categories (the registry is flat; this is just
 // a presentation order). Any module not listed falls into "More".
-const CATEGORIES: { label: string; kinds: ModuleKind[] }[] = [
-  // E3 — ambient is placeable (a scheduled break / breathe / countdown / cue card),
-  // as well as summonable live from the host console.
-  { label: "Structure", kinds: ["lobby", "content", "media", "ambient", "close"] },
-  { label: "Capture & surface", kinds: ["capture", "prework", "readaround"] },
-  {
-    label: "Group & dialogue",
-    kinds: ["allocate", "coordinator", "onetwofour", "worldcafe", "stations", "consult", "fishbowl", "openspace"],
-  },
-  {
-    label: "Vote & prioritise",
-    kinds: ["poll", "dotvote", "rank", "scale", "gradient", "marketplace", "matrix", "spectrogram", "twentyfive10", "minspecs"],
-  },
-  { label: "Ideate & critique", kinds: ["brainwrite", "redistribute", "lightning", "qna", "wordcloud"] },
-  {
-    label: "AI",
-    kinds: ["devil", "friction", "synthesis", "needs", "persona", "emptychair", "issuemap", "promptrelay", "builder"],
-  },
-  { label: "Analytics", kinds: ["equity"] },
-];
+// B6 — the palette grouping is shared with the /help method reference.
+const CATEGORIES = MODULE_CATEGORIES;
 
 // ---- zod introspection -----------------------------------------------------
 // The form is generated from each module's zod schema. We detect a handful of
