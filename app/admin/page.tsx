@@ -14,6 +14,8 @@ import {
 } from "@/components/admin/ThemePanel";
 import { JoinScreenPreview } from "@/components/admin/JoinScreenPreview";
 import { AnalyticsPanel } from "@/components/admin/AnalyticsPanel";
+import { ReportDocument } from "@/lib/report/ReportDocument";
+import { reportToMarkdown } from "@/lib/report/markdown";
 import { TourCoach } from "@/components/TourCoach";
 
 interface RoomRow {
@@ -756,6 +758,27 @@ function RoomCard({
                 {report.sessionName} · {report.participantCount} joined ·{" "}
                 {report.submissions.length} submissions
               </p>
+              {/* F1 — admin parity: the same branded client-ready document + export
+                  row the host gets, so the report can be sent straight from /admin. */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="rounded-lg border border-accent px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+                >
+                  Print / Save as PDF
+                </button>
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(reportToMarkdown(report));
+                  }}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:border-accent"
+                >
+                  Copy as Markdown
+                </button>
+              </div>
+              <div className="report-print overflow-hidden rounded-lg">
+                <ReportDocument archive={report} />
+              </div>
               {report.report ? (
                 <div className="space-y-3 rounded-lg border border-accent/40 bg-accent/5 p-3">
                   <p className="text-xs uppercase tracking-wide text-accent">
