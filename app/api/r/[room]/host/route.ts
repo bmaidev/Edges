@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { archiveRoom, buildReport, checkSuperAdmin, getRoom, publishTakeaway, saveBlueprint } from "@/lib/rooms";
-import { deleteDesign, getDesign, renameDesign, saveDesign } from "@/lib/userTemplates";
+import {
+  deleteDesign,
+  getDesign,
+  renameDesign,
+  saveDesign,
+  validatePhases,
+} from "@/lib/userTemplates";
+import { decodeDesign, encodeDesign } from "@/lib/design-share";
 import { requireCapability, type Capability } from "@/lib/auth";
 import { suggestClusters } from "@/lib/cluster";
 import { getServerModule } from "@/lib/modules/registry.server";
@@ -105,6 +112,12 @@ const COMMAND_CAP: Record<string, Capability> = {
   saveDesign: "configure",
   deleteDesign: "configure",
   renameDesign: "configure",
+  // B4 — share envelope. Exporting + previewing an import is a read move (any
+  // host); committing an import to the shared library writes globally → configure
+  // + super-admin (checked in-handler).
+  exportDesign: "advance",
+  previewImport: "advance",
+  importDesign: "configure",
   // C5 — the driving baton is a soft nav-tier signal (cohost can claim/hand off).
   claimDriver: "advance",
   handoffDriver: "advance",
@@ -266,6 +279,45 @@ export async function POST(
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       const ok = await renameDesign(String(a.id ?? ""), String(a.name ?? ""));
       return NextResponse.json({ ok });
+    }
+    // B4 — export a saved design as a portable, checksummed share code.
+    case "exportDesign": {
+      const d = await getDesign(String(a.id ?? ""));
+      if (!d) return NextResponse.json({ error: "Unknown design" }, { status: 404 });
+      const code = encodeDesign({
+        name: d.name,
+        phases: d.phases,
+        meta: { origin: typeof a.origin === "string" ? a.origin.slice(0, 80) : undefined },
+      });
+      return NextResponse.json({ ok: true, code, name: d.name });
+    }
+    // B4 — decode + zod-revalidate a share code WITHOUT saving (read-only preview).
+    case "previewImport": {
+      const dec = decodeDesign(String(a.shareCode ?? ""));
+      if (!dec.ok) return NextResponse.json({ ok: false, error: dec.error }, { status: 400 });
+      const v = validatePhases(dec.phases);
+      if (!v.ok) return NextResponse.json({ ok: false, error: v.error }, { status: 400 });
+      return NextResponse.json({
+        ok: true,
+        name: dec.name,
+        meta: dec.meta ?? null,
+        phases: v.phases.map((p) => ({ id: p.id, moduleId: p.moduleId, label: (p.config.label as string) ?? p.moduleId })),
+      });
+    }
+    // B4 — commit an imported design to the shared library (global → super-admin).
+    case "importDesign": {
+      if (!checkSuperAdmin(a.code))
+        return NextResponse.json(
+          { error: "Importing to the shared library needs the admin passcode." },
+          { status: 403 },
+        );
+      const dec = decodeDesign(String(a.shareCode ?? ""));
+      if (!dec.ok) return NextResponse.json({ ok: false, error: dec.error }, { status: 400 });
+      // saveDesign re-validates every phase against its module schema (the security
+      // gate), rebuilding each as exactly {id, moduleId, config}.
+      const res = await saveDesign(dec.name, dec.phases);
+      if (!res.ok) return NextResponse.json({ ok: false, error: res.error }, { status: 400 });
+      return NextResponse.json({ ok: true, id: res.id, name: dec.name });
     }
     case "suggestSession": {
       const goal = String(a.goal ?? "").trim();
