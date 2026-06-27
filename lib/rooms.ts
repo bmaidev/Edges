@@ -479,7 +479,8 @@ export async function regenerateRoleCode(
 
 // ---- Archive / reporting --------------------------------------------------
 
-import { anonymousPhaseIds, endSession, getFacilitatorState, publishAndEnd, withLock } from "./store";
+import { anonymousPhaseIds, endSession, getFacilitatorState, publishAndEnd, readVotes, withLock } from "./store";
+import type { SessionMetrics } from "./session-metrics";
 import { aiAvailable, asData, capItems, generateJSON, topicLine } from "./ai";
 import type { TakeawaySnapshot } from "./types";
 
@@ -683,6 +684,9 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
           submissionCount: archive.submissions.length,
         },
       });
+      // F4 — capture the de-identified evidence record. Best-effort: a metrics
+      // hiccup must never fail the archive.
+      await captureSessionMetrics(slug).catch(() => {});
       return archive;
     },
     { ttlSeconds: 30 },
@@ -692,6 +696,67 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
 
 export async function getArchive(slug: string): Promise<RoomArchive | null> {
   return db.get<RoomArchive>(archiveKey(slug));
+}
+
+// ---- F4: de-identified SessionMetrics (the evidence layer) -----------------
+
+const METRICS_INDEX = "rooms:metricsidx";
+const metricsKey = (slug: string) => `rooms:metrics:${slug}`;
+
+function designLabelFor(r: Room): string {
+  return r.blueprint?.name ?? r.templateId ?? "Custom";
+}
+
+// Capture a CONTENT-FREE metrics record at archive time: per-phase responder
+// counts (distinct participants who submitted OR voted, reserved markers
+// excluded), participant count, and whether the room was archived before reaching
+// its final phase. No handles, no text — only counts. One record per room (a
+// re-archive overwrites). Best-effort: never blocks the archive.
+export async function captureSessionMetrics(slug: string): Promise<void> {
+  const room = await getRoom(slug);
+  if (!room || room.isSample) return;
+  const fs = await getFacilitatorState(slug);
+  const seq = fs.sequence ?? [];
+  const lastId = seq.length ? seq[seq.length - 1].id : null;
+
+  const phases: SessionMetrics["phases"] = [];
+  for (const ph of seq) {
+    const tokens = new Set(
+      fs.submissions.filter((s) => s.phaseId === ph.id).map((s) => s.token),
+    );
+    const votes = await readVotes(ph.id, slug);
+    for (const t of Object.keys(votes)) if (!t.startsWith("__")) tokens.add(t);
+    phases.push({ moduleId: ph.moduleId, responded: tokens.size });
+  }
+
+  const metrics: SessionMetrics = {
+    slug,
+    name: room.name,
+    endedAt: Date.now(),
+    design: designLabelFor(room),
+    participantCount: fs.participantCount,
+    endedEarly: Boolean(lastId && fs.phaseId !== lastId),
+    phases,
+  };
+  const idx = (await db.get<string[]>(METRICS_INDEX)) ?? [];
+  await db.set(metricsKey(slug), metrics);
+  if (!idx.includes(slug)) await db.set(METRICS_INDEX, [...idx, slug]);
+}
+
+export async function listSessionMetrics(): Promise<SessionMetrics[]> {
+  const idx = (await db.get<string[]>(METRICS_INDEX)) ?? [];
+  const out: SessionMetrics[] = [];
+  for (const slug of idx) {
+    const m = await db.get<SessionMetrics>(metricsKey(slug));
+    if (m) out.push(m);
+  }
+  return out.sort((a, b) => b.endedAt - a.endedAt);
+}
+
+export async function clearSessionMetrics(): Promise<void> {
+  const idx = (await db.get<string[]>(METRICS_INDEX)) ?? [];
+  for (const slug of idx) await db.del(metricsKey(slug));
+  await db.del(METRICS_INDEX);
 }
 
 // F1 — apply one structured curation edit to the archive's report (rename/drop/
