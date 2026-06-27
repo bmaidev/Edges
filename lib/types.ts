@@ -162,6 +162,11 @@ export interface SessionReport {
   decisions: string[];
   nextSteps: string[];
   generatedAt: number;
+  // F1 — how this report was produced. "ai" = a synthesised summary; "structural"
+  // = the AI-free fallback (counts + curated pattern names) built when no API key
+  // is set. Lets the handover surface an honest caption instead of a silent, sparse
+  // report. Absent on legacy archives — treat absence as unknown (no caption).
+  kind?: "ai" | "structural";
 }
 
 // F3 — the ephemeral "take-away" every participant keeps. Handle-free synthesis

@@ -572,6 +572,7 @@ Keep each list to the few most important items. Use [] for any list with nothing
     decisions: strList(d.decisions).slice(0, 8),
     nextSteps: strList(d.nextSteps).slice(0, 12),
     generatedAt: Date.now(),
+    kind: "ai",
   };
 }
 
@@ -596,6 +597,7 @@ function buildFallbackReport(
     decisions: [],
     nextSteps: [],
     generatedAt: Date.now(),
+    kind: "structural",
   };
 }
 
