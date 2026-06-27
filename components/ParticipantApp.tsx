@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
-import { useTimerMilestones } from "@/components/useTimerMilestones";
+import { useTimerMilestones, warnThresholds } from "@/components/useTimerMilestones";
 import {
   WelcomeBackCard,
   deriveOrientation,
@@ -235,7 +235,17 @@ function StatusBar({ state }: { state: PublicState }) {
   // clock crosses 2:00 then 0:30. Derived client-side; the chime self-swallows
   // when audio isn't unlocked, so the tint is the guaranteed channel.
   const onWarn = useCallback(() => chime("warn"), [chime]);
-  const level = useTimerMilestones(state.timerEndsAt, state.timerRemainingMs, onWarn);
+  // C6 full — honour the builder-authored amber threshold (falls back to 2:00).
+  const warnSeconds =
+    (state.config as { timerWarnSeconds?: number } | null)?.timerWarnSeconds ??
+    120;
+  const thresholds = useMemo(() => warnThresholds(warnSeconds), [warnSeconds]);
+  const level = useTimerMilestones(
+    state.timerEndsAt,
+    state.timerRemainingMs,
+    onWarn,
+    thresholds,
+  );
   // C1 gate fix: show the clock when RUNNING or PAUSED (a pause writes
   // timerEndsAt:null, which previously blanked the numeral from the room).
   const hasTimer = state.timerEndsAt != null || state.timerRemainingMs != null;

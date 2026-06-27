@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { crossedThresholds, DEFAULT_MILESTONES } from "@/components/useTimerMilestones";
+import {
+  crossedThresholds,
+  DEFAULT_MILESTONES,
+  drainState,
+  warnThresholds,
+} from "@/components/useTimerMilestones";
 
 // C6 — the room-felt timer milestone crossing logic. Pure: a threshold fires only
 // on a real above→below crossing, so it can't double-fire on a poll/re-render and
@@ -39,5 +44,43 @@ describe("crossedThresholds", () => {
     expect(crossedThresholds(121_000, 120_000, T)).toEqual([120]);
     // but starting AT the threshold and staying does not re-fire
     expect(crossedThresholds(120_000, 119_000, T)).toEqual([]);
+  });
+});
+
+// C6 full — the builder-authored amber threshold.
+describe("warnThresholds", () => {
+  it("falls back to the defaults when unset or zero", () => {
+    expect(warnThresholds(undefined)).toBe(DEFAULT_MILESTONES);
+    expect(warnThresholds(null)).toBe(DEFAULT_MILESTONES);
+    expect(warnThresholds(0)).toBe(DEFAULT_MILESTONES);
+  });
+  it("authored amber threshold always folds in a 30s final cue, descending", () => {
+    expect(warnThresholds(90)).toEqual([90, 30]);
+    expect(warnThresholds(300)).toEqual([300, 30]);
+  });
+  it("dedupes when the authored value is the 30s cue", () => {
+    expect(warnThresholds(30)).toEqual([30]);
+  });
+  it("a sub-30s authored value still sorts descending", () => {
+    expect(warnThresholds(20)).toEqual([30, 20]);
+  });
+});
+
+// C6 full — the projector drain bar geometry.
+describe("drainState", () => {
+  it("is null outside the warning window (or with no live timer)", () => {
+    expect(drainState(null, 120)).toBeNull();
+    expect(drainState(200_000, 120)).toBeNull(); // 3:20 left, 2:00 window
+    expect(drainState(60_000, 0)).toBeNull(); // no window
+  });
+  it("fills proportionally inside the window", () => {
+    expect(drainState(120_000, 120)).toEqual({ pct: 100, urgent: false });
+    expect(drainState(60_000, 120)).toEqual({ pct: 50, urgent: false });
+    expect(drainState(0, 120)).toEqual({ pct: 0, urgent: true });
+  });
+  it("turns urgent in the final 30 seconds", () => {
+    expect(drainState(31_000, 120)!.urgent).toBe(false);
+    expect(drainState(30_000, 120)!.urgent).toBe(true);
+    expect(drainState(5_000, 120)!.urgent).toBe(true);
   });
 });

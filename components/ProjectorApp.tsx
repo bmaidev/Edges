@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { usePolledState } from "@/components/usePolledState";
 import { useChime } from "@/components/useChime";
-import { useTimerMilestones } from "@/components/useTimerMilestones";
+import { useTimerMilestones, warnThresholds } from "@/components/useTimerMilestones";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LobbyScreen } from "@/components/LobbyScreen";
@@ -47,10 +47,18 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
   const onWarn = useCallback(() => {
     if (present.active) chime("warn");
   }, [present.active, chime]);
+  // C6 full — honour the builder-authored amber threshold; the chime + clock tint
+  // fire at the facilitator's chosen "minutes left", and the drain bar's window
+  // matches it. Defaults to 120s when unauthored.
+  const warnSeconds =
+    (state?.config as { timerWarnSeconds?: number } | null)?.timerWarnSeconds ??
+    120;
+  const thresholds = useMemo(() => warnThresholds(warnSeconds), [warnSeconds]);
   const timerLevel = useTimerMilestones(
     state?.timerEndsAt ?? null,
     state?.timerRemainingMs ?? null,
     onWarn,
+    thresholds,
   );
 
   // The participant join link for this room — workshop members scan to walk in
@@ -220,6 +228,7 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
           timerEndsAt={state.timerEndsAt}
           timerRemainingMs={state.timerRemainingMs}
           lowLevel={timerLevel}
+          warnSeconds={warnSeconds}
           onElapsed={() => present.active && chime()}
         />
       )}

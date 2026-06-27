@@ -12,6 +12,33 @@ import { useEffect, useRef, useState } from "react";
 // effect deps don't churn — callers should not pass a fresh inline array.
 export const DEFAULT_MILESTONES = [120, 30];
 
+// C6 full — build the milestone set from a builder-authored amber threshold
+// (`timerWarnSeconds`). The authored value is the moment the projector goes amber;
+// a 30s final cue is always folded in (deduped, descending). Falls back to the
+// defaults when unset/zero. Pure → callers should `useMemo` it for a stable ref.
+export function warnThresholds(warnSeconds?: number | null): number[] {
+  if (!warnSeconds || warnSeconds <= 0) return DEFAULT_MILESTONES;
+  const set = new Set<number>([warnSeconds, 30].filter((n) => n > 0));
+  return Array.from(set).sort((a, b) => b - a);
+}
+
+// C6 full — the projector "drain bar": once the clock enters the authored warning
+// window, deplete a slim bar from full→empty over that window, amber through it and
+// red in the final 30s. Pure (ms in, geometry out) so it's unit-tested; returns
+// null outside the window or with no live timer.
+export function drainState(
+  ms: number | null,
+  warnSeconds: number,
+): { pct: number; urgent: boolean } | null {
+  if (ms == null || warnSeconds <= 0) return null;
+  const windowMs = warnSeconds * 1000;
+  if (ms > windowMs) return null;
+  return {
+    pct: Math.max(0, Math.min(100, (ms / windowMs) * 100)),
+    urgent: ms <= 30_000,
+  };
+}
+
 // Pure: which thresholds were crossed going from prevMs → nowMs (a real
 // above→below crossing only). Exported for tests.
 export function crossedThresholds(
