@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button, Modal } from "@/components/ui";
 import { ReportDocument } from "@/lib/report/ReportDocument";
+import { ReportCurator } from "@/components/ReportCurator";
 import { reportToMarkdown } from "@/lib/report/markdown";
 import type { FacilitatorState } from "@/lib/types";
 import type { RoomArchive } from "@/lib/rooms";
@@ -25,6 +26,7 @@ export function HandoverPanel({
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [curating, setCurating] = useState(false);
 
   async function build() {
     setBusy(true);
@@ -112,10 +114,22 @@ export function HandoverPanel({
                 {linkCopied ? "Link copied ✓" : "Copy shareable link"}
               </Button>
             )}
+            {/* F1 — toggle inline curation (glance, fix, send). */}
+            {archive.report && (
+              <Button variant="ghost" onClick={() => setCurating((v) => !v)}>
+                {curating ? "Done curating" : "✎ Curate"}
+              </Button>
+            )}
           </div>
-          <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg bg-[#f3f3f5] p-3">
-            <ReportDocument archive={archive} branding={branding} />
-          </div>
+          {curating ? (
+            <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg border border-border p-3">
+              <ReportCurator archive={archive} apiBase={apiBase} code={code} onUpdate={setArchive} />
+            </div>
+          ) : (
+            <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg bg-[#f3f3f5] p-3">
+              <ReportDocument archive={archive} branding={branding} />
+            </div>
+          )}
         </Modal>
       )}
     </section>
