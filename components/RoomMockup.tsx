@@ -3,6 +3,7 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { getSampleView } from "@/lib/modules/sample-views";
+import { SERVER_MODULES } from "@/lib/modules/registry.server";
 import type { ModuleKind } from "@/lib/types";
 
 // B2 — an inert, read-only mockup of what a phase puts on the participant phone
@@ -33,8 +34,18 @@ export function RoomMockup({
   }
 
   const inert = { token: "", handle: "", phaseId: "preview", act: async () => false };
+  // B2 — be honest: an AI module's preview shows an ILLUSTRATIVE sample, not a
+  // real generation. Caption it so the builder never mistakes it for live output.
+  const usesAi = SERVER_MODULES[moduleId]?.capabilities.usesAi === true;
 
   return (
+    <div className="flex flex-col gap-2">
+    {usesAi && (
+      <p className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-1.5 text-[11px] text-accent/90">
+        ✨ Illustrative sample — the real synthesis is generated live by AI during
+        the session.
+      </p>
+    )}
     <div className="grid gap-3 sm:grid-cols-2">
       {Participant && (
         <Frame label="On their phone" phone>
@@ -50,6 +61,7 @@ export function RoomMockup({
           </ErrorBoundary>
         </Frame>
       )}
+    </div>
     </div>
   );
 }

@@ -31,6 +31,13 @@ import type { MarketplaceView } from "./defs/marketplace.server";
 import type { MinSpecsView } from "./defs/minspecs.server";
 import type { SynthesisFacilitatorView } from "./defs/synthesis.server";
 import type { NeedsFacilitatorView } from "./defs/needs.server";
+import type { DevilView } from "./defs/devil.server";
+import type { EmptychairView } from "./defs/emptychair.server";
+import type { FrictionView } from "./defs/friction.server";
+import type { FishbowlView } from "./defs/fishbowl.server";
+import type { ConsultParticipantView } from "./defs/consult.server";
+import type { BrainwriteParticipantView } from "./defs/brainwrite.server";
+import type { PreworkParticipantView } from "./defs/prework.server";
 
 type Cfg = Record<string, unknown>;
 const str = (c: Cfg, k: string, d = "") => (typeof c[k] === "string" ? (c[k] as string) : d);
@@ -253,6 +260,108 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     inputCount: 12,
     available: true,
     stale: false,
+  }),
+  devil: (): DevilView => ({
+    hasResult: true,
+    objections: [
+      {
+        title: "Who actually owns this?",
+        body: "With no single accountable person, the plan stalls the first time it meets resistance.",
+      },
+      {
+        title: "What if adoption is only partial?",
+        body: "The benefit assumes everyone switches at once — a half-adopted change can be worse than today.",
+      },
+    ],
+    inputCount: 12,
+    available: true,
+    stale: false,
+  }),
+  emptychair: (c): EmptychairView => ({
+    hasResult: true,
+    available: true,
+    personaName: str(c, "personaName") || str(c, "label", "The absent customer"),
+    personaDescription: str(
+      c,
+      "personaDescription",
+      "The person most affected by this decision who isn't in the room.",
+    ),
+    questions: [
+      { id: "q1", text: "What would make you trust this?" },
+      { id: "q2", text: "Where would you quietly give up?" },
+    ],
+    answers: [
+      {
+        question: "What would make you trust this?",
+        answer: "Show me it working for someone like me — not a polished demo.",
+      },
+    ],
+    stale: false,
+  }),
+  friction: (): FrictionView => ({
+    hasResult: true,
+    available: true,
+    stale: false,
+    inputCount: 12,
+    tensions: [
+      {
+        axis: "Speed vs. rigor",
+        tension: "The room wants to move fast but fears shipping something half-baked.",
+        poleA: "Ship and learn",
+        poleB: "Get it right first",
+        intensity: 4,
+      },
+    ],
+  }),
+  // ---- interactive small-group / async modules ----
+  fishbowl: (c): FishbowlView => {
+    const innerSeats = num(c, "innerSeats", 4);
+    const occupantCount = Math.min(3, innerSeats);
+    return {
+      innerSeats,
+      occupantCount,
+      emptySeats: innerSeats - occupantCount,
+      amSeated: false,
+      canSit: true,
+      speakers: Array.from({ length: occupantCount }, (_, i) => ({
+        label: `Speaker ${i + 1}`,
+      })),
+      questions: [
+        { id: "q1", text: "What are we not saying out loud?" },
+        { id: "q2", text: "Who else is affected by this?" },
+      ],
+      allowQuestions: c.allowQuestions !== false,
+    };
+  },
+  consult: (c): ConsultParticipantView => ({
+    format: (str(c, "format") as ConsultParticipantView["format"]) || "troika",
+    prompt: str(c, "prompt") || str(c, "label", "Share your challenge; the others advise."),
+    round: 1,
+    role: "client",
+    groupMembers: ["You", "Ada", "Bo"],
+    clientName: "You",
+    silent: false,
+    myAdviceSubmitted: false,
+  }),
+  brainwrite: (c): BrainwriteParticipantView => ({
+    for: "participant",
+    prompt: str(c, "prompt") || str(c, "label", "Build on the idea in front of you."),
+    maxLen: num(c, "maxLen", 140),
+    card: {
+      id: "c1",
+      lines: [
+        { text: "A weekly demo so progress is visible to everyone." },
+        { text: "…and a short written summary for those who miss it." },
+      ],
+    },
+    myContributionCount: 1,
+  }),
+  prework: (c): PreworkParticipantView => ({
+    for: "participant",
+    brief: str(c, "brief") || undefined,
+    prompt: str(c, "prompt") || str(c, "label", "Add your thoughts before we meet."),
+    placeholder: str(c, "placeholder") || undefined,
+    mine: [{ text: "One thing I'm hoping we resolve is the ownership question.", at: 0 }],
   }),
 };
 
