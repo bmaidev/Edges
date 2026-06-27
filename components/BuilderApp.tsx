@@ -1132,6 +1132,35 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                   </div>
                 )}
 
+                {/* C6 — author when the big screen goes amber + drains (minutes
+                    left). Empty = the calm default (2:00). Only meaningful on a
+                    timed phase. */}
+                {timed && (
+                  <label className="mt-2 flex items-center gap-2 text-xs text-muted">
+                    <span>Big screen goes amber at</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={
+                        typeof p.config.timerWarnSeconds === "number"
+                          ? Math.round((p.config.timerWarnSeconds as number) / 60)
+                          : ""
+                      }
+                      onChange={(e) => {
+                        const m = Number(e.target.value);
+                        setConfig(i, {
+                          ...p.config,
+                          timerWarnSeconds: m > 0 ? m * 60 : undefined,
+                        });
+                      }}
+                      placeholder="2"
+                      className="w-12 rounded border border-border bg-bg px-1 py-0.5 text-right focus:border-accent focus:outline-none"
+                      aria-label="Amber warning, minutes left"
+                    />
+                    <span>min left</span>
+                  </label>
+                )}
+
                 {/* B3 — author the facilitator-private run-sheet for this phase. */}
                 <RunSheetSection config={p.config} onChange={(c) => setConfig(i, c)} />
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { Countdown } from "@/components/Countdown";
+import { TimerDrainBar } from "@/components/TimerDrainBar";
 import { phaseNav, type SequenceItem } from "@/lib/sequence";
 
 // E2 — the bottom-of-wall presenter ribbon: a slim progress bar of the whole
@@ -15,6 +16,7 @@ export function PresenterRibbon({
   timerEndsAt,
   timerRemainingMs,
   lowLevel = null,
+  warnSeconds = 120,
   onElapsed,
 }: {
   sequence: SequenceItem[];
@@ -26,6 +28,9 @@ export function PresenterRibbon({
   // calm amber tint on the projector clock, + a chime when the clock hits zero
   // (the projector was silent before).
   lowLevel?: number | null;
+  // C6 full — the builder-authored amber threshold (seconds remaining), driving the
+  // drain bar's window.
+  warnSeconds?: number;
   onElapsed?: () => void;
 }) {
   const nav = phaseNav(sequence, phaseId);
@@ -38,7 +43,11 @@ export function PresenterRibbon({
   const dense = nav.total > 10;
 
   return (
-    <div className="flex items-center gap-5 border-t border-border bg-bg/70 px-8 py-3 backdrop-blur">
+    <div className="border-t border-border bg-bg/70 backdrop-blur">
+      {/* C6 — the drain bar rides the top edge of the ribbon, full-bleed, so the
+          whole room feels the window closing without reading the clock. */}
+      <TimerDrainBar endsAt={timerEndsAt} warnSeconds={warnSeconds} />
+      <div className="flex items-center gap-5 px-8 py-3">
       {/* progress */}
       {nav.total > 0 &&
         (dense ? (
@@ -103,6 +112,7 @@ export function PresenterRibbon({
             />
           </span>
         )}
+      </div>
       </div>
     </div>
   );
