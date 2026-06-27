@@ -149,7 +149,10 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
             dimmed, behind). Outside the module ErrorBoundary so neither can take
             the other down. Cleared by the host or any phase advance. */}
         {!state.ended && state.spotlight && (
-          <SpotlightOverlay text={state.spotlight.text} />
+          <SpotlightOverlay
+            text={state.spotlight.text}
+            handle={state.spotlight.handle ?? null}
+          />
         )}
         {/* F2 — the live commitment board, when the facilitator promotes it. */}
         {!state.ended && state.actionItems && state.actionItems.length > 0 && (
@@ -238,11 +241,12 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
   );
 }
 
-// C4 — the spotlight bloom. Text only (never a name); the live module stays
-// mounted and dimmed behind the scrim. Long responses down-scale and soft-fade at
-// the bottom rather than overflow. A gentle rise-in honours reduce-motion (the
-// a11y-reduce-motion CSS neutralises the animation to an instant appear).
-function SpotlightOverlay({ text }: { text: string }) {
+// C4 — the spotlight bloom. The live module stays mounted and dimmed behind the
+// scrim. Long responses down-scale and soft-fade at the bottom rather than
+// overflow. A gentle rise-in honours reduce-motion. An OPTIONAL attribution line
+// ("— Name") appears only for an explicitly-attributed literal spotlight (the
+// host opted in for a named, non-anonymous source); it's null for everything else.
+function SpotlightOverlay({ text, handle }: { text: string; handle?: string | null }) {
   // Three coarse type tiers so a one-liner fills the wall and a paragraph still fits.
   const size =
     text.length <= 80
@@ -263,6 +267,9 @@ function SpotlightOverlay({ text }: { text: string }) {
         >
           {text}
         </p>
+        {handle && (
+          <p className="mt-6 text-2xl font-medium text-accent/90">— {handle}</p>
+        )}
         {long && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-bg to-transparent" />
         )}

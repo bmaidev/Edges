@@ -446,7 +446,17 @@ export async function POST(
       let ref: import("@/lib/types").SpotlightRef | null = null;
       if (typeof a.id === "string" && a.id) ref = { kind: "submission", id: a.id };
       else if (typeof a.text === "string" && a.text.trim())
-        ref = { kind: "literal", text: a.text };
+        // C4 — opt-in attribution: a literal spotlight carries a name ONLY when the
+        // host explicitly passes a non-empty handle (the UI offers this solely for a
+        // named, non-anonymous source). Submission spotlights ignore any handle.
+        ref = {
+          kind: "literal",
+          text: a.text,
+          handle:
+            typeof a.handle === "string" && a.handle.trim()
+              ? a.handle.trim().slice(0, 60)
+              : null,
+        };
       return NextResponse.json({
         ok: true,
         state: await navState(room, await setSpotlight(ref, room), role ?? "facilitator"),
