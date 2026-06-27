@@ -82,6 +82,13 @@ export function usePolledState<
         if (!res.ok) throw new Error("bad status");
         const data = (await res.json()) as T;
         if (!active) return;
+        // A4 — the room was renamed; the state route hands back the new address.
+        // Follow it once (replace, so Back doesn't loop onto the dead slug).
+        const redirect = (data as { redirect?: unknown }).redirect;
+        if (typeof redirect === "string" && redirect) {
+          if (typeof window !== "undefined") window.location.replace(redirect);
+          return;
+        }
         // Out-of-order in-flight: ignore a response superseded by a newer one.
         if (mySeq < appliedRef.current) return;
         // Stale data: ignore any state older than what we've already shown. This

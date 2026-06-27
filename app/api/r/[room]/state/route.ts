@@ -6,7 +6,7 @@ import {
   heartbeatProjector,
   touchParticipant,
 } from "@/lib/store";
-import { getRoom, resolveRole } from "@/lib/rooms";
+import { getRoom, resolveRedirect, resolveRole } from "@/lib/rooms";
 import type { RoomBranding } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -21,8 +21,16 @@ export async function GET(
 ) {
   const room = params.room;
   const roomRec = await getRoom(room);
-  if (!roomRec)
+  if (!roomRec) {
+    // A4 — the room may have been renamed; old links/QRs redirect to the new slug.
+    const target = await resolveRedirect(room);
+    if (target)
+      return NextResponse.json(
+        { redirect: `/r/${target}` },
+        { status: 200, headers: { "Cache-Control": "no-store" } },
+      );
     return NextResponse.json({ error: "No such room" }, { status: 404 });
+  }
 
   // Room branding (logo + custom copy) for the join/lobby/QR surfaces.
   const t = roomRec.theme;

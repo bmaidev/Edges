@@ -5,6 +5,7 @@ import {
   getArchive,
   getRoom,
   regenerateRoleCode,
+  renameRoom,
   updateRoom,
 } from "@/lib/rooms";
 import type { RoomTheme, ShareableTier } from "@/lib/rooms";
@@ -42,7 +43,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { slug: string } },
 ) {
-  let body: { code?: string; action?: string; role?: string };
+  let body: { code?: string; action?: string; role?: string; slug?: string };
   try {
     body = await req.json();
   } catch {
@@ -50,6 +51,16 @@ export async function POST(
   }
   if (!checkSuperAdmin(body.code))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  // A4 — change the room's address (slug). Non-live rooms only; old links/QRs
+  // redirect to the new slug. The record (+ a draft's session state) moves.
+  if (body.action === "rename") {
+    const res = await renameRoom(params.slug, body.slug ?? "");
+    if (!res.ok)
+      return NextResponse.json({ error: res.error }, { status: 400 });
+    return NextResponse.json({ ok: true, slug: res.slug });
+  }
+
   if (body.action !== "regenerate")
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 
