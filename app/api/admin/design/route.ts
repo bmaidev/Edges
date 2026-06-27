@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkSuperAdmin } from "@/lib/rooms";
+import { resolveAdminContext } from "@/lib/auth";
 import { critiqueSession, reviseSession, suggestSession } from "@/lib/design";
 import type { PhaseInstance } from "@/lib/types";
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  if (!checkSuperAdmin(body.code))
+  if (!(await resolveAdminContext(body.code)).ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const topic = String(body.topic ?? "");
