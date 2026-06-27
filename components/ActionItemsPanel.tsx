@@ -5,6 +5,30 @@ import { Button, InlineEdit } from "@/components/ui";
 import type { Cmd } from "@/components/HostConsole";
 import type { FacilitatorState } from "@/lib/types";
 
+// F2 — local yyyy-mm-dd quick due-date presets.
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const DUE_PRESETS: { label: string; date: () => string }[] = [
+  { label: "Today", date: () => isoDate(new Date()) },
+  {
+    label: "This Fri",
+    date: () => {
+      const d = new Date();
+      d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7));
+      return isoDate(d);
+    },
+  },
+  {
+    label: "Next week",
+    date: () => {
+      const d = new Date();
+      d.setDate(d.getDate() + (((1 - d.getDay() + 7) % 7) || 7)); // next Monday
+      return isoDate(d);
+    },
+  },
+];
+
 // F2 — the always-on action-item register. Capture decisions/owners/actions live
 // during ANY phase; they persist across advances and flow into the handover.
 // Uses the shared cmd() because `actionItem` returns the authoritative rev'd
@@ -82,6 +106,24 @@ export function ActionItemsPanel({
         <Button onClick={add} disabled={!text.trim()}>
           Add
         </Button>
+      </div>
+      {/* F2 — quick due-date presets. */}
+      <div className="flex flex-wrap gap-1.5 text-xs">
+        <span className="text-muted">Due:</span>
+        {DUE_PRESETS.map((p) => (
+          <button
+            key={p.label}
+            onClick={() => setDue(p.date())}
+            className="rounded-full border border-border px-2 py-0.5 text-muted hover:border-accent"
+          >
+            {p.label}
+          </button>
+        ))}
+        {due && (
+          <button onClick={() => setDue("")} className="text-muted underline">
+            clear
+          </button>
+        )}
       </div>
 
       {items.length === 0 ? (
