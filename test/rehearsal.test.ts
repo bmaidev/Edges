@@ -159,6 +159,53 @@ describe("B5 — reseed (teardown + fresh seed) at a new cast size", () => {
   });
 });
 
+describe("B5 — canned AI for the dry-run", () => {
+  // The AI modules only READ their cached result when AI is configured (the case
+  // where canned-AI's value is skipping the slow/costly REAL generation).
+  const SYN: PhaseInstance[] = [
+    { id: "ideas", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } },
+    { id: "syn", moduleId: "synthesis", config: { label: "Synthesis", sourcePhaseId: "ideas" } },
+  ];
+  async function withAiKey<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    try {
+      return await fn();
+    } finally {
+      if (prev === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = prev;
+    }
+  }
+
+  it("a rehearsed synthesis previews a canned result by default (no real AI call)", async () => {
+    await withAiKey(async () => {
+      const shadow = shadowRoomId("ai-canned", "n6");
+      await tearDownRehearsal(shadow);
+      await seedRehearsal(shadow, SYN, 8); // cannedAi defaults on
+      await setPhase("syn", shadow);
+      const view = (await getPublicState(null, shadow, "projector")).view?.data as {
+        hasResult: boolean;
+        bullets?: string[];
+      };
+      expect(view.hasResult).toBe(true);
+      expect((view.bullets ?? []).length).toBeGreaterThan(0);
+      await tearDownRehearsal(shadow);
+    });
+  });
+
+  it("with cannedAi off, the AI phase has no seeded result (a real generate would run)", async () => {
+    await withAiKey(async () => {
+      const shadow = shadowRoomId("ai-real", "n7");
+      await tearDownRehearsal(shadow);
+      await seedRehearsal(shadow, SYN, 8, { cannedAi: false });
+      await setPhase("syn", shadow);
+      const view = (await getPublicState(null, shadow, "projector")).view?.data as { hasResult: boolean };
+      expect(view.hasResult).toBe(false);
+      await tearDownRehearsal(shadow);
+    });
+  });
+});
+
 describe("B5 — auto punch-list (readiness over the shadow session)", () => {
   it("flags an empty required prompt as a blocker during rehearsal", async () => {
     const { getFacilitatorState } = await import("@/lib/store");

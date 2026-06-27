@@ -64,7 +64,7 @@ export async function POST(
       const castSize = Number(body.castSize ?? 8);
       // Fresh start: clear any prior shadow under this nonce, then seed.
       await tearDownRehearsal(shadowId);
-      const { tokens, handles } = await seedRehearsal(shadowId, v.phases, castSize);
+      const { tokens, handles } = await seedRehearsal(shadowId, v.phases, castSize, { cannedAi: body.realAi !== true });
       const cast = tokens.map((t, i) => ({ token: t, handle: handles[i] }));
       return NextResponse.json({
         ok: true,
@@ -95,7 +95,7 @@ export async function POST(
       if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
       const castSize = Number(body.castSize ?? 8);
       await tearDownRehearsal(shadowId);
-      const { tokens, handles } = await seedRehearsal(shadowId, v.phases, castSize);
+      const { tokens, handles } = await seedRehearsal(shadowId, v.phases, castSize, { cannedAi: body.realAi !== true });
       const cast = tokens.map((t, i) => ({ token: t, handle: handles[i] }));
       // Stay on the phase the facilitator was viewing, if it still exists.
       const phaseId = typeof body.phaseId === "string" && v.phases.some((p) => p.id === body.phaseId)

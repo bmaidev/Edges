@@ -103,17 +103,21 @@ export function RehearsalTheatre({
 
   const [castSize, setCastSize] = useState(8);
   const [reseeding, setReseeding] = useState(false);
+  // B5 — default to a canned AI preview (free/instant); toggling on lets a real
+  // generate run (when an API key is present).
+  const [realAi, setRealAi] = useState(false);
 
   // B5 — re-roll the synthetic data (fresh contributions + tallies) at a chosen
   // cast size, staying on the current phase + viewer.
   const reseed = useCallback(
-    async (size: number) => {
+    async (size: number, useRealAi = realAi) => {
       setReseeding(true);
       const res = await post({
         command: "setCast",
         phases,
         castSize: size,
         phaseId: sequence[idx]?.id,
+        realAi: useRealAi,
       });
       if (res.ok) {
         const d = await res.json();
@@ -128,7 +132,7 @@ export function RehearsalTheatre({
       }
       setReseeding(false);
     },
-    [post, phases, sequence, idx],
+    [post, phases, sequence, idx, realAi],
   );
 
   function close() {
@@ -235,6 +239,19 @@ export function RehearsalTheatre({
             >
               {reseeding ? "Reseeding…" : "↻ Reseed"}
             </button>
+            {/* B5 — canned AI preview by default; opt into a real generate. */}
+            <label className="flex items-center gap-1 text-muted" title="Off = instant canned AI preview; on = run the real AI">
+              <input
+                type="checkbox"
+                checked={realAi}
+                disabled={reseeding}
+                onChange={(e) => {
+                  setRealAi(e.target.checked);
+                  reseed(castSize, e.target.checked);
+                }}
+              />
+              real AI
+            </label>
           </div>
 
           {/* B5 — the auto punch-list: issues found while walking the arc. */}
