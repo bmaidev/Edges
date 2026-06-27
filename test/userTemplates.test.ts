@@ -3,6 +3,7 @@ import {
   deleteDesign,
   getDesign,
   listDesignMeta,
+  renameDesign,
   saveDesign,
   validatePhases,
 } from "@/lib/userTemplates";
@@ -71,6 +72,18 @@ describe("save / list / get / delete", () => {
   it("rejects saving an invalid design", async () => {
     const res = await saveDesign("Bad", [{ moduleId: "nope", config: {} }]);
     expect(res.ok).toBe(false);
+  });
+
+  it("A5 — renameDesign changes the name in place, keeping the phases", async () => {
+    const res = await saveDesign("Old name", GOOD);
+    const id = res.ok ? res.id : "";
+    expect(await renameDesign(id, "New name")).toBe(true);
+    const full = await getDesign(id);
+    expect(full?.name).toBe("New name");
+    expect(full?.phases).toHaveLength(1); // phases untouched
+    // unknown id / blank name are no-ops.
+    expect(await renameDesign("d-nope", "X")).toBe(false);
+    expect(await renameDesign(id, "   ")).toBe(false);
   });
 
   it("two concurrent saves both survive the shared global index", async () => {

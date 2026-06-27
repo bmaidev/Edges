@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { archiveRoom, buildReport, checkSuperAdmin, getRoom, publishTakeaway, saveBlueprint } from "@/lib/rooms";
-import { deleteDesign, getDesign, saveDesign } from "@/lib/userTemplates";
+import { deleteDesign, getDesign, renameDesign, saveDesign } from "@/lib/userTemplates";
 import { requireCapability, type Capability } from "@/lib/auth";
 import { suggestClusters } from "@/lib/cluster";
 import { getServerModule } from "@/lib/modules/registry.server";
@@ -104,6 +104,7 @@ const COMMAND_CAP: Record<string, Capability> = {
   setDesign: "advance",
   saveDesign: "configure",
   deleteDesign: "configure",
+  renameDesign: "configure",
   // C5 — the driving baton is a soft nav-tier signal (cohost can claim/hand off).
   claimDriver: "advance",
   handoffDriver: "advance",
@@ -257,6 +258,13 @@ export async function POST(
       if (!checkSuperAdmin(a.code))
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       const ok = await deleteDesign(String(a.id ?? ""));
+      return NextResponse.json({ ok });
+    }
+    // A5 — rename a saved workshop in the shared library (global → super-admin).
+    case "renameDesign": {
+      if (!checkSuperAdmin(a.code))
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      const ok = await renameDesign(String(a.id ?? ""), String(a.name ?? ""));
       return NextResponse.json({ ok });
     }
     case "suggestSession": {

@@ -126,3 +126,17 @@ export async function deleteDesign(id: string): Promise<boolean> {
     return true;
   });
 }
+
+// A5 — rename a saved design in place (the phases are untouched). Returns false if
+// the id is unknown. Under the same write lock as save/delete.
+export async function renameDesign(id: string, name: string): Promise<boolean> {
+  const clean = name.trim().slice(0, 80);
+  if (!clean) return false;
+  return withDesignLock(async () => {
+    const db = getDb();
+    const tpl = await db.get<UserTemplate>(designKey(id));
+    if (!tpl) return false;
+    await db.set(designKey(id), { ...tpl, name: clean });
+    return true;
+  });
+}
