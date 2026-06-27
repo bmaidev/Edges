@@ -67,14 +67,15 @@ describe("computeRoomHealth", () => {
     expect(computeRoomHealth(parts("a", "b", "c"), h, NOW)).toEqual({
       present: 3,
       here: 3,
+      dropped: [], // H1 full — names who dropped; nobody here
     });
   });
   it("a stale heartbeat drops from `here`; a missing heartbeat stays present", () => {
     const h = { a: NOW - 30_000, b: NOW }; // a stale; c missing
-    expect(computeRoomHealth(parts("a", "b", "c"), h, NOW)).toEqual({
-      present: 3,
-      here: 2, // a gone quiet; b fresh; c unknown→counted here
-    });
+    const result = computeRoomHealth(parts("a", "b", "c"), h, NOW);
+    expect(result.present).toBe(3);
+    expect(result.here).toBe(2); // a gone quiet; b fresh; c unknown→counted here
+    expect(result.dropped.map((d) => d.handle)).toEqual(["a"]); // a is the dropped one
   });
 });
 
