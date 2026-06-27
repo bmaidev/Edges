@@ -3,7 +3,24 @@
 import { useState } from "react";
 import { Button, InlineEdit } from "@/components/ui";
 import type { Cmd } from "@/components/HostConsole";
-import type { FacilitatorState } from "@/lib/types";
+import type { FacilitatorState, Participant } from "@/lib/types";
+
+// F2 — the owner tap-list: distinct, non-empty handles of people in the room, so
+// the facilitator assigns an action to "Dana" with a tap instead of retyping it
+// (and spelling it the same way every time). Pure + content-free (handles only,
+// which the host already sees) → unit-tested.
+export function presentOwnerHandles(participants: Participant[] | undefined): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of participants ?? []) {
+    const h = p.handle?.trim();
+    if (h && !seen.has(h)) {
+      seen.add(h);
+      out.push(h);
+    }
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}
 
 // F2 — local yyyy-mm-dd quick due-date presets.
 function isoDate(d: Date): string {
@@ -125,6 +142,31 @@ export function ActionItemsPanel({
           </button>
         )}
       </div>
+
+      {/* F2 — owner tap-list: assign to someone in the room with a tap. */}
+      {(() => {
+        const handles = presentOwnerHandles(state.participants);
+        if (handles.length === 0) return null;
+        return (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-muted">Owner:</span>
+            {handles.map((h) => (
+              <button
+                key={h}
+                onClick={() => setOwner((cur) => (cur === h ? "" : h))}
+                aria-pressed={owner === h}
+                className={`rounded-full border px-2 py-0.5 transition-colors ${
+                  owner === h
+                    ? "border-accent bg-accent/15 text-accent"
+                    : "border-border text-muted hover:border-accent"
+                }`}
+              >
+                {h}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {items.length === 0 ? (
         <p className="text-xs text-muted">
