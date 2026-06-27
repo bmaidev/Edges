@@ -479,7 +479,7 @@ export async function regenerateRoleCode(
 
 // ---- Archive / reporting --------------------------------------------------
 
-import { endSession, getFacilitatorState, publishAndEnd, withLock } from "./store";
+import { anonymousPhaseIds, endSession, getFacilitatorState, publishAndEnd, withLock } from "./store";
 import { aiAvailable, asData, capItems, generateJSON, topicLine } from "./ai";
 import type { TakeawaySnapshot } from "./types";
 
@@ -721,6 +721,7 @@ export async function publishTakeaway(
   const room = await getRoom(slug);
   if (!room) return null;
   const fs = await getFacilitatorState(slug);
+  const anonPhases = await anonymousPhaseIds(slug); // F3 — exclude anonymous phases
   const existing = await getArchive(slug);
   const report =
     existing?.report ??
@@ -746,9 +747,12 @@ export async function publishTakeaway(
         : undefined,
     // F3 — keep each contribution with its author token so a participant can be
     // handed back their OWN. Stays server-side; the per-caller filter happens in
-    // getPublicState. (Anonymity doesn't restrict this — it's only ever yours.)
+    // getPublicState. CRITICAL: contributions from ANONYMOUS phases are EXCLUDED —
+    // a token-keyed durable record of anonymous-phase text would re-link the
+    // participant to the identity that phase promised to hide (the recap survives
+    // the session wipe, so this is the one place anonymity must be enforced).
     contributions: fs.submissions
-      .filter((s) => s.token)
+      .filter((s) => s.token && !anonPhases.has(s.phaseId))
       .map((s) => ({
         token: s.token as string,
         phaseLabel:

@@ -85,6 +85,50 @@ describe("publishTakeaway", () => {
   });
 });
 
+describe("F3 anonymity — anonymous-phase contributions never enter the recap", () => {
+  async function seedAnon(slug: string) {
+    const { hashes } = freshPasscodes();
+    await createRoomWithSlug(slug, "Offsite", "topic", { passcodeHashes: hashes });
+    await replaceState(
+      {
+        mode: null,
+        sessionName: "Mixed",
+        phases: [
+          { id: "p1", moduleId: "capture", config: { label: "Open ideas", prompt: "Go" } },
+          { id: "p2", moduleId: "capture", config: { label: "Anon worries", prompt: "Go", anonymity: "anonymous" } },
+        ],
+        phaseId: "p2",
+        timerEndsAt: null,
+        timerRemainingMs: null,
+        readaroundIndex: 0,
+        topic: "topic",
+        ended: false,
+        actionItems: [],
+      },
+      slug,
+    );
+    await addParticipant("a", "Ada", slug);
+    await addSubmission("Ada", "named-phase idea", "p1", null, "a", slug);
+    await addSubmission("Ada", "SECRET anonymous worry", "p2", null, "a", slug);
+  }
+
+  it("excludes the participant's anonymous-phase text from their own recap", async () => {
+    const slug = "f3-anon";
+    await seedAnon(slug);
+    const { token } = (await publishTakeaway(slug))!;
+    // the durable snapshot must not store the anonymous-phase contribution at all
+    const snap = await getTakeaway(slug, token);
+    const snapJson = JSON.stringify(snap);
+    expect(snapJson).not.toContain("SECRET anonymous worry");
+    expect(snapJson).toContain("named-phase idea"); // the non-anonymous one is kept
+    // and the participant's own recap reflects only the non-anonymous contribution
+    const part = await getPublicState("a", slug, "participant");
+    const partJson = JSON.stringify(part.takeaway);
+    expect(partJson).not.toContain("SECRET anonymous worry");
+    expect(partJson).toContain("named-phase idea");
+  });
+});
+
 describe("getPublicState surfaces the recap to every role when ended", () => {
   it("participant + projector get the take-away (it's handle-free)", async () => {
     const slug = "f3-roles";
