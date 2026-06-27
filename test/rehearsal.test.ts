@@ -100,6 +100,42 @@ describe("teardown — nothing is left behind", () => {
   });
 });
 
+describe("B5 — vote-phase response seeding", () => {
+  it("a rehearsed poll previews a POPULATED tally (config-true options)", async () => {
+    const shadow = shadowRoomId("seed-poll", "n1");
+    await tearDownRehearsal(shadow);
+    const phases: PhaseInstance[] = [
+      { id: "v", moduleId: "poll", config: { label: "P", question: "Pick", options: ["A", "B", "C"] } },
+    ];
+    const { tokens } = await seedRehearsal(shadow, phases, 8);
+    await setPhase("v", shadow);
+    const view = (await getPublicState(null, shadow, "projector")).view?.data as {
+      counts: Record<string, number>;
+      total: number;
+    };
+    expect(Object.keys(view.counts)).toEqual(["A", "B", "C"]); // config-true
+    expect(view.total).toBeGreaterThan(0); // populated, not blank
+    expect(Object.values(view.counts).reduce((s, n) => s + n, 0)).toBe(view.total);
+    await tearDownRehearsal(shadow);
+  });
+
+  it("a rehearsed scale previews non-zero means", async () => {
+    const shadow = shadowRoomId("seed-scale", "n2");
+    await tearDownRehearsal(shadow);
+    const phases: PhaseInstance[] = [
+      { id: "s", moduleId: "scale", config: { label: "S", statements: ["A", "B"], min: 1, max: 5 } },
+    ];
+    await seedRehearsal(shadow, phases, 8);
+    await setPhase("s", shadow);
+    const view = (await getPublicState(null, shadow, "projector")).view?.data as {
+      stats: { mean: number; count: number }[];
+    };
+    expect(view.stats).toHaveLength(2);
+    expect(view.stats.every((st) => st.count > 0)).toBe(true);
+    await tearDownRehearsal(shadow);
+  });
+});
+
 describe("capability matrix", () => {
   it("facilitator + cohost can rehearse; participant + projector cannot", () => {
     expect(roleHasCapability("facilitator", "rehearse")).toBe(true);
