@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui";
+import { useColourSafe } from "@/components/A11yProvider";
 import type { Role } from "./types";
 
 // What every renderer receives. `act` resolves to whether the write landed, so
@@ -374,6 +375,9 @@ export function Bars({
   const max = Math.max(1, ...options.map((o) => counts[o] ?? 0));
   const read = showLead ? leadRead(counts, options) : null;
   const total = options.reduce((s, o) => s + (counts[o] ?? 0), 0);
+  // D2 — under colour-safe mode, add a non-colour "▲" leader cue (the .a11y-pattern
+  // texture on the fill activates via the body class on its own).
+  const colourSafe = useColourSafe();
   return (
     <div className="flex flex-col gap-2">
       {showLead && read && (
@@ -395,12 +399,13 @@ export function Bars({
         return (
           <div key={o} className="flex items-center gap-3">
             <span className={`w-28 truncate text-sm ${isMine ? "text-accent" : ""}`}>
+              {colourSafe && isLeader ? "▲ " : ""}
               {o}
               {isMine ? " · you" : ""}
             </span>
             <div className="h-6 flex-1 overflow-hidden rounded bg-surface ring-1 ring-inset ring-border/40">
               <div
-                className={`h-6 rounded bg-gradient-to-r from-accent/80 to-accent transition-[width] duration-500 ease-out ${
+                className={`a11y-pattern h-6 rounded bg-gradient-to-r from-accent/80 to-accent transition-[width] duration-500 ease-out ${
                   isLeader ? "shadow-[0_0_18px_-2px_rgb(var(--c-accent)/0.7)]" : ""
                 }`}
                 style={{ width: `${(n / max) * 100}%` }}

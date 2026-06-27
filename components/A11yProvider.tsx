@@ -13,6 +13,11 @@ type Ctx = { prefs: A11yPrefs; update: (p: Partial<A11yPrefs>) => void };
 const A11yContext = createContext<Ctx | null>(null);
 export const useA11y = () => useContext(A11yContext);
 
+// D2 — is colour-safe / high-contrast mode on? Drives the `.a11y-pattern` texture
+// + non-colour markers in result bars. Defaults false where there's no provider
+// (e.g. the projector), where the host AA toggle handles it separately.
+export const useColourSafe = (): boolean => useContext(A11yContext)?.prefs.contrast ?? false;
+
 // D2 — applies the participant's accessibility prefs to the document (one root
 // scale var + a few body classes) and renders the floating "Aa" control. Wrap a
 // participant/projector tree in this; it cleans the document classes on unmount,
