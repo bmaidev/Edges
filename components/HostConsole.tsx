@@ -26,6 +26,7 @@ import { HandoverPanel } from "@/components/HandoverPanel";
 import { ActionItemsPanel } from "@/components/ActionItemsPanel";
 import { RunSheetPanel } from "@/components/RunSheetPanel";
 import { RunsheetPrint } from "@/components/RunsheetPrint";
+import { PhaseTimingPanel } from "@/components/PhaseTimingPanel";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -504,6 +505,8 @@ export function HostConsole({
               }
             />
             <HandoverPanel state={s} apiBase={apiBase} code={code} />
+            {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
+            <PhaseTimingPanel state={s} />
             <RunsheetPrint state={s} slug={slug} />
             <SessionControls cmd={cmd} />
           </>
