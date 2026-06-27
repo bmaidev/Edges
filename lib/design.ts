@@ -4,6 +4,7 @@
 // apply. The facilitator edits and launches in the builder.
 
 import { SERVER_MODULES, getServerModule } from "./modules/registry.server";
+import { MODULE_CARDS } from "./modules/cards";
 import { TEMPLATES } from "./templates";
 import { generateJSON, topicLine } from "./ai";
 import type { ModuleKind, PhaseInstance } from "./types";
@@ -46,7 +47,11 @@ function moduleCatalog(): string {
       const tag = need.has
         ? ` [needs sourcePhaseId → an earlier capture/pre-work phase${need.required ? ", REQUIRED" : ""}]`
         : "";
-      return `- ${m.id}: ${m.meta.name} — ${m.meta.description}${tag}`;
+      // B6 — feed the AI the plain-language "best for" so its rationale speaks the
+      // same language the builder cards show the facilitator.
+      const card = MODULE_CARDS[m.id];
+      const best = card ? ` (best for: ${card.bestFor})` : "";
+      return `- ${m.id}: ${m.meta.name} — ${m.meta.description}${best}${tag}`;
     })
     .join("\n");
 }
