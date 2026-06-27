@@ -6,6 +6,7 @@ import { normalizeSlug } from "@/lib/slug";
 import { groupRooms } from "@/lib/room-groups";
 import { Button } from "@/components/ui";
 import { RoomAccessCard } from "@/components/RoomAccessCard";
+import { PasscodeReveal } from "@/components/PasscodeReveal";
 import { CreateWorkshop } from "@/components/wizard/CreateWorkshop";
 import {
   EMPTY_THEME,
@@ -109,6 +110,12 @@ function Admin() {
   const [codeInput, setCodeInput] = useState("");
   const [authed, setAuthed] = useState(false);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
+  // A4 — which workspace (tenant) this code administers.
+  const [context, setContext] = useState<{
+    workspaceId: string;
+    name: string;
+    isSuperAdmin: boolean;
+  } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   // F4 — Rooms vs cross-session Analytics.
@@ -135,6 +142,7 @@ function Admin() {
     }
     const data = await res.json();
     setRooms(data.rooms ?? []);
+    setContext(data.context ?? null);
     setAuthed(true);
     setErr(null);
     // Best-effort: has this admin already toured? (suppresses the first-run nudge)
@@ -237,6 +245,9 @@ function Admin() {
         </div>
       </div>
 
+      {/* A4 — the active workspace (tenant) + super-admin workspace controls. */}
+      {context && <WorkspaceBar code={code} context={context} />}
+
       {/* F4 — Rooms / Analytics tabs. */}
       <div className="mt-3 flex gap-1 border-b border-border text-sm">
         {(["rooms", "analytics"] as const).map((t) => (
@@ -281,6 +292,133 @@ function Admin() {
         </>
       )}
     </main>
+  );
+}
+
+// A4 — the active workspace (tenant) line + super-admin workspace management.
+// A workspace admin just sees which workspace they're in (their code already
+// scopes everything); the super-admin can list workspaces and mint a new one,
+// handing its admin code to an org — "the code is the key" to that workspace.
+type WsContext = { workspaceId: string; name: string; isSuperAdmin: boolean };
+type WsMeta = { id: string; name: string; createdAt: number };
+
+function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<WsMeta[] | null>(null);
+  const [newName, setNewName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<{ name: string; adminCode: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function openPanel() {
+    const next = !open;
+    setOpen(next);
+    if (next && list === null) {
+      const res = await fetch(`/api/admin/workspaces?code=${encodeURIComponent(code)}`, {
+        cache: "no-store",
+      });
+      if (res.ok) setList((await res.json()).workspaces ?? []);
+    }
+  }
+
+  async function create() {
+    const name = newName.trim();
+    if (!name) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setCreated({ name: d.name, adminCode: d.adminCode });
+        setNewName("");
+        setList((prev) => [...(prev ?? []), { id: d.id, name: d.name, createdAt: Date.now() }]);
+      } else {
+        setErr(d.error ?? "Couldn't create the workspace.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted">
+          Workspace: <span className="font-medium text-white/90">{context.name}</span>
+          {context.isSuperAdmin && (
+            <span className="ml-2 rounded bg-accent/20 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent">
+              super-admin
+            </span>
+          )}
+        </p>
+        {context.isSuperAdmin && (
+          <button onClick={openPanel} className="text-accent underline">
+            {open ? "Close" : "Manage workspaces"}
+          </button>
+        )}
+      </div>
+
+      {context.isSuperAdmin && open && (
+        <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted">Workspaces</p>
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {(list ?? []).map((w) => (
+                <li key={w.id} className="text-sm">
+                  {w.name}{" "}
+                  <span className="text-xs text-muted">/{w.id}</span>
+                </li>
+              ))}
+              {list && list.length === 0 && (
+                <li className="text-sm text-muted">Just the default so far.</li>
+              )}
+            </ul>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-1 flex-col gap-1 text-xs">
+              <span className="text-muted">New workspace (e.g. an org or team)</span>
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && create()}
+                placeholder="ANU School of Applied Cybernetics"
+                maxLength={80}
+                className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+            </label>
+            <Button onClick={create} disabled={busy || !newName.trim()}>
+              {busy ? "Creating…" : "Create"}
+            </Button>
+          </div>
+          {err && <p className="text-xs text-[#ff8a8a]">{err}</p>}
+
+          {created && (
+            <div className="rounded-lg border border-emerald-400/40 bg-emerald-400/5 p-3">
+              <p className="text-sm text-emerald-300">
+                Created <strong>{created.name}</strong>. This is its admin code —
+                shown once. Give it to the workspace&apos;s facilitators; entering it
+                at /admin is their key to this workspace (you can&apos;t see it again).
+              </p>
+              <div className="mt-2">
+                <PasscodeReveal code={created.adminCode} label="workspace admin code" />
+              </div>
+              <button
+                className="mt-2 text-xs text-muted underline"
+                onClick={() => setCreated(null)}
+              >
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

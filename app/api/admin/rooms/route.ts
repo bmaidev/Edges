@@ -9,7 +9,7 @@ import {
   SlugTakenError,
 } from "@/lib/rooms";
 import { resolveAdminContext } from "@/lib/auth";
-import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
+import { DEFAULT_WORKSPACE_ID, getWorkspace } from "@/lib/workspaces";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +24,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const rooms = await listRooms(ctx.workspaceId);
+  const ws = await getWorkspace(ctx.workspaceId);
   return NextResponse.json({
+    // Phase A4 — which workspace this code administers, so the portal can show
+    // the active tenant + (for the super-admin) the workspace controls.
+    context: {
+      workspaceId: ctx.workspaceId,
+      name: ws?.name ?? ctx.workspaceId,
+      isSuperAdmin: ctx.isSuperAdmin,
+    },
     rooms: rooms.map((r) => ({
       slug: r.slug,
       name: r.name,
