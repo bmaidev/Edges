@@ -95,6 +95,15 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
     }
   }, [phaseId]);
 
+  // D2 — the projector has no per-device a11y prefs (it's a shared wall), so the
+  // host drives high-contrast / colour-safe mode for everyone. Toggle the same
+  // body class the participant A11yProvider uses; clean up on unmount.
+  const projectorA11y = state?.projectorA11y === true;
+  useEffect(() => {
+    document.body.classList.toggle("a11y-contrast", projectorA11y);
+    return () => document.body.classList.remove("a11y-contrast");
+  }, [projectorA11y]);
+
   if (!state) {
     return (
       <main className="flex min-h-screen items-center justify-center text-2xl text-muted">
@@ -115,6 +124,8 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
 
   return (
     <main
+      role="main"
+      aria-label={`Big screen — ${state.config?.label ?? state.modeName ?? state.topic ?? "session"}`}
       className={`flex min-h-screen flex-col ${present.cinema ? "cinema" : ""} ${chromeHidden ? "controls-hidden" : ""}`}
     >
       {tour && <TourCoach surface="screen" />}

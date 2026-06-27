@@ -446,6 +446,17 @@ export async function setLobbyCue(
   return writeState(next, roomId);
 }
 
+// D2 — toggle the projector into high-contrast / colour-safe mode for the whole
+// room (the shared wall, where colour-blindness matters most, has no per-device
+// prefs). Rides authoritative-apply (writeState bumps rev).
+export async function setProjectorA11y(
+  on: boolean,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  return writeState({ ...state, projectorA11y: on }, roomId);
+}
+
 // C5 — claim / hand off / release the driving baton. A read-modify-writeState, so
 // the claim bumps the monotonic rev and rides authoritative-apply — an in-flight
 // poll at the old rev can never revert it. `driver` is the target (self for a
@@ -1672,6 +1683,8 @@ export async function getPublicState(
     // lobby and host preview. Count defaults to visible when never authored.
     lobbyCue: state.lobbyCue ?? null,
     lobbyCountVisible: state.lobbyCountVisible ?? true,
+    // D2 — host-driven projector high-contrast mode (default off).
+    projectorA11y: state.projectorA11y === true,
     takeaway,
   };
 }
@@ -1723,6 +1736,8 @@ export async function roomSignature(
     // front-of-room join screen updates within ~1 SSE beat.
     state.lobbyCue ?? "",
     state.lobbyCountVisible === false ? "0" : "1",
+    // D2 — tick when the host toggles projector high-contrast.
+    state.projectorA11y ? "a11y" : "",
   ].join("|");
 }
 

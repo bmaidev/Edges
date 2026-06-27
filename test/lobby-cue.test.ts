@@ -5,6 +5,7 @@ import {
   getPublicState,
   roomSignature,
   setLobbyCue,
+  setProjectorA11y,
 } from "@/lib/store";
 import { createRoom } from "@/lib/rooms";
 
@@ -99,5 +100,39 @@ describe("host route gating", () => {
       { params: { room: slug } },
     );
     expect(res.status).toBe(403);
+  });
+});
+
+describe("D2 — projector high-contrast toggle", () => {
+  const hostReq = (slug: string, body: Record<string, unknown>) =>
+    new NextRequest(`http://x/api/r/${slug}/host`, { method: "POST", body: JSON.stringify(body) });
+
+  it("setProjectorA11y bumps rev, surfaces on PublicState, and ticks the signature", async () => {
+    const { slug } = await seeded();
+    const before = (await getPublicState(null, slug, "projector")).rev;
+    const sig0 = await roomSignature(slug);
+    const on = await setProjectorA11y(true, slug);
+    expect(on.projectorA11y).toBe(true);
+    expect(on.rev!).toBeGreaterThan(before);
+    expect((await getPublicState(null, slug, "projector")).projectorA11y).toBe(true);
+    expect(await roomSignature(slug)).not.toBe(sig0);
+    // default is false
+    const off = await setProjectorA11y(false, slug);
+    expect(off.projectorA11y).toBe(false);
+  });
+
+  it("a cohost can toggle it (timer tier); an invalid code is forbidden", async () => {
+    const { slug, passcodes } = await seeded();
+    const ok = await hostPOST(
+      hostReq(slug, { command: "setProjectorA11y", code: passcodes.cohost, on: true }),
+      { params: { room: slug } },
+    );
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).state.projectorA11y).toBe(true);
+    const bad = await hostPOST(
+      hostReq(slug, { command: "setProjectorA11y", code: "nope", on: true }),
+      { params: { room: slug } },
+    );
+    expect(bad.status).toBe(403);
   });
 });
