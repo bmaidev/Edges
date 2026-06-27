@@ -474,8 +474,17 @@ export interface FacilitatorState extends PublicState {
 
 // E3 — the calm ambient state. `break` runs a countdown; `hold` is open-ended.
 // returnPhaseId/returnTimerEndsAt are the snapshot to restore on resume.
+// E3 — the ambient SCENE: the visual treatment of a summoned calm screen. `break`
+// and `hold` are the originals; `breathe` (a guided box-breathing circle),
+// `countdown` (a big shared clock) and `cuecard` (one large instruction) are the
+// scene-engine additions. `kind` stays the TIMER semantics (break = timed,
+// hold = open); `scene` is independent of it.
+export type AmbientScene = "break" | "hold" | "breathe" | "countdown" | "cuecard";
+
 export interface AmbientState {
   kind: "break" | "hold";
+  scene?: AmbientScene; // visual; defaults to `kind` when absent (back-compat)
+  startedAt?: number; // when the scene began — anchors the breathing pace
   note?: string;
   returnPhaseId: string | null;
   returnTimerEndsAt: number | null;

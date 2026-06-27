@@ -58,6 +58,46 @@ describe("setAmbient", () => {
     expect(brk.timerEndsAt).not.toBeNull();
   });
 
+  // E3 scene engine — the new scenes.
+  it("a breathe scene is open-ended (hold), records its scene + a startedAt anchor", async () => {
+    const slug = await room();
+    const s = await setAmbient("breathe", null, undefined, slug);
+    expect(s.ambient?.scene).toBe("breathe");
+    expect(s.ambient?.kind).toBe("hold"); // no duration → open-ended timer
+    expect(typeof s.ambient?.startedAt).toBe("number");
+    const view = (await getPublicState(null, slug, "projector")).view?.data as {
+      scene: string;
+      startedAt: number | null;
+    };
+    expect(view.scene).toBe("breathe");
+    expect(view.startedAt).toBe(s.ambient?.startedAt);
+  });
+
+  it("a countdown scene is timed and carries endsAt to the view", async () => {
+    const slug = await room();
+    const s = await setAmbient("countdown", 300, undefined, slug);
+    expect(s.ambient?.scene).toBe("countdown");
+    expect(s.timerEndsAt).not.toBeNull();
+    const view = (await getPublicState(null, slug, "projector")).view?.data as {
+      scene: string;
+      endsAt: number | null;
+    };
+    expect(view.scene).toBe("countdown");
+    expect(view.endsAt).toBe(s.timerEndsAt);
+  });
+
+  it("a cue card leads with the note as its headline", async () => {
+    const slug = await room();
+    await setAmbient("cuecard", null, "Find a partner for the next round", slug);
+    const view = (await getPublicState(null, slug, "projector")).view?.data as {
+      scene: string;
+      headline: string;
+      note: string | null;
+    };
+    expect(view.scene).toBe("cuecard");
+    expect(view.headline).toBe("Find a partner for the next round");
+  });
+
   it("re-entry keeps the ORIGINAL return pointer (extending can't strand the room)", async () => {
     const slug = await room();
     await setTimer(Date.now() + 60_000, slug); // a live timer on p1

@@ -520,12 +520,19 @@ export async function POST(
     }
     // E3 — summon / leave a calm ambient break or hold.
     case "setAmbient": {
-      const kind = a.kind === "hold" ? "hold" : "break";
+      // E3 scene engine — accept a `scene`; fall back to the legacy `kind` so old
+      // clients (break/hold) keep working.
+      const SCENES = ["break", "hold", "breathe", "countdown", "cuecard"] as const;
+      const scene = (SCENES as readonly string[]).includes(a.scene)
+        ? (a.scene as import("@/lib/types").AmbientScene)
+        : a.kind === "hold"
+          ? "hold"
+          : "break";
       const durationSec = typeof a.durationSec === "number" ? a.durationSec : null;
       const note = typeof a.note === "string" ? a.note : undefined;
       return NextResponse.json({
         ok: true,
-        state: await navState(room, await setAmbient(kind, durationSec, note, room), role ?? "facilitator"),
+        state: await navState(room, await setAmbient(scene, durationSec, note, room), role ?? "facilitator"),
       });
     }
     case "resumeAmbient":

@@ -989,7 +989,7 @@ function SessionHeader({
       {/* E3 — calm break/hold controls. While ambient is on, the only control is
           Resume (restores the exact prior phase + timer). */}
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">Break:</span>
+        <span className="text-muted">Calm screen:</span>
         {state.moduleId === "ambient" ? (
           <button
             className="rounded border border-accent bg-accent/10 px-2 py-1 text-accent hover:border-accent"
@@ -999,13 +999,29 @@ function SessionHeader({
           </button>
         ) : (
           <>
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { kind: "break", durationSec: 300 })}>
+            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "break", durationSec: 300 })}>
               ☕ Break 5m
             </button>
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { kind: "break", durationSec: 600 })}>
+            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "break", durationSec: 600 })}>
               Break 10m
             </button>
-            <button className="rounded border border-border px-2 py-1 text-muted hover:border-accent" onClick={() => cmd("setAmbient", { kind: "hold" })}>
+            {/* E3 scene engine — guided breathe, a big countdown, a cue card. */}
+            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "breathe" })}>
+              🫧 Breathe
+            </button>
+            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "countdown", durationSec: 300 })}>
+              ⏱ Countdown 5m
+            </button>
+            <button
+              className="rounded border border-border px-2 py-1 hover:border-accent"
+              onClick={() => {
+                const note = window.prompt("Cue card text for the big screen:");
+                if (note?.trim()) cmd("setAmbient", { scene: "cuecard", note: note.trim() });
+              }}
+            >
+              ▭ Cue card
+            </button>
+            <button className="rounded border border-border px-2 py-1 text-muted hover:border-accent" onClick={() => cmd("setAmbient", { scene: "hold" })}>
               Hold
             </button>
           </>

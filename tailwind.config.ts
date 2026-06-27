@@ -62,6 +62,15 @@ const config: Config = {
           "40%": { opacity: "1", transform: "scale(1.015)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
+        // E3 — box breathing: inhale (grow) · hold · exhale (shrink) · hold, over
+        // a 16s cycle (4s each), so the whole room can breathe with the circle.
+        breathe: {
+          "0%": { transform: "scale(0.55)", opacity: "0.5" },
+          "25%": { transform: "scale(1)", opacity: "1" }, // inhaled
+          "50%": { transform: "scale(1)", opacity: "1" }, // hold full
+          "75%": { transform: "scale(0.55)", opacity: "0.5" }, // exhaled
+          "100%": { transform: "scale(0.55)", opacity: "0.5" }, // hold empty
+        },
       },
       animation: {
         pulseSoft: "pulseSoft 2.4s ease-in-out infinite",
@@ -71,6 +80,7 @@ const config: Config = {
         crossFadeIn: "crossFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
         crossFadeOut: "crossFadeOut 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
         nowBreathe: "nowBreathe 0.9s cubic-bezier(0.22, 1, 0.36, 1) both",
+        breathe: "breathe 16s ease-in-out infinite",
       },
     },
   },

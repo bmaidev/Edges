@@ -281,6 +281,10 @@ function resolveActive(
       config: {
         label: state.ambient.kind === "hold" ? "Hold" : "Break",
         kind: state.ambient.kind,
+        // E3 scene engine — carry the visual scene + its start anchor so the
+        // ambient renderer can pace a breathing circle / show a big countdown.
+        scene: state.ambient.scene ?? state.ambient.kind,
+        startedAt: state.ambient.startedAt ?? null,
         note: state.ambient.note,
       },
     };
@@ -460,24 +464,28 @@ export async function setDriver(
 // (writeState bumps rev). Idempotent re-entry keeps the ORIGINAL return pointer so
 // extending a break can't strand the room on the ambient screen.
 export async function setAmbient(
-  kind: "break" | "hold",
+  scene: import("./types").AmbientScene,
   durationSec: number | null,
   note: string | undefined,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   const state = await getState(roomId);
   const already = state.phaseId === AMBIENT_PHASE_ID && state.ambient;
-  const endsAt = kind === "break" && durationSec && durationSec > 0
-    ? Date.now() + Math.floor(durationSec) * 1000
-    : null;
+  // A positive duration makes it a TIMED scene (kind "break" → endsAt); otherwise
+  // it's open-ended (kind "hold"). The scene controls the VISUAL independently.
+  const timed = Boolean(durationSec && durationSec > 0);
+  const kind: "break" | "hold" = timed ? "break" : "hold";
+  const endsAt = timed ? Date.now() + Math.floor(durationSec!) * 1000 : null;
   return writeState(
     {
       ...state,
       phaseId: AMBIENT_PHASE_ID,
       ambient: {
         kind,
+        scene,
+        // Keep the original start + snapshot across re-entry (extend / scene swap).
+        startedAt: already ? state.ambient!.startedAt ?? Date.now() : Date.now(),
         note: note?.slice(0, 200),
-        // Keep the original snapshot across re-entry (extend / break→hold).
         returnPhaseId: already ? state.ambient!.returnPhaseId : state.phaseId,
         returnTimerEndsAt: already ? state.ambient!.returnTimerEndsAt : state.timerEndsAt,
       },
