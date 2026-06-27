@@ -119,8 +119,15 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
           retired in favour of the bottom presenter ribbon). Auto-hides with the
           rest of the controls in present mode. */}
       <div
-        className={`fixed right-5 top-5 z-40 transition-opacity duration-500 ${chromeHidden ? "pointer-events-none opacity-0" : "opacity-100"}`}
+        className={`fixed right-5 top-5 z-40 flex items-center gap-3 transition-opacity duration-500 ${chromeHidden ? "pointer-events-none opacity-0" : "opacity-100"}`}
       >
+        {/* C2 — live social-proof count, only when the facilitator opted in for
+            this phase AND it's above the privacy floor (the store gates both). */}
+        {!state.ended && state.participation && (
+          <span className="rounded-full bg-bg/70 px-3 py-1 text-sm text-muted backdrop-blur">
+            {state.participation.responded} of {state.participation.present} responded
+          </span>
+        )}
         <ConnectionChip conn={conn} />
       </div>
       <PresentPill
