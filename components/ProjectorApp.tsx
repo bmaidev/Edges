@@ -213,6 +213,8 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
               title={state.topic}
               joinUrl={joinUrl}
               present={state.participantCount}
+              cue={state.lobbyCue ?? undefined}
+              countVisible={state.lobbyCountVisible ?? true}
               timerEndsAt={state.timerEndsAt}
             />
           )}

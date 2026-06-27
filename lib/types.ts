@@ -217,6 +217,12 @@ export interface SessionState {
   // the monotonic-apply guard — otherwise an in-flight poll at the same rev could
   // silently revert the claim. Host-only (never on PublicState). Cleared on end.
   driver?: DriverInfo | null;
+  // E1 — front-of-room lobby authoring. `lobbyCue` is the begin-cue line shown on
+  // the join screen (a default is applied when empty); `lobbyCountVisible` toggles
+  // the live "N here" count off for a quieter / more anonymous open. Both live ON
+  // the state key so a change bumps rev and rides authoritative-apply.
+  lobbyCue?: string | null;
+  lobbyCountVisible?: boolean;
   // F3 — set at end when a take-away is published. The token keys the snapshot.
   publishedTakeaway?: { token: string; publishedAt: number };
   // F2 — the action-item register. Lives ON the state key (not a side hash) so
@@ -378,6 +384,11 @@ export interface PublicState {
   // signal (an anonymous-by-design phase still stores a real handle), so the
   // projector never shows a name. null when nothing is spotlighted.
   spotlight?: { text: string; handle: string | null } | null;
+  // E1 — the authored lobby begin-cue (null → the screen's calm default) and the
+  // count-visibility toggle (defaults true). Surfaced so the projector lobby and
+  // host preview both reflect the facilitator's authoring without a re-fetch.
+  lobbyCue?: string | null;
+  lobbyCountVisible?: boolean;
 }
 
 // C2 — content-free participation signal. Every value is an integer count; no

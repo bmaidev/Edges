@@ -30,6 +30,7 @@ import {
   resumeTimer,
   setAmbient,
   setDriver,
+  setLobbyCue,
   setMode,
   setSpotlight,
   resumeAmbient,
@@ -127,6 +128,9 @@ const COMMAND_CAP: Record<string, Capability> = {
   actionItem: "advance",
   // C2 — gently re-surface the prompt on phones that haven't answered.
   nudgeRoom: "advance",
+  // E1 — author the front-of-room lobby (begin-cue + count visibility). A soft
+  // pre-launch control on the same tier as the clock (cohost can set it).
+  setLobbyCue: "timer",
   // F1 — build a client-ready report mid-session (no wipe). Facilitator + admin,
   // not cohost; never the admin-only `configure` cap.
   buildReport: "end",
@@ -462,6 +466,17 @@ export async function POST(
         ok: true,
         state: await navState(room, await setDriver(null, room), role ?? "facilitator"),
       });
+    case "setLobbyCue": {
+      // E1 — partial patch: only the provided keys change, so the host can author
+      // the cue and toggle the count independently.
+      const patch: { cue?: string | null; countVisible?: boolean } = {};
+      if ("cue" in a) patch.cue = typeof a.cue === "string" ? a.cue : null;
+      if ("countVisible" in a) patch.countVisible = Boolean(a.countVisible);
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setLobbyCue(patch, room), role ?? "facilitator"),
+      });
+    }
     case "addContent":
       return NextResponse.json({
         ok: true,

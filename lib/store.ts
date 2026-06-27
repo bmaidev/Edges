@@ -376,6 +376,22 @@ export async function setSpotlight(
   return writeState({ ...state, spotlight: ref ?? null }, roomId);
 }
 
+// E1 — author the front-of-room lobby: the begin-cue line and whether the live
+// "N here" count shows. A partial patch (only the provided keys change), so the
+// host can set the cue and toggle the count independently. Rides authoritative-
+// apply: writeState bumps rev, so an in-flight poll can't revert the authoring.
+export async function setLobbyCue(
+  patch: { cue?: string | null; countVisible?: boolean },
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  const next = { ...state };
+  if ("cue" in patch)
+    next.lobbyCue = patch.cue ? patch.cue.slice(0, 200) : null;
+  if ("countVisible" in patch) next.lobbyCountVisible = patch.countVisible;
+  return writeState(next, roomId);
+}
+
 // C5 — claim / hand off / release the driving baton. A read-modify-writeState, so
 // the claim bumps the monotonic rev and rides authoritative-apply — an in-flight
 // poll at the old rev can never revert it. `driver` is the target (self for a
@@ -1535,6 +1551,10 @@ export async function getPublicState(
             : null
           : state.actionItems ?? [],
     actionItemsPromoted: Boolean(state.actionItemsPromoted),
+    // E1 — the authored lobby cue + count-visibility, surfaced for the projector
+    // lobby and host preview. Count defaults to visible when never authored.
+    lobbyCue: state.lobbyCue ?? null,
+    lobbyCountVisible: state.lobbyCountVisible ?? true,
     takeaway,
   };
 }
@@ -1582,6 +1602,10 @@ export async function roomSignature(
     state.driver ? `d:${state.driver.driverId}` : "",
     // E3 — tick when a calm break/hold is summoned or resumed.
     state.ambient ? `amb:${state.ambient.kind}` : "",
+    // E1 — tick when the lobby cue or count-visibility is re-authored, so the
+    // front-of-room join screen updates within ~1 SSE beat.
+    state.lobbyCue ?? "",
+    state.lobbyCountVisible === false ? "0" : "1",
   ].join("|");
 }
 
