@@ -382,7 +382,9 @@ export function HostConsole({
       {showPreflight && s.readiness && (
         <PreflightSheet
           readiness={s.readiness}
+          role={role}
           onClose={() => setShowPreflight(false)}
+          onRecheck={() => refresh()}
           onRemedy={(t) => {
             setTab(t);
             setShowPreflight(false);

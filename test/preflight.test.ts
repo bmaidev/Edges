@@ -131,6 +131,14 @@ describe("usesAi guard (regression: AI defs must declare it)", () => {
     expect(LONG_TEXT.test("label")).toBe(false);
   });
 
+  // H2 slice 2 — an empty session is a (non-blocking) warning, not a crash.
+  it("no phases → a warning 'No session built yet', never a blocker", () => {
+    const r = run([]);
+    const c = r.checks.find((x) => x.id === "empty");
+    expect(c?.severity).toBe("warning");
+    expect(r.overall).not.toBe("blocker");
+  });
+
   // H2 — the "presenting to a dark screen" guard.
   it("a never-connected projector is NOT flagged (projector-less sessions are fine)", () => {
     const r = run([capture("p1")], { projectorSeen: null, now: 1_000_000 });

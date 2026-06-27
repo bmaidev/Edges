@@ -111,6 +111,18 @@ function label(p: { moduleId: ModuleKind; config: Record<string, unknown> }): st
 export function computeReadiness(input: PreflightInput): Readiness {
   const checks: ReadinessCheck[] = [];
 
+  // 0) Empty session — nothing built to run. A warning (not a blocker): the host
+  // may simply not have composed it yet, and pre-flight never blocks.
+  if (input.phases.length === 0) {
+    checks.push({
+      id: "empty",
+      severity: "warning",
+      title: "No session built yet",
+      detail: "Pick a mode or build a custom session before the room arrives.",
+      remedyTab: "session",
+    });
+  }
+
   // 1) Storage — the off-the-record / 24h-TTL promise depends on real KV. In dev
   // the in-memory fallback is expected, so it's info, not a red alarm.
   if (!input.kvConfigured) {
