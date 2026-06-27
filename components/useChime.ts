@@ -11,8 +11,14 @@ import { useCallback, useRef } from "react";
 // The default is "done", so every existing bare `chime()` call is unchanged.
 export function useChime() {
   const ctxRef = useRef<AudioContext | null>(null);
+  // E2 — debounce: at most one chime per ~1.5s, so a flurry of rapid advances (or
+  // an advance landing on a milestone) doesn't stack overlapping tones.
+  const lastRef = useRef(0);
   return useCallback((variant: "done" | "warn" = "done") => {
     try {
+      const t = Date.now();
+      if (t - lastRef.current < 1500) return;
+      lastRef.current = t;
       const Ctor =
         (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
           .AudioContext ||

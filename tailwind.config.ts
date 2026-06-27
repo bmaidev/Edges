@@ -56,6 +56,12 @@ const config: Config = {
           "0%": { opacity: "1" },
           "100%": { opacity: "0" },
         },
+        // E2 — a one-shot gentle "breath" on the projector NOW label when a phase begins.
+        nowBreathe: {
+          "0%": { opacity: "0.55", transform: "scale(0.99)" },
+          "40%": { opacity: "1", transform: "scale(1.015)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
       },
       animation: {
         pulseSoft: "pulseSoft 2.4s ease-in-out infinite",
@@ -64,6 +70,7 @@ const config: Config = {
         shimmer: "shimmer 1.6s ease-in-out infinite",
         crossFadeIn: "crossFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
         crossFadeOut: "crossFadeOut 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
+        nowBreathe: "nowBreathe 0.9s cubic-bezier(0.22, 1, 0.36, 1) both",
       },
     },
   },
