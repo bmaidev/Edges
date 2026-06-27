@@ -86,10 +86,36 @@ describe("the facilitator DOES get the run-sheet", () => {
     await seed(room);
     const fs = await getFacilitatorState(room);
     expect(fs.runsheets?.p1?.script).toBe(SCRIPT);
-    expect(fs.runsheets?.p1?.talkingPoints).toBe(POINTS);
+    // B3 — a legacy string talkingPoints is coerced to a single-bullet string[].
+    expect(fs.runsheets?.p1?.talkingPoints).toEqual([POINTS]);
     expect(fs.nextPeek).toBe("Wrap up"); // next phase's label while on p1
     // the facilitator's active config keeps the run-sheet (not stripped)
     expect((fs.config as unknown as Record<string, unknown>)[RUNSHEET_KEY]).toBeTruthy();
+  });
+});
+
+describe("B3 — runSheetSchema validation + talkingPoints string[]", () => {
+  it("extractRunsheet keeps a valid string[] talkingPoints, splitting multi-line legacy strings", async () => {
+    const { extractRunsheet } = await import("@/lib/modules/runsheet");
+    // already an array → preserved (blank lines kept, the UI/panel filter them)
+    expect(extractRunsheet({ [RUNSHEET_KEY]: { talkingPoints: ["a", "b"] } })?.talkingPoints).toEqual(["a", "b"]);
+    // legacy multi-line string → split, bullet glyphs + whitespace stripped, blanks dropped
+    expect(
+      extractRunsheet({ [RUNSHEET_KEY]: { talkingPoints: "• one\n- two\n\n  three " } })?.talkingPoints,
+    ).toEqual(["one", "two", "three"]);
+  });
+
+  it("a malformed run-sheet degrades to null (never reaches the facilitator)", async () => {
+    const { extractRunsheet } = await import("@/lib/modules/runsheet");
+    // talkingPoints of the wrong element type fails the schema
+    expect(extractRunsheet({ [RUNSHEET_KEY]: { talkingPoints: [1, 2] } })).toBeNull();
+    expect(extractRunsheet({ [RUNSHEET_KEY]: { script: 42 } })).toBeNull();
+  });
+
+  it("hasRunsheet ignores blank-only talking points", async () => {
+    const { hasRunsheet } = await import("@/lib/modules/runsheet");
+    expect(hasRunsheet({ talkingPoints: ["", "  "] })).toBe(false);
+    expect(hasRunsheet({ talkingPoints: ["real point"] })).toBe(true);
   });
 });
 

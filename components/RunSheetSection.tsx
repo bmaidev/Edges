@@ -14,7 +14,9 @@ export function RunSheetSection({
   onChange: (c: Record<string, unknown>) => void;
 }) {
   const rs = extractRunsheet(config) ?? {};
-  const hasContent = Boolean(rs.script || rs.talkingPoints || rs.contingency);
+  const hasContent = Boolean(
+    rs.script || (rs.talkingPoints?.length ?? 0) > 0 || rs.contingency,
+  );
 
   function set(patch: Partial<RunSheet>) {
     const next: RunSheet = { ...rs, ...patch };
@@ -41,12 +43,12 @@ export function RunSheetSection({
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted">Talking points</span>
+          <span className="text-[11px] text-muted">Talking points <span className="text-muted/70">(one per line)</span></span>
           <textarea
             rows={2}
-            value={rs.talkingPoints ?? ""}
-            onChange={(e) => set({ talkingPoints: e.target.value })}
-            placeholder="• reinforce the prompt · • call out the timer"
+            value={(rs.talkingPoints ?? []).join("\n")}
+            onChange={(e) => set({ talkingPoints: e.target.value.split("\n") })}
+            placeholder={"reinforce the prompt\ncall out the timer"}
             className={field}
           />
         </label>
