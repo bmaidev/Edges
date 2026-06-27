@@ -13,6 +13,17 @@ import {
   validateSlug,
   type SlugReason,
 } from "./slug";
+// Phase A — per-workspace index helpers. The cross-import with ./workspaces is
+// function-level only (workspaces calls getDb/crypto from here at runtime, never
+// at load), so the ESM cycle resolves cleanly.
+import {
+  DEFAULT_WORKSPACE_ID,
+  wsIndexAdd,
+  wsIndexDrain,
+  wsIndexList,
+  wsIndexRemove,
+  wsIndexReplace,
+} from "./workspaces";
 
 const KV_URL =
   process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "";
@@ -73,7 +84,9 @@ if (useKv) {
   };
 }
 
-const ROOM_INDEX_KEY = "rooms:index"; // list of room slugs
+// Phase A — room/metrics/design listing moved to per-workspace indexes
+// (ws:{id}:rooms etc.). The legacy global `rooms:index` lives on only as the
+// one-time migration source read by ensureDefaultWorkspace() in lib/workspaces.ts.
 
 // B4 — expose the durable (no-TTL) backend so the global user-template store
 // shares ONE instance (and the dev in-memory singleton), never a second backend.
@@ -134,6 +147,9 @@ export interface Room {
   templateId: string | null;
   status: RoomStatus;
   createdAt: number;
+  // Phase A — the owning workspace (tenant). Absent on rooms created before the
+  // tenancy layer → read as the "default" workspace (DEFAULT_WORKSPACE_ID).
+  workspaceId?: string;
   theme?: RoomTheme;
   // A5 — the design + last-run memory (both optional; older rooms lack them).
   blueprint?: RoomBlueprint;
@@ -241,6 +257,9 @@ export async function createRoom(
   // atomically; throws SlugError (invalid) / SlugTakenError (taken). When omitted,
   // a random `word-xxxx` slug is claimed (the prior behaviour).
   desiredSlug?: string | null,
+  // Phase A — the owning workspace. Defaults to the default workspace so every
+  // pre-tenancy caller keeps working unchanged; A3 passes the resolved workspace.
+  workspaceId: string = DEFAULT_WORKSPACE_ID,
 ): Promise<RoomCreated> {
   const passcodes = {
     admin: randomPasscode("adm"),
@@ -255,6 +274,7 @@ export async function createRoom(
     templateId,
     status: "draft",
     createdAt: Date.now(),
+    workspaceId,
     passcodeHashes: {
       admin: sha256(passcodes.admin),
       facilitator: sha256(passcodes.facilitator),
@@ -280,11 +300,7 @@ export async function createRoom(
   }
 
   const room = (await db.get<Room>(roomKey(slug)))!;
-  const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
-  if (!index.includes(slug)) {
-    index.push(slug);
-    await db.set(ROOM_INDEX_KEY, index);
-  }
+  await wsIndexAdd("rooms", workspaceId, slug);
 
   return { room, passcodes };
 }
@@ -321,10 +337,16 @@ export async function createRoomWithSlug(
   slug: string,
   name: string,
   topic: string,
-  opts: { isSample?: boolean; passcodeHashes: Room["passcodeHashes"] },
+  opts: {
+    isSample?: boolean;
+    passcodeHashes: Room["passcodeHashes"];
+    workspaceId?: string;
+  },
 ): Promise<Room> {
   return withRoomLock(slug, async () => {
     const existing = await getRoom(slug);
+    const workspaceId =
+      existing?.workspaceId ?? opts.workspaceId ?? DEFAULT_WORKSPACE_ID;
     const room: Room = {
       slug,
       name: name.trim().slice(0, 120) || "Untitled room",
@@ -333,15 +355,12 @@ export async function createRoomWithSlug(
       // A sample room is "live" so it reads as active in the rooms list.
       status: existing?.status ?? "live",
       createdAt: existing?.createdAt ?? Date.now(),
+      workspaceId,
       isSample: opts.isSample ?? existing?.isSample,
       passcodeHashes: opts.passcodeHashes,
     };
     await db.set(roomKey(slug), room);
-    const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
-    if (!index.includes(slug)) {
-      index.push(slug);
-      await db.set(ROOM_INDEX_KEY, index);
-    }
+    await wsIndexAdd("rooms", workspaceId, slug);
     return room;
   });
 }
@@ -371,8 +390,12 @@ export async function clearTourSeen(adminCode: string): Promise<void> {
   await db.del(tourKey(adminCode));
 }
 
-export async function listRooms(): Promise<Room[]> {
-  const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
+// Phase A — list a workspace's rooms (defaults to the default workspace, so
+// pre-tenancy callers are unchanged). The per-workspace index is the only source.
+export async function listRooms(
+  workspaceId: string = DEFAULT_WORKSPACE_ID,
+): Promise<Room[]> {
+  const index = await wsIndexList("rooms", workspaceId);
   const rooms = await Promise.all(index.map((s) => db.get<Room>(roomKey(s))));
   return rooms
     .filter((r): r is Room => r !== null)
@@ -450,7 +473,14 @@ export async function duplicateRoom(slug: string): Promise<RoomCreated | null> {
   const src = await getRoom(slug);
   if (!src) return null;
   const name = `${stripCopy(src.name)} (copy)`.slice(0, 120);
-  const { room, passcodes } = await createRoom(name, src.topic, src.templateId);
+  // A copy stays in the SOURCE room's workspace, never the caller's default.
+  const { room, passcodes } = await createRoom(
+    name,
+    src.topic,
+    src.templateId,
+    null,
+    src.workspaceId ?? DEFAULT_WORKSPACE_ID,
+  );
   const updated = await updateRoom(room.slug, {
     theme: src.theme,
     blueprint: src.blueprint,
@@ -704,7 +734,6 @@ export async function getArchive(slug: string): Promise<RoomArchive | null> {
 
 // ---- F4: de-identified SessionMetrics (the evidence layer) -----------------
 
-const METRICS_INDEX = "rooms:metricsidx";
 const metricsKey = (slug: string) => `rooms:metrics:${slug}`;
 
 function designLabelFor(r: Room): string {
@@ -733,6 +762,7 @@ export async function captureSessionMetrics(slug: string): Promise<void> {
     phases.push({ moduleId: ph.moduleId, responded: tokens.size });
   }
 
+  const workspaceId = room.workspaceId ?? DEFAULT_WORKSPACE_ID;
   const metrics: SessionMetrics = {
     slug,
     name: room.name,
@@ -741,14 +771,18 @@ export async function captureSessionMetrics(slug: string): Promise<void> {
     participantCount: fs.participantCount,
     endedEarly: Boolean(lastId && fs.phaseId !== lastId),
     phases,
+    workspaceId,
   };
-  const idx = (await db.get<string[]>(METRICS_INDEX)) ?? [];
   await db.set(metricsKey(slug), metrics);
-  if (!idx.includes(slug)) await db.set(METRICS_INDEX, [...idx, slug]);
+  await wsIndexAdd("metrics", workspaceId, slug);
 }
 
-export async function listSessionMetrics(): Promise<SessionMetrics[]> {
-  const idx = (await db.get<string[]>(METRICS_INDEX)) ?? [];
+// Phase A — a workspace's de-identified session metrics (defaults to the default
+// workspace). Never reads across tenants.
+export async function listSessionMetrics(
+  workspaceId: string = DEFAULT_WORKSPACE_ID,
+): Promise<SessionMetrics[]> {
+  const idx = await wsIndexList("metrics", workspaceId);
   const out: SessionMetrics[] = [];
   for (const slug of idx) {
     const m = await db.get<SessionMetrics>(metricsKey(slug));
@@ -757,10 +791,11 @@ export async function listSessionMetrics(): Promise<SessionMetrics[]> {
   return out.sort((a, b) => b.endedAt - a.endedAt);
 }
 
-export async function clearSessionMetrics(): Promise<void> {
-  const idx = (await db.get<string[]>(METRICS_INDEX)) ?? [];
+export async function clearSessionMetrics(
+  workspaceId: string = DEFAULT_WORKSPACE_ID,
+): Promise<void> {
+  const idx = await wsIndexDrain("metrics", workspaceId);
   for (const slug of idx) await db.del(metricsKey(slug));
-  await db.del(METRICS_INDEX);
 }
 
 // F1 — apply one structured curation edit to the archive's report (rename/drop/
@@ -840,14 +875,10 @@ export async function deleteRoom(slug: string): Promise<boolean> {
   const ok = await withRoomLock(slug, async () => {
     const room = await getRoom(slug);
     if (!room) return false;
+    const workspaceId = room.workspaceId ?? DEFAULT_WORKSPACE_ID;
     await db.del(roomKey(slug));
     await db.del(archiveKey(slug));
-    const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
-    if (index.includes(slug))
-      await db.set(
-        ROOM_INDEX_KEY,
-        index.filter((s) => s !== slug),
-      );
+    await wsIndexRemove("rooms", workspaceId, slug);
     return true;
   });
   if (ok) await endSession(slug); // wipe live participants/submissions/etc. now
@@ -857,7 +888,6 @@ export async function deleteRoom(slug: string): Promise<boolean> {
 // ---- A4: slug rename + redirect -------------------------------------------
 
 const redirectKey = (slug: string) => `rooms:redirect:${slug}`;
-const METRICS_RENAME_INDEX = "rooms:metricsidx";
 
 // A4 — rename a room's slug (its shareable address). Gated on a LIVE-QUIESCE
 // signal: a live room is refused (end/pause first) so there's no key migration
@@ -878,6 +908,8 @@ export async function renameRoom(
   const v = validateSlug(normalized);
   if (!v.ok) return { ok: false, error: slugReasonMessage(v.reason!) };
 
+  // A rename never changes workspace — both index swaps stay within it.
+  const workspaceId = room.workspaceId ?? DEFAULT_WORKSPACE_ID;
   return withRoomLock(oldSlug, async () => {
     // Claim the new slug atomically; if lost, it's taken.
     const won = await db.setNX(roomKey(normalized), { ...room, slug: normalized });
@@ -890,19 +922,15 @@ export async function renameRoom(
       await db.set(archiveKey(normalized), { ...archive, slug: normalized });
       await db.del(archiveKey(oldSlug));
     }
-    const metrics = await db.get(`rooms:metrics:${oldSlug}`);
+    const metrics = await db.get(metricsKey(oldSlug));
     if (metrics) {
-      await db.set(`rooms:metrics:${normalized}`, { ...(metrics as object), slug: normalized });
-      await db.del(`rooms:metrics:${oldSlug}`);
-      const mIdx = (await db.get<string[]>(METRICS_RENAME_INDEX)) ?? [];
-      if (mIdx.includes(oldSlug))
-        await db.set(METRICS_RENAME_INDEX, mIdx.map((s) => (s === oldSlug ? normalized : s)));
+      await db.set(metricsKey(normalized), { ...(metrics as object), slug: normalized });
+      await db.del(metricsKey(oldSlug));
+      await wsIndexReplace("metrics", workspaceId, oldSlug, normalized);
     }
 
-    // Room index: swap old→new (dedup defensively).
-    const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
-    const swapped = index.map((s) => (s === oldSlug ? normalized : s));
-    await db.set(ROOM_INDEX_KEY, Array.from(new Set(swapped)));
+    // Room index: swap old→new within the room's own workspace.
+    await wsIndexReplace("rooms", workspaceId, oldSlug, normalized);
 
     // Durable redirect so old links resolve, then drop the old record.
     await db.set(redirectKey(oldSlug), normalized);

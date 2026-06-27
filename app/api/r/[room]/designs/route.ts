@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRoom } from "@/lib/rooms";
 import { requireCapability } from "@/lib/auth";
 import { getDesign, listDesignMeta } from "@/lib/userTemplates";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,8 @@ export async function GET(
   { params }: { params: { room: string } },
 ) {
   const room = params.room;
-  if (!(await getRoom(room)))
+  const rec = await getRoom(room);
+  if (!rec)
     return NextResponse.json({ error: "No such room" }, { status: 404 });
   const { ok } = await requireCapability(
     room,
@@ -29,6 +31,9 @@ export async function GET(
     if (!design) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ design });
   }
-  // B4 — show global designs + THIS room's room-scoped ones.
-  return NextResponse.json({ designs: await listDesignMeta(room) });
+  // B4 — show global designs + THIS room's room-scoped ones, WITHIN the room's
+  // own workspace (Phase A — a room never sees another tenant's library).
+  return NextResponse.json({
+    designs: await listDesignMeta(rec.workspaceId ?? DEFAULT_WORKSPACE_ID, room),
+  });
 }

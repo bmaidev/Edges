@@ -8,6 +8,7 @@ import {
   validatePhases,
 } from "@/lib/userTemplates";
 import { getDb } from "@/lib/rooms";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
 
 // B4 — user templates. The security-critical guarantee: a design can arrive from
 // an untrusted import, so every phase is re-validated against its module schema
@@ -94,13 +95,13 @@ describe("save / list / get / delete", () => {
     const gid = g.ok ? g.id : "";
     const rid = r.ok ? r.id : "";
 
-    // Room A sees both global + its own room-scoped design.
-    const inA = await listDesignMeta("room-A");
+    // Room A sees both global + its own room-scoped design (default workspace).
+    const inA = await listDesignMeta(DEFAULT_WORKSPACE_ID, "room-A");
     expect(inA.find((m) => m.id === gid)?.scope).toBe("global");
     expect(inA.find((m) => m.id === rid)?.scope).toBe("room");
 
     // Room B sees the global one but NOT room-A's room-scoped design.
-    const inB = await listDesignMeta("room-B");
+    const inB = await listDesignMeta(DEFAULT_WORKSPACE_ID, "room-B");
     expect(inB.some((m) => m.id === gid)).toBe(true);
     expect(inB.some((m) => m.id === rid)).toBe(false);
 

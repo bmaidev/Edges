@@ -12,6 +12,12 @@
 import { randomBytes } from "node:crypto";
 import { getDb } from "./rooms";
 import { withLock } from "./store";
+import {
+  DEFAULT_WORKSPACE_ID,
+  wsIndexAdd,
+  wsIndexList,
+  wsIndexRemove,
+} from "./workspaces";
 import { getServerModule } from "./modules/registry.server";
 import type { ModuleKind, PhaseInstance } from "./types";
 
@@ -27,6 +33,9 @@ export interface UserTemplate {
   createdAt: number;
   scope?: DesignScope; // absent = "global" (back-compat)
   roomSlug?: string; // the owning room, when scope === "room"
+  // Phase A — the owning workspace. "global"/"room" scope is WITHIN a workspace;
+  // a workspace never sees another's library. Absent → default workspace.
+  workspaceId?: string;
 }
 // Lightweight list projection — never ships the full phase configs.
 export interface UserTemplateMeta {
@@ -37,9 +46,8 @@ export interface UserTemplateMeta {
   scope: DesignScope;
 }
 
-const INDEX_KEY = "rooms:designidx";
 const designKey = (id: string) => `rooms:design:${id}`;
-const MAX_DESIGNS = 200; // soft cap on the shared library
+const MAX_DESIGNS = 200; // soft cap on the per-workspace library
 const MAX_PHASES = 60;
 
 function newId(): string {
@@ -93,16 +101,18 @@ export async function saveDesign(
   name: string,
   rawPhases: unknown,
   // B4 — scope defaults to "global" (back-compat + the A5 rescue). A "room" scope
-  // pins the design to `roomSlug` so it only appears in that room's library.
-  opts: { scope?: DesignScope; roomSlug?: string } = {},
+  // pins the design to `roomSlug`. Phase A — `workspaceId` confines the design to
+  // its workspace's library; "global"/"room" scope is WITHIN that workspace.
+  opts: { scope?: DesignScope; roomSlug?: string; workspaceId?: string } = {},
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const v = validatePhases(rawPhases);
   if (!v.ok) return v;
   const clean = name.trim().slice(0, 80) || "Untitled design";
   const scope: DesignScope = opts.scope === "room" ? "room" : "global";
+  const workspaceId = opts.workspaceId ?? DEFAULT_WORKSPACE_ID;
   return withDesignLock(async () => {
     const db = getDb();
-    const index = (await db.get<string[]>(INDEX_KEY)) ?? [];
+    const index = await wsIndexList("designs", workspaceId);
     if (index.length >= MAX_DESIGNS)
       return { ok: false as const, error: "The template library is full." };
     const id = newId();
@@ -112,19 +122,24 @@ export async function saveDesign(
       phases: v.phases,
       createdAt: Date.now(),
       scope,
+      workspaceId,
       ...(scope === "room" && opts.roomSlug ? { roomSlug: opts.roomSlug } : {}),
     };
     await db.set(designKey(id), tpl);
-    await db.set(INDEX_KEY, [...index, id]);
+    await wsIndexAdd("designs", workspaceId, id);
     return { ok: true as const, id };
   });
 }
 
-// B4 — list designs VISIBLE to a room: every global design, plus the room's own
-// room-scoped ones. With no roomSlug, only global designs (the safe default).
-export async function listDesignMeta(roomSlug?: string): Promise<UserTemplateMeta[]> {
+// B4/Phase A — list designs VISIBLE to a room WITHIN a workspace: every global
+// design in the workspace, plus the room's own room-scoped ones. With no roomSlug,
+// only the workspace's global designs (the safe default). Never crosses tenants.
+export async function listDesignMeta(
+  workspaceId: string = DEFAULT_WORKSPACE_ID,
+  roomSlug?: string,
+): Promise<UserTemplateMeta[]> {
   const db = getDb();
-  const index = (await db.get<string[]>(INDEX_KEY)) ?? [];
+  const index = await wsIndexList("designs", workspaceId);
   const out: UserTemplateMeta[] = [];
   for (const id of index) {
     const tpl = await db.get<UserTemplate>(designKey(id));
@@ -143,9 +158,10 @@ export async function getDesign(id: string): Promise<UserTemplate | null> {
 export async function deleteDesign(id: string): Promise<boolean> {
   return withDesignLock(async () => {
     const db = getDb();
-    const index = (await db.get<string[]>(INDEX_KEY)) ?? [];
-    if (!index.includes(id)) return false;
-    await db.set(INDEX_KEY, index.filter((x) => x !== id));
+    const tpl = await db.get<UserTemplate>(designKey(id));
+    if (!tpl) return false;
+    const workspaceId = tpl.workspaceId ?? DEFAULT_WORKSPACE_ID;
+    await wsIndexRemove("designs", workspaceId, id);
     await db.del(designKey(id));
     return true;
   });

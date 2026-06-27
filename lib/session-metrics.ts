@@ -17,6 +17,8 @@ export interface SessionMetrics {
   participantCount: number;
   endedEarly: boolean; // archived before reaching the final phase
   phases: PhaseMetric[];
+  // Phase A — the owning workspace (absent on pre-tenancy records → default).
+  workspaceId?: string;
 }
 
 // A room with fewer than this many participants is excluded from engagement/early
