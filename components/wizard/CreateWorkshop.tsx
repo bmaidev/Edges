@@ -161,7 +161,7 @@ export function CreateWorkshop({
           />
         )}
         {step === "ready" && (
-          <StepReady slug={slug} name={name} origin={origin} onClose={onClose} />
+          <StepReady slug={slug} name={name} code={code} origin={origin} onClose={onClose} />
         )}
       </ErrorBoundary>
     </div>
@@ -660,15 +660,34 @@ function StepShare({
 function StepReady({
   slug,
   name,
+  code,
   origin,
   onClose,
 }: {
   slug: string;
   name: string;
+  code: string;
   origin: string;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  // A1 — a new room is created as a draft. Let the facilitator flip it live right
+  // here, so they don't have to hop to the admin list to open the doors.
+  const [live, setLive] = useState(false);
+  const [liveBusy, setLiveBusy] = useState(false);
+  async function markLive() {
+    setLiveBusy(true);
+    try {
+      const res = await fetch(`/api/admin/rooms/${slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, status: "live" }),
+      });
+      if (res.ok) setLive(true);
+    } finally {
+      setLiveBusy(false);
+    }
+  }
   const join = `${origin}/r/${slug}`;
   function copyInvite() {
     navigator.clipboard
@@ -701,6 +720,27 @@ function StepReady({
         >
           {copied ? "Invite copied ✓" : "Copy invite text"}
         </button>
+      </div>
+      {/* A1 — open the doors now, or leave it a draft to launch later. */}
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+        {live ? (
+          <p className="text-sm text-emerald-400">
+            ✓ This room is <strong>live</strong> — participants can join now.
+          </p>
+        ) : (
+          <>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Open the doors?</p>
+              <p className="text-xs text-muted">
+                It&apos;s a draft until you mark it live — you can also do this later
+                from the rooms list.
+              </p>
+            </div>
+            <Button onClick={markLive} disabled={liveBusy}>
+              {liveBusy ? "Going live…" : "Mark live"}
+            </Button>
+          </>
+        )}
       </div>
       <div className="flex items-center gap-3">
         <Button onClick={onClose}>Back to all rooms</Button>
