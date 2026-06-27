@@ -106,6 +106,13 @@ export function TakeawayScreen({
           >
             Email it to yourself
           </a>
+          {/* F3 — keep a copy: the browser print dialog saves it to PDF. */}
+          <button
+            onClick={() => window.print()}
+            className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:border-accent"
+          >
+            Save / print
+          </button>
         </div>
       )}
 

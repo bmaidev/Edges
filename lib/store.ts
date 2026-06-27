@@ -610,6 +610,24 @@ export async function phaseSequence(
   return resolvePhases(state).map((p) => p.id);
 }
 
+// F3 — the set of phase ids configured anonymous. Used to EXCLUDE anonymous-phase
+// contributions from a published take-away: an anonymous phase promised the
+// participant their text wouldn't be durably linked to them, but the recap is
+// token-keyed, so storing those contributions would re-attach the very identity
+// the phase hid. (A participant seeing their OWN anonymous text back is harmless;
+// the leak is the durable token→text record surviving the session wipe.)
+export async function anonymousPhaseIds(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<Set<string>> {
+  const state = await getState(roomId);
+  const out = new Set<string>();
+  for (const p of resolvePhases(state)) {
+    if ((p.config as { anonymity?: string } | null)?.anonymity === "anonymous")
+      out.add(p.id);
+  }
+  return out;
+}
+
 export async function setReadaroundIndex(
   index: number,
   roomId: string = DEFAULT_ROOM_ID,
