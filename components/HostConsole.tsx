@@ -32,6 +32,7 @@ import { RoomRoster } from "@/components/RoomRoster";
 import { LatecomerPanel } from "@/components/LatecomerPanel";
 import { HostArcStrip } from "@/components/HostArcStrip";
 import { HostParityBadge } from "@/components/HostParityBadge";
+import { TakeawayReview } from "@/components/TakeawayReview";
 import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
@@ -530,6 +531,8 @@ export function HostConsole({
             {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
             <PhaseTimingPanel state={s} />
             <RunsheetPrint state={s} slug={slug} />
+            {/* F3 — review/curate the participant take-away before ending. */}
+            <TakeawayReview state={s} apiBase={apiBase} code={code} cmd={cmd} />
             <SessionControls cmd={cmd} />
           </>
         )}

@@ -854,9 +854,23 @@ export async function deleteRoom(slug: string): Promise<boolean> {
 // (it precedes the wipe; the 60s ceiling must never strand un-wiped data): the
 // recap reuses an already-built report if present, else the structural fallback.
 // Handle-free synthesis only. Returns the share token.
-export async function publishTakeaway(
+// F3 — anonymity-aware preview metadata for the host curate modal.
+export interface TakeawayMeta {
+  anonymousPhaseCount: number; // phases whose contributions are withheld
+  excludedContributionCount: number; // contributions NOT carried (anonymous phases)
+}
+
+interface TakeawayOptions {
+  // F3 — action-item ids the host chose to leave OUT of the recap.
+  excludeActionItems?: string[];
+}
+
+// Build the take-away snapshot (no publish, no end). Shared by previewTakeaway and
+// publishTakeaway so the host's preview is byte-true to what gets published.
+async function buildTakeaway(
   slug: string,
-): Promise<{ token: string } | null> {
+  opts: TakeawayOptions = {},
+): Promise<{ snapshot: TakeawaySnapshot; meta: TakeawayMeta } | null> {
   const room = await getRoom(slug);
   if (!room) return null;
   const fs = await getFacilitatorState(slug);
@@ -866,6 +880,17 @@ export async function publishTakeaway(
     existing?.report ??
     buildFallbackReport(fs.submissions.length, fs.patterns.map((p) => p.name));
   const t = room.theme;
+  const excluded = new Set(opts.excludeActionItems ?? []);
+
+  const contributions = fs.submissions
+    .filter((s) => s.token && !anonPhases.has(s.phaseId))
+    .map((s) => ({
+      token: s.token as string,
+      phaseLabel: fs.sequence.find((p) => p.id === s.phaseId)?.label ?? s.phaseId,
+      text: s.text,
+    }));
+  const withheld = fs.submissions.filter((s) => s.token && anonPhases.has(s.phaseId)).length;
+
   const snapshot: TakeawaySnapshot = {
     name: room.name,
     sessionName: fs.modeName,
@@ -874,33 +899,48 @@ export async function publishTakeaway(
     submissionCount: fs.submissions.length,
     patterns: fs.patterns.map((p) => p.name),
     report,
-    actionItems: (fs.actionItems ?? []).map((a) => ({
-      text: a.text,
-      ownerName: a.ownerName,
-      due: a.due,
-      status: a.status,
-    })),
+    // F3 — the host can leave specific action items out of the recap.
+    actionItems: (fs.actionItems ?? [])
+      .filter((a) => !excluded.has(a.id))
+      .map((a) => ({ text: a.text, ownerName: a.ownerName, due: a.due, status: a.status })),
     branding:
-      t && (t.logoUrl || t.headline)
-        ? { logoUrl: t.logoUrl, headline: t.headline }
-        : undefined,
+      t && (t.logoUrl || t.headline) ? { logoUrl: t.logoUrl, headline: t.headline } : undefined,
     // F3 — keep each contribution with its author token so a participant can be
     // handed back their OWN. Stays server-side; the per-caller filter happens in
     // getPublicState. CRITICAL: contributions from ANONYMOUS phases are EXCLUDED —
     // a token-keyed durable record of anonymous-phase text would re-link the
     // participant to the identity that phase promised to hide (the recap survives
     // the session wipe, so this is the one place anonymity must be enforced).
-    contributions: fs.submissions
-      .filter((s) => s.token && !anonPhases.has(s.phaseId))
-      .map((s) => ({
-        token: s.token as string,
-        phaseLabel:
-          fs.sequence.find((p) => p.id === s.phaseId)?.label ?? s.phaseId,
-        text: s.text,
-      })),
+    contributions,
   };
+  return {
+    snapshot,
+    meta: { anonymousPhaseCount: anonPhases.size, excludedContributionCount: withheld },
+  };
+}
+
+// F3 — preview the take-away the room will keep WITHOUT publishing or ending the
+// session. Returns the SHARED body (never the raw per-token contributions) + the
+// anonymity meta, so the host can review/curate before the irreversible publish.
+export async function previewTakeaway(
+  slug: string,
+  opts: TakeawayOptions = {},
+): Promise<({ preview: Omit<TakeawaySnapshot, "contributions"> } & { meta: TakeawayMeta }) | null> {
+  const built = await buildTakeaway(slug, opts);
+  if (!built) return null;
+  const { contributions, ...shared } = built.snapshot;
+  void contributions; // intentionally dropped — never leaves the server
+  return { preview: shared, meta: built.meta };
+}
+
+export async function publishTakeaway(
+  slug: string,
+  opts: TakeawayOptions = {},
+): Promise<{ token: string } | null> {
+  const built = await buildTakeaway(slug, opts);
+  if (!built) return null;
   const token = randomBytes(16).toString("hex");
-  await publishAndEnd(slug, token, snapshot);
+  await publishAndEnd(slug, token, built.snapshot);
   return { token };
 }
 

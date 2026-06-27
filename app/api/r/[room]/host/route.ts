@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { archiveRoom, buildReport, checkSuperAdmin, editReport, getRoom, publishTakeaway, regenerateReport, saveBlueprint, setReportMeta } from "@/lib/rooms";
+import { archiveRoom, buildReport, checkSuperAdmin, editReport, getRoom, previewTakeaway, publishTakeaway, regenerateReport, saveBlueprint, setReportMeta } from "@/lib/rooms";
 import {
   deleteDesign,
   getDesign,
@@ -78,6 +78,13 @@ async function navState(room: string, written: SessionState, role: Role) {
 // AI commands (suggest/critique/revise/generate) can run for tens of seconds;
 // give them real headroom rather than the platform's short default.
 export const maxDuration = 60;
+
+// F3 — the action-item ids the host chose to leave out of the take-away.
+function excludeOf(a: Record<string, any>): string[] {
+  return Array.isArray(a.excludeActionItems)
+    ? (a.excludeActionItems as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+}
 
 // Which capability each command needs.
 const COMMAND_CAP: Record<string, Capability> = {
@@ -161,6 +168,8 @@ const COMMAND_CAP: Record<string, Capability> = {
   // F1 — build a client-ready report mid-session (no wipe). Facilitator + admin,
   // not cohost; never the admin-only `configure` cap.
   buildReport: "end",
+  // F3 — preview/curate the participant take-away before the irreversible publish.
+  previewTakeaway: "end",
   // F1 — curate the report before sharing (facilitator/admin, like buildReport).
   editReport: "end",
   setReportMeta: "end",
@@ -739,16 +748,25 @@ export async function POST(
       const archive = await regenerateReport(room);
       return NextResponse.json({ ok: true, archive });
     }
+    // F3 — preview the take-away the room will keep, WITHOUT ending the session,
+    // so the host can review/curate before the irreversible publish.
+    case "previewTakeaway": {
+      const exclude = Array.isArray(a.excludeActionItems)
+        ? (a.excludeActionItems as unknown[]).filter((x): x is string => typeof x === "string")
+        : [];
+      const preview = await previewTakeaway(room, { excludeActionItems: exclude });
+      return NextResponse.json({ ok: true, ...preview });
+    }
     case "archive": {
       // Build the durable archive (AI report), then publish the take-away (reuses
       // that report) which also wipes the live data.
       const archive = await archiveRoom(room);
-      await publishTakeaway(room);
+      await publishTakeaway(room, { excludeActionItems: excludeOf(a) });
       return NextResponse.json({ ok: true, archive });
     }
     case "end": {
-      // F3 — publish a take-away by default, then wipe (publishTakeaway does both).
-      await publishTakeaway(room);
+      // F3 — publish a curated take-away by default, then wipe (does both).
+      await publishTakeaway(room, { excludeActionItems: excludeOf(a) });
       return NextResponse.json({ ok: true });
     }
     default:
