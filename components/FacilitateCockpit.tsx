@@ -139,6 +139,14 @@ export function FacilitateCockpit({
             </TimerBtn>
           )}
         </div>
+        {/* C1 — the facilitator's private script line for this phase. Authored in
+            the builder (config.scriptNote), stripped for every non-host role, so
+            it's a cue only the person driving sees. */}
+        {typeof s.config?.scriptNote === "string" && s.config.scriptNote.trim() && (
+          <p className="max-w-3xl text-balance px-6 text-center text-lg leading-snug text-white/70">
+            {s.config.scriptNote}
+          </p>
+        )}
       </section>
 
       {/* C1 — jump-to-phase rail (tap any phase to go there) + chime mute. */}
