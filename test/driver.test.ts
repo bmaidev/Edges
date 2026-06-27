@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { NextRequest } from "next/server";
+import { POST as hostPOST } from "@/app/api/r/[room]/host/route";
 import {
   endSession,
   getFacilitatorState,
@@ -12,6 +14,10 @@ import {
 import { createRoom } from "@/lib/rooms";
 import { DRIVER_STALE_MS, isDriverLive } from "@/lib/presence";
 import type { DriverInfo, HostPresence, PhaseInstance } from "@/lib/types";
+
+beforeAll(() => {
+  process.env.ADMIN_PASSCODE = "test-super-admin-driver";
+});
 
 // C5 fast-follow — the soft driving baton. The load-bearing correctness property:
 // a claim lives on SessionState and bumps rev, so a stale poll can never revert it.
@@ -89,6 +95,48 @@ describe("derivation + scoping via getFacilitatorState", () => {
     await setDriver(D("ghost", "Ghost", Date.now()), room.slug); // no heartbeat → not live
     const fac = await getFacilitatorState(room.slug);
     expect(fac.driverStale).toBe(true);
+  });
+});
+
+describe("host route — claim vs directed hand-off (C5)", () => {
+  const req = (slug: string, body: Record<string, unknown>) =>
+    new NextRequest(`http://x/api/r/${slug}/host`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+
+  it("claimDriver takes the baton for the caller's own presence", async () => {
+    const { room, passcodes } = await createRoom("T", "t");
+    await setPhases(PHASES, "S", room.slug);
+    const res = await hostPOST(
+      req(room.slug, { command: "claimDriver", code: passcodes.facilitator, driverId: "me-1", driverName: "Ada" }),
+      { params: { room: room.slug } },
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).state.driver.driverId).toBe("me-1");
+  });
+
+  it("handoffDriver is a distinct directed verb keyed on toPresenceId/toName", async () => {
+    const { room, passcodes } = await createRoom("T", "t");
+    await setPhases(PHASES, "S", room.slug);
+    const res = await hostPOST(
+      req(room.slug, { command: "handoffDriver", code: passcodes.facilitator, toPresenceId: "cohost-9", toName: "Bo" }),
+      { params: { room: room.slug } },
+    );
+    expect(res.status).toBe(200);
+    const d = (await res.json()).state.driver;
+    expect(d.driverId).toBe("cohost-9");
+    expect(d.driverName).toBe("Bo");
+  });
+
+  it("handoffDriver without a target is a 400 (not silently a self-claim)", async () => {
+    const { room, passcodes } = await createRoom("T", "t");
+    await setPhases(PHASES, "S", room.slug);
+    const res = await hostPOST(
+      req(room.slug, { command: "handoffDriver", code: passcodes.facilitator, driverId: "me-1" }),
+      { params: { room: room.slug } },
+    );
+    expect(res.status).toBe(400);
   });
 });
 

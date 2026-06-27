@@ -559,14 +559,30 @@ export async function POST(
         ok: true,
         state: await navState(room, await resumeAmbient(room), role ?? "facilitator"),
       });
-    // C5 — claim/hand off/release the driving baton (advisory; controls never block).
-    case "claimDriver":
-    case "handoffDriver": {
+    // C5 — claim the driving baton for THIS console (advisory; never blocks).
+    case "claimDriver": {
       const driverId = String(a.driverId ?? "");
       if (!driverId) return NextResponse.json({ error: "Missing driverId" }, { status: 400 });
       const driver = {
         driverId,
         driverName: typeof a.driverName === "string" ? a.driverName : "",
+        claimedAt: Date.now(),
+      };
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setDriver(driver, room), role ?? "facilitator"),
+      });
+    }
+    // C5 — directed hand-off: pass the baton TO another console. A distinct verb
+    // from claim (the intent is "give it to them", keyed on toPresenceId), so the
+    // action reads honestly in the log and the chip never overloads claim.
+    case "handoffDriver": {
+      const driverId = String(a.toPresenceId ?? "");
+      if (!driverId)
+        return NextResponse.json({ error: "Missing toPresenceId" }, { status: 400 });
+      const driver = {
+        driverId,
+        driverName: typeof a.toName === "string" ? a.toName : "",
         claimedAt: Date.now(),
       };
       return NextResponse.json({

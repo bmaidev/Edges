@@ -49,11 +49,11 @@ function DriverChipInner({
   const iAmDriving = liveDriver?.driverId === myId;
   const claim = () => cmd("claimDriver", { driverId: myId, driverName: myName });
   const release = () => cmd("releaseDriver", {});
-  // C5 — directed hand-off: pass the baton to a specific present co-host by name
-  // (reuses claimDriver, which sets the driver to whatever id/name we give it).
+  // C5 — directed hand-off: pass the baton to a specific present co-host. A
+  // distinct verb (handoffDriver, keyed on toPresenceId) so the intent is honest.
   const others = presence.filter((p) => p.presenceId !== myId);
   const handTo = (p: HostPresence) => {
-    cmd("claimDriver", { driverId: p.presenceId, driverName: p.name || roleLabel(p.role) });
+    cmd("handoffDriver", { toPresenceId: p.presenceId, toName: p.name || roleLabel(p.role) });
     setHandingOff(false);
   };
 
