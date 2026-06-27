@@ -159,6 +159,31 @@ describe("B5 — reseed (teardown + fresh seed) at a new cast size", () => {
   });
 });
 
+describe("B5 — topic-aware seeding", () => {
+  it("sampleTextsForTopic weaves the topic in; falls back to generic when blank", async () => {
+    const { sampleTextsForTopic } = await import("@/lib/rehearsal");
+    const withTopic = sampleTextsForTopic("our pricing model");
+    expect(withTopic.every((s) => s.includes("our pricing model"))).toBe(true);
+    const blank = sampleTextsForTopic("   ");
+    expect(blank.some((s) => s.includes("pricing"))).toBe(false); // generic set
+  });
+
+  it("seeds topic-flavoured submissions into a captured phase", async () => {
+    const shadow = shadowRoomId("topic", "n8");
+    await tearDownRehearsal(shadow);
+    await seedRehearsal(
+      shadow,
+      [{ id: "c", moduleId: "capture", config: { label: "C", prompt: "Go" } }],
+      6,
+      { topic: "onboarding" },
+    );
+    const subs = await listSubmissions(shadow);
+    expect(subs.length).toBeGreaterThan(0);
+    expect(subs.some((s) => s.text.includes("onboarding"))).toBe(true);
+    await tearDownRehearsal(shadow);
+  });
+});
+
 describe("B5 — canned AI for the dry-run", () => {
   // The AI modules only READ their cached result when AI is configured (the case
   // where canned-AI's value is skipping the slow/costly REAL generation).
