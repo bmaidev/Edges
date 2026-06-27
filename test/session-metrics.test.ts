@@ -91,9 +91,10 @@ describe("captureSessionMetrics (durable, content-free)", () => {
     const { room } = await createRoom("Metrics", "Topic");
     await setPhases(PHASES, "S", room.slug);
     // 3 submitters on p1; 2 distinct voters on p2 (+ a reserved marker that must NOT count).
-    await addSubmission("Ada", "x", "p1", null, "t1", room.slug);
-    await addSubmission("Bo", "y", "p1", null, "t2", room.slug);
-    await addSubmission("Cy", "z", "p1", null, "t3", room.slug);
+    // Distinctive text so the "content-free" assertion can't collide with a random slug.
+    await addSubmission("Ada", "ZZ_secret_one", "p1", null, "t1", room.slug);
+    await addSubmission("Bo", "ZZ_secret_two", "p1", null, "t2", room.slug);
+    await addSubmission("Cy", "ZZ_secret_three", "p1", null, "t3", room.slug);
     await castVote("p2", "t1", "A", room.slug);
     await castVote("p2", "t2", "B", room.slug);
     await castVote("p2", "__constraint__", 1, room.slug); // marker — excluded
@@ -108,8 +109,8 @@ describe("captureSessionMetrics (durable, content-free)", () => {
       { moduleId: "poll", responded: 2 }, // marker excluded
     ]);
     expect(rec!.endedEarly).toBe(true);
-    // content-free: no text anywhere in the record.
-    expect(JSON.stringify(rec)).not.toContain("x");
+    // content-free: no submission text anywhere in the record.
+    expect(JSON.stringify(rec)).not.toContain("ZZ_secret");
     expect(MIN_N).toBe(3);
   });
 

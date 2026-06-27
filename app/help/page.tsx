@@ -1,4 +1,5 @@
 import { DocBody } from "@/components/DocBody";
+import { MethodReference } from "@/components/MethodReference";
 
 import overview from "@/docs/README.md";
 import adminGuide from "@/docs/admin-guide.md";
@@ -14,6 +15,8 @@ const DOCS: { slug: string; title: string; body: string }[] = [
   { slug: "facilitator-guide", title: "Facilitator guide", body: facilitatorGuide },
   { slug: "roles-and-passcodes", title: "Roles & passcodes", body: rolesPasscodes },
   { slug: "modules", title: "Module reference", body: modules },
+  // B6 — a LIVE method reference (rendered from the real module cards, not markdown).
+  { slug: "methods", title: "Methods (live)", body: "" },
   { slug: "templates", title: "Templates", body: templates },
   { slug: "ai-and-privacy", title: "AI & privacy", body: aiPrivacy },
 ];
@@ -56,7 +59,7 @@ export default function HelpPage({
         </a>
       </nav>
       <article className="min-w-0 flex-1">
-        <DocBody markdown={active.body} />
+        {active.slug === "methods" ? <MethodReference /> : <DocBody markdown={active.body} />}
       </article>
     </main>
   );
