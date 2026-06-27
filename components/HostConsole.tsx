@@ -1603,6 +1603,9 @@ function PatternPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
 
 function SessionControls({ cmd }: { cmd: Cmd }) {
   const [confirming, setConfirming] = useState<"end" | "archive" | null>(null);
+  // F3 — when ending, optionally also snapshot a durable report for the admin
+  // before the wipe. Default on, so the safe choice is the easy one.
+  const [alsoArchive, setAlsoArchive] = useState(true);
   return (
     <Panel title="Session controls">
       {/* C3 — point to the calm recovery controls (they live on the Run tab). */}
@@ -1631,11 +1634,27 @@ function SessionControls({ cmd }: { cmd: Cmd }) {
               ? "This permanently deletes all submissions, content, patterns, and allocations. It cannot be undone."
               : "This saves a report (patterns + injected content) for the admin, then wipes the live session data."}
           </p>
+          {/* F3 — a safety net on the end path: keep a durable report before the
+              wipe, so "End" never silently loses the session record. */}
+          {confirming === "end" && (
+            <label className="mt-3 flex items-start gap-2 text-sm text-muted">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={alsoArchive}
+                onChange={(e) => setAlsoArchive(e.target.checked)}
+              />
+              <span>
+                Also save a report for the admin before wiping
+                {alsoArchive ? "" : " — nothing will be kept once you end"}
+              </span>
+            </label>
+          )}
           <div className="mt-4 flex gap-2">
             <Button
               variant={confirming === "end" ? "danger" : "primary"}
               onClick={() => {
-                cmd(confirming);
+                cmd(confirming, confirming === "end" ? { alsoArchive } : undefined);
                 setConfirming(null);
               }}
             >

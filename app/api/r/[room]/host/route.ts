@@ -774,7 +774,10 @@ export async function POST(
       return NextResponse.json({ ok: true, archive });
     }
     case "end": {
-      // F3 — publish a curated take-away by default, then wipe (does both).
+      // F3 — optionally snapshot the durable archive (a report for the admin)
+      // BEFORE the wipe, so ending doesn't have to mean losing the record. Then
+      // publish the curated take-away, which wipes. archiveRoom never wipes.
+      if (a.alsoArchive === true) await archiveRoom(room);
       await publishTakeaway(room, { excludeActionItems: excludeOf(a) });
       return NextResponse.json({ ok: true });
     }
