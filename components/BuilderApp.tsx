@@ -849,6 +849,24 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           <div className="mt-1 flex flex-col gap-2 rounded-lg border border-border bg-bg/40 p-3">
             <span className="text-xs font-medium text-white/80">Refine this design with AI</span>
             <div className="flex flex-wrap gap-1.5">
+              {/* B1 — a targeted one-tap that appears only when the design runs over
+                  the stated budget: trim to fit the actual number, not a guess. */}
+              {minutes &&
+                Number(minutes) > 0 &&
+                totalMinutes(phases) > Number(minutes) + 2 && (
+                  <button
+                    onClick={() =>
+                      transform(
+                        `Trim this session to fit within ${Number(minutes)} minutes total — merge or shorten phases, but keep the essential arc and a clear open and close.`,
+                      )
+                    }
+                    disabled={aiBusy !== null || !code.trim()}
+                    className="rounded-full border border-accent bg-accent/10 px-2.5 py-1 text-xs text-accent hover:bg-accent/20 disabled:opacity-30"
+                    title={`Currently ~${Math.round(totalMinutes(phases))} min`}
+                  >
+                    ✂ Trim to {Number(minutes)}m
+                  </button>
+                )}
               {[
                 { label: "Make it shorter", instr: "Make this session about 20 minutes shorter — trim or merge phases, keep the essential arc." },
                 { label: "Add a warm-up", instr: "Add a short warm-up / opener near the start to settle the room." },
