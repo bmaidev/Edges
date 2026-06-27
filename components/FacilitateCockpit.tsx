@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
+import { useWakeLock } from "@/components/useWakeLock";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import type { FacilitatorState, Role } from "@/lib/types";
@@ -35,6 +36,9 @@ export function FacilitateCockpit({
   const canEnd = role !== "cohost"; // cohost lacks the `end` cap
 
   const chime = useChime();
+  // C1 — hold a screen wake-lock for the whole live session so the laptop never
+  // sleeps mid-facilitation. Released automatically when the cockpit unmounts/ends.
+  useWakeLock(!s.ended);
 
   return (
     <main className="flex min-h-screen flex-col bg-[#070710] text-white">
