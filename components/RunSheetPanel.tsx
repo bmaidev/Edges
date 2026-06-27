@@ -8,19 +8,29 @@ import type { RunSheet } from "@/lib/types";
 export function RunSheetPanel({
   runsheet,
   nextPeek,
+  timing,
 }: {
   runsheet?: RunSheet | null;
   nextPeek?: string | null;
+  // B3 — live pacing: the phase's planned seconds (its timer preset) + the live
+  // deadline, so the facilitator can run from the sheet AND watch the clock.
+  timing?: { plannedSec?: number; timerEndsAt: number | null; timerRemainingMs: number | null };
 }) {
   const has = Boolean(
     runsheet && (runsheet.script || runsheet.talkingPoints || runsheet.contingency),
   );
-  if (!has && !nextPeek) return null;
+  const chip = timingChip(timing);
+  if (!has && !nextPeek && !chip) return null;
   return (
     <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-        🎙 Your run-sheet
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+          🎙 Your run-sheet
+        </p>
+        {chip && (
+          <span className={`text-xs ${chip.over ? "text-[#ff8a8a]" : "text-muted"}`}>{chip.text}</span>
+        )}
+      </div>
       {has ? (
         <div className="mt-2 flex flex-col gap-2 text-sm">
           {runsheet?.script && (
@@ -46,4 +56,20 @@ export function RunSheetPanel({
       )}
     </section>
   );
+}
+
+// B3 — the live pacing chip. Recomputed each poll (2s granularity is plenty for
+// pacing, so no ticker needed). Honest about not-started / paused / over states.
+function timingChip(
+  timing?: { plannedSec?: number; timerEndsAt: number | null; timerRemainingMs: number | null },
+): { text: string; over: boolean } | null {
+  if (!timing?.plannedSec || timing.plannedSec <= 0) return null;
+  const planned = Math.round(timing.plannedSec / 60);
+  if (timing.timerEndsAt == null && timing.timerRemainingMs != null)
+    return { text: `Planned ${planned}m · paused`, over: false };
+  if (timing.timerEndsAt == null)
+    return { text: `Planned ${planned}m · timer not started`, over: false };
+  const remMs = timing.timerEndsAt - Date.now();
+  if (remMs <= 0) return { text: `Planned ${planned}m · time's up`, over: true };
+  return { text: `Planned ${planned}m · ${Math.ceil(remMs / 60000)}m left`, over: false };
 }
