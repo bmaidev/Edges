@@ -9,13 +9,20 @@ import type { ModuleKind } from "@/lib/types";
 import type { ContentItem } from "@/lib/types";
 import {
   dotVoteView,
+  matrixView,
   pollView,
+  qnaView,
   rankView,
   sampleDotVotes,
+  sampleMatrixVotes,
   samplePollVotes,
+  sampleQnaQuestions,
+  sampleQnaVotes,
   sampleRankVotes,
   sampleScaleVotes,
+  sampleWords,
   scaleView,
+  wordCloudView,
 } from "./vote-compute";
 import type {
   AllocateView,
@@ -164,39 +171,29 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
       "me",
     );
   },
-  wordcloud: (c): WordCloudView => ({
-    prompt: str(c, "prompt", "One word that comes to mind?"),
-    words: [
-      { text: "clarity", count: 5 },
-      { text: "focus", count: 3 },
-      { text: "momentum", count: 2 },
-      { text: "trust", count: 2 },
-    ],
-    mine: ["focus"],
-  }),
-  qna: (c): QnaView => ({
-    prompt: str(c, "prompt", "Ask anything"),
-    questions: [
-      { id: "q1", text: "How does this scale to a bigger room?", votes: 4, mine: false },
-      { id: "q2", text: "What's the timeline?", votes: 2, mine: true },
-    ],
-  }),
+  wordcloud: (c): WordCloudView =>
+    wordCloudView({ prompt: str(c, "prompt", "One word that comes to mind?") }, sampleWords(), "me"),
+  qna: (c): QnaView =>
+    qnaView(
+      { prompt: str(c, "prompt", "Ask anything") },
+      sampleQnaQuestions(),
+      sampleQnaVotes(),
+      "me",
+    ),
   matrix: (c): MatrixView => {
     const x = arr(c, "xLabel");
     const y = arr(c, "yLabel");
-    return {
-      prompt: str(c, "prompt", "Place each item"),
-      xLabel: x.length >= 2 ? [x[0], x[1]] : ["low effort", "high effort"],
-      yLabel: y.length >= 2 ? [y[0], y[1]] : ["low impact", "high impact"],
-      min: num(c, "min", 0),
-      max: num(c, "max", 10),
-      items: [
-        { text: "Quick win", x: 2, y: 8 },
-        { text: "Big bet", x: 8, y: 9 },
-        { text: "Maybe later", x: 3, y: 3 },
-      ],
-      mine: null,
-    };
+    return matrixView(
+      {
+        prompt: str(c, "prompt", "Place each item"),
+        xLabel: x.length >= 2 ? [x[0], x[1]] : ["low effort", "high effort"],
+        yLabel: y.length >= 2 ? [y[0], y[1]] : ["low impact", "high impact"],
+        min: num(c, "min", 0),
+        max: num(c, "max", 10),
+      },
+      sampleMatrixVotes(),
+      "me",
+    );
   },
   // ---- fleet modules (the unfamiliar ones B2 is most for) ----
   spectrogram: (c): SpectrogramView => {

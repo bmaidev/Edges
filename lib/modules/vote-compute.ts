@@ -9,7 +9,15 @@
 // so they're trivially testable and run client-side for the preview.
 
 import type { Role } from "../types";
-import type { DotVoteView, PollView, RankView, ScaleView } from "./views";
+import type {
+  DotVoteView,
+  MatrixView,
+  PollView,
+  QnaView,
+  RankView,
+  ScaleView,
+  WordCloudView,
+} from "./views";
 
 type Cfg = Record<string, unknown>;
 
@@ -186,5 +194,109 @@ export function sampleScaleVotes(statements: string[], max: number): Record<stri
     me: statements.map(() => mid),
     s0: statements.map(() => Math.max(1, mid - 1)),
     s1: statements.map(() => Math.min(max, mid + 1)),
+  };
+}
+
+// ---- wordcloud (frequency over a words list) ------------------------------
+
+export function wordCloudView(
+  config: Cfg,
+  words: { token: string; word: string }[],
+  meToken: string | null,
+): WordCloudView {
+  const freq: Record<string, number> = {};
+  for (const w of words) {
+    const norm = w.word.trim().toLowerCase();
+    if (norm) freq[norm] = (freq[norm] ?? 0) + 1;
+  }
+  const cloud = Object.entries(freq)
+    .map(([text, count]) => ({ text, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 60);
+  const mine = meToken ? words.filter((w) => w.token === meToken).map((w) => w.word) : [];
+  return { prompt: typeof config.prompt === "string" ? config.prompt : "", words: cloud, mine };
+}
+
+export function sampleWords(): { token: string; word: string }[] {
+  const w = (token: string, ...ws: string[]) => ws.map((word) => ({ token, word }));
+  return [
+    ...w("me", "focus"),
+    ...w("s0", "clarity"),
+    ...w("s1", "clarity"),
+    ...w("s2", "clarity"),
+    ...w("s3", "focus"),
+    ...w("s4", "momentum"),
+    ...w("s5", "momentum"),
+    ...w("s6", "trust"),
+  ];
+}
+
+// ---- qna (questions + upvotes) --------------------------------------------
+
+export function qnaView(
+  config: Cfg,
+  questions: { id: string; text: string }[],
+  votes: Record<string, unknown>,
+  meToken: string | null,
+): QnaView {
+  const counts: Record<string, number> = {};
+  for (const v of Object.values(votes)) {
+    const ids = Array.isArray(v) ? (v as string[]) : [];
+    for (const id of ids) counts[id] = (counts[id] ?? 0) + 1;
+  }
+  const myUpvotes: string[] = meToken ? ((votes[meToken] as string[]) ?? []) : [];
+  const list = questions
+    .map((q) => ({
+      id: q.id,
+      text: q.text,
+      votes: counts[q.id] ?? 0,
+      mine: myUpvotes.includes(q.id),
+    }))
+    .sort((a, b) => b.votes - a.votes || 0);
+  return { prompt: typeof config.prompt === "string" ? config.prompt : "", questions: list };
+}
+
+export function sampleQnaQuestions(): { id: string; text: string }[] {
+  return [
+    { id: "q1", text: "How does this scale to a bigger room?" },
+    { id: "q2", text: "What's the timeline?" },
+  ];
+}
+export function sampleQnaVotes(): Record<string, unknown> {
+  return { s0: ["q1"], s1: ["q1"], s2: ["q1", "q2"], s3: ["q1"], me: ["q2"] };
+}
+
+// ---- matrix (2x2 placement) -----------------------------------------------
+
+type MatrixItem = { text: string; x: number; y: number };
+function pair(v: unknown, dflt: [string, string]): [string, string] {
+  return Array.isArray(v) && v.length >= 2 ? [String(v[0]), String(v[1])] : dflt;
+}
+
+export function matrixView(
+  config: Cfg,
+  votes: Record<string, unknown>,
+  meToken: string | null,
+): MatrixView {
+  const items = Object.values(votes)
+    .map((v) => v as MatrixItem)
+    .filter((v) => v && typeof v.text === "string");
+  const mine = (meToken ? votes[meToken] : null) as MatrixItem | null;
+  return {
+    prompt: typeof config.prompt === "string" ? config.prompt : "",
+    xLabel: pair(config.xLabel, ["low", "high"]),
+    yLabel: pair(config.yLabel, ["low", "high"]),
+    min: typeof config.min === "number" ? config.min : 0,
+    max: typeof config.max === "number" ? config.max : 10,
+    items,
+    mine: mine ?? null,
+  };
+}
+
+export function sampleMatrixVotes(): Record<string, unknown> {
+  return {
+    me: { text: "Quick win", x: 2, y: 8 },
+    s0: { text: "Big bet", x: 8, y: 9 },
+    s1: { text: "Maybe later", x: 3, y: 3 },
   };
 }

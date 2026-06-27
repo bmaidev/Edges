@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   pollView,
+  qnaView,
   sampleDotVotes,
+  sampleMatrixVotes,
   samplePollVotes,
+  sampleQnaQuestions,
+  sampleQnaVotes,
   sampleRankVotes,
   sampleScaleVotes,
+  sampleWords,
 } from "@/lib/modules/vote-compute";
 import { getSampleView } from "@/lib/modules/sample-views";
 import {
   addParticipant,
+  addWord,
   castVote,
   getPublicState,
   setPhases,
@@ -120,4 +126,45 @@ describe("faithfulness: preview == live view", () => {
       expect(preview).toEqual(live);
     });
   }
+
+  it("wordcloud: preview is byte-identical (the words list preserves order)", async () => {
+    const cfg = { label: "W", prompt: "One word?" };
+    const { room } = await createRoom("Faith-wc", "Topic");
+    await setPhases([{ id: "p1", moduleId: "wordcloud", config: cfg }], "T", room.slug);
+    await addParticipant("me", "Me", room.slug);
+    for (const { token, word } of sampleWords()) {
+      await addWord("p1", token, word, room.slug);
+    }
+    const live = (await getPublicState("me", room.slug, "participant")).view?.data;
+    expect(getSampleView("wordcloud", cfg)).toEqual(live);
+  });
+
+  it("matrix: preview is byte-identical over replayed placements", async () => {
+    const cfg = { label: "M", prompt: "Place it", xLabel: ["lo", "hi"], yLabel: ["lo", "hi"], min: 0, max: 10 };
+    const { room } = await createRoom("Faith-mx", "Topic");
+    await setPhases([{ id: "p1", moduleId: "matrix", config: cfg }], "T", room.slug);
+    await addParticipant("me", "Me", room.slug);
+    for (const [token, value] of Object.entries(sampleMatrixVotes())) {
+      await castVote("p1", token, value, room.slug);
+    }
+    const live = (await getPublicState("me", room.slug, "participant")).view?.data;
+    expect(getSampleView("matrix", cfg)).toEqual(live);
+  });
+
+  it("qna: the shared shaper counts upvotes, sorts by votes, flags mine", () => {
+    // qna's real submission ids are generated, so we test the shaper directly: the
+    // SAME function the preview + live view both call.
+    const v = qnaView(
+      { prompt: "Ask" },
+      sampleQnaQuestions(),
+      sampleQnaVotes(),
+      "me",
+    );
+    expect(v.questions.map((q) => [q.id, q.votes, q.mine])).toEqual([
+      ["q1", 4, false],
+      ["q2", 2, true],
+    ]);
+    // ...and the preview factory IS that shaper over the synthetic data.
+    expect(getSampleView("qna", { prompt: "Ask" })).toEqual(v);
+  });
 });
