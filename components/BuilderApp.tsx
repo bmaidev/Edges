@@ -1095,6 +1095,20 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                   )}
                 </div>
 
+                {/* D1 — an optional instruction line the room sees this phase. */}
+                <label className="mt-2 flex flex-col gap-1 text-xs">
+                  <span className="text-muted">Instruction shown to the room (optional)</span>
+                  <input
+                    value={(p.config.instruction as string) ?? ""}
+                    onChange={(e) =>
+                      setConfig(i, { ...p.config, instruction: e.target.value || undefined })
+                    }
+                    placeholder="e.g. Add one idea per card — no wrong answers."
+                    maxLength={200}
+                    className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                  />
+                </label>
+
                 {/* C2 — per-gather-phase room signals (passthrough config, read by
                     the store/host route). Only meaningful where the phase gathers. */}
                 {SERVER_MODULES[p.moduleId]?.capabilities.gatherSource !== "none" && (
