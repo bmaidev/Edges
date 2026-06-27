@@ -396,6 +396,35 @@ export async function setSpotlight(
   return writeState({ ...state, spotlight: ref ?? null }, roomId);
 }
 
+// C7 — the lead's co-facilitator controls. A partial patch (enable and/or tune),
+// so the off-switch and the sensitivity dial move independently. Rides
+// authoritative-apply (writeState bumps rev).
+export async function setCofac(
+  patch: { enabled?: boolean; sensitivity?: import("./cofac").CofacSensitivity },
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  const next = { ...state };
+  if ("enabled" in patch) next.cofacEnabled = patch.enabled;
+  if ("sensitivity" in patch) next.cofacSensitivity = patch.sensitivity;
+  return writeState(next, roomId);
+}
+
+// C7 — persist a nudge dismissal ({phaseId, kind}) so it stays gone for that phase
+// across polls / reloads / co-host devices. Deduped; capped to the recent few so
+// the list can't grow unbounded over a long multi-phase session.
+export async function dismissCofac(
+  phaseId: string,
+  kind: string,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  const prev = state.cofacDismissed ?? [];
+  if (prev.some((d) => d.phaseId === phaseId && d.kind === kind)) return state;
+  const next = [...prev, { phaseId, kind }].slice(-20);
+  return writeState({ ...state, cofacDismissed: next }, roomId);
+}
+
 // E1 — author the front-of-room lobby: the begin-cue line and whether the live
 // "N here" count shows. A partial patch (only the provided keys change), so the
 // host can set the cue and toggle the count independently. Rides authoritative-
@@ -1732,7 +1761,22 @@ export async function getFacilitatorState(
     // Derived on read; never written back here (the "no write in getState" rule).
     driverStale: state.driver ? !isDriverLive(state.driver, presence, Date.now()) : false,
     // C7 — a deterministic, content-free co-facilitator nudge (host-only). Pure
-    // function of the counts/timer already in `pub`; no AI, no write, no cost.
-    cofac: computeCofac(pub, Date.now()),
+    // function of the counts/timer in `pub` plus the lead's controls + persisted
+    // dismissals from session state; no AI, no write, no cost.
+    cofac: computeCofac(
+      {
+        participation: pub.participation,
+        timerEndsAt: pub.timerEndsAt,
+        config: pub.config,
+        phaseId: pub.phaseId,
+        cofacEnabled: state.cofacEnabled,
+        cofacSensitivity: state.cofacSensitivity,
+        cofacDismissed: state.cofacDismissed,
+      },
+      Date.now(),
+    ),
+    // C7 full — echo the settings so the Session-tab control reflects live values.
+    cofacEnabled: state.cofacEnabled ?? true,
+    cofacSensitivity: state.cofacSensitivity ?? "standard",
   };
 }

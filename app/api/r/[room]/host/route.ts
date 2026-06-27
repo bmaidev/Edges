@@ -29,6 +29,8 @@ import {
   reorderPatterns,
   resumeTimer,
   setAmbient,
+  setCofac,
+  dismissCofac,
   setDriver,
   setLobbyCue,
   setMode,
@@ -131,6 +133,11 @@ const COMMAND_CAP: Record<string, Capability> = {
   // E1 — author the front-of-room lobby (begin-cue + count visibility). A soft
   // pre-launch control on the same tier as the clock (cohost can set it).
   setLobbyCue: "timer",
+  // C7 — the lead's co-facilitator off-switch + sensitivity is a room-setup
+  // control (admin-only configure tier). Dismissing a live nudge is a nav-tier
+  // move (cohost can dismiss).
+  cofacToggle: "configure",
+  cofacDismiss: "advance",
   // F1 — build a client-ready report mid-session (no wipe). Facilitator + admin,
   // not cohost; never the admin-only `configure` cap.
   buildReport: "end",
@@ -475,6 +482,27 @@ export async function POST(
       return NextResponse.json({
         ok: true,
         state: await navState(room, await setLobbyCue(patch, room), role ?? "facilitator"),
+      });
+    }
+    case "cofacToggle": {
+      // C7 — partial patch: enable and/or set sensitivity, independently.
+      const patch: { enabled?: boolean; sensitivity?: import("@/lib/cofac").CofacSensitivity } = {};
+      if ("enabled" in a) patch.enabled = Boolean(a.enabled);
+      if (a.sensitivity === "calm" || a.sensitivity === "standard" || a.sensitivity === "keen")
+        patch.sensitivity = a.sensitivity;
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setCofac(patch, room), role ?? "facilitator"),
+      });
+    }
+    case "cofacDismiss": {
+      const phaseId = String(a.phaseId ?? "");
+      const kind = String(a.kind ?? "");
+      if (!phaseId || !kind)
+        return NextResponse.json({ error: "Missing phaseId/kind" }, { status: 400 });
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await dismissCofac(phaseId, kind, room), role ?? "facilitator"),
       });
     }
     case "addContent":

@@ -86,8 +86,55 @@ describe("computeCofac", () => {
   it("is content-free: the verdict ignores submission text entirely", () => {
     // The input type has no `submissions` field — there is no way for the brain
     // to read content. This is enforced structurally by the CofacInput Pick.
-    const input = s({ timerEndsAt: NOW - 20_000 }) as Record<string, unknown>;
+    const input = s({ timerEndsAt: NOW - 20_000 }) as unknown as Record<string, unknown>;
     expect("submissions" in input).toBe(false);
     expect("tokens" in input).toBe(false);
+  });
+});
+
+describe("C7 full — enable, sensitivity, dismissal", () => {
+  it("OFF: a disabled co-facilitator is always silent", () => {
+    const n = computeCofac(
+      s({ timerEndsAt: NOW - 60_000, cofacEnabled: false }),
+      NOW,
+    );
+    expect(n).toBeNull();
+  });
+
+  it("KEEN fires inside the standard grace; CALM stays quiet there", () => {
+    // 10s past the deadline: keen grace is 5s (fires), calm grace is 45s (silent),
+    // standard grace is 15s (silent).
+    const at = NOW - 10_000;
+    expect(computeCofac(s({ timerEndsAt: at, cofacSensitivity: "keen" }), NOW)?.kind).toBe(
+      "overrunning",
+    );
+    expect(computeCofac(s({ timerEndsAt: at, cofacSensitivity: "standard" }), NOW)).toBeNull();
+    expect(computeCofac(s({ timerEndsAt: at, cofacSensitivity: "calm" }), NOW)).toBeNull();
+  });
+
+  it("CALM needs a bigger room (minPresent 4) for the low-response nudge", () => {
+    const base = {
+      participation: { present: 3, responded: 0, typing: 0, quiet: 0 },
+      timerEndsAt: NOW + 10_000,
+      config: { timerSeconds: 100 } as In["config"],
+    };
+    // present=3: standard coaches, calm does not (needs 4).
+    expect(computeCofac(s({ ...base, cofacSensitivity: "standard" }), NOW)?.kind).toBe(
+      "low-response",
+    );
+    expect(computeCofac(s({ ...base, cofacSensitivity: "calm" }), NOW)).toBeNull();
+  });
+
+  it("DISMISSED: a persisted dismissal suppresses that kind for that phase", () => {
+    const input = s({
+      timerEndsAt: NOW - 60_000,
+      phaseId: "p1",
+      cofacDismissed: [{ phaseId: "p1", kind: "overrunning" }],
+    });
+    expect(computeCofac(input, NOW)).toBeNull();
+    // The same dismissal on a DIFFERENT phase does not suppress it.
+    expect(
+      computeCofac({ ...input, cofacDismissed: [{ phaseId: "pX", kind: "overrunning" }] }, NOW)?.kind,
+    ).toBe("overrunning");
   });
 });

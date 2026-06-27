@@ -217,6 +217,13 @@ export interface SessionState {
   // the monotonic-apply guard — otherwise an in-flight poll at the same rev could
   // silently revert the claim. Host-only (never on PublicState). Cleared on end.
   driver?: DriverInfo | null;
+  // C7 — the co-facilitator controls. `cofacEnabled` (default true) is the lead's
+  // one-tap off-switch; `cofacSensitivity` tunes how eager it is. `cofacDismissed`
+  // persists dismissals ({phaseId, kind}) so a dismissed nudge stays gone across
+  // polls / reloads / co-host devices. All host-only — never on PublicState.
+  cofacEnabled?: boolean;
+  cofacSensitivity?: import("./cofac").CofacSensitivity;
+  cofacDismissed?: { phaseId: string; kind: string }[];
   // E1 — front-of-room lobby authoring. `lobbyCue` is the begin-cue line shown on
   // the join screen (a default is applied when empty); `lobbyCountVisible` toggles
   // the live "N here" count off for a quieter / more anonymous open. Both live ON
@@ -455,6 +462,10 @@ export interface FacilitatorState extends PublicState {
   // C7 — at most one deterministic, content-free co-facilitator nudge (host-only;
   // derived from counts + timings, never participant text). null when all is well.
   cofac?: import("./cofac").CofacNudge | null;
+  // C7 full — the co-facilitator settings echoed back so the Session-tab control
+  // reflects the live values (enabled + sensitivity).
+  cofacEnabled?: boolean;
+  cofacSensitivity?: import("./cofac").CofacSensitivity;
 }
 
 // E3 — the calm ambient state. `break` runs a countdown; `hold` is open-ended.
