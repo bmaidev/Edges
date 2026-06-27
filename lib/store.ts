@@ -457,6 +457,17 @@ export async function setProjectorA11y(
   return writeState({ ...state, projectorA11y: on }, roomId);
 }
 
+// C6 — silence (or restore) the timer chime for the WHOLE room. Distinct from the
+// per-device cockpit mute: this is the host's choice for every room surface.
+// Rides authoritative-apply (writeState bumps rev).
+export async function setTimerSound(
+  off: boolean,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  return writeState({ ...state, timerSoundOff: off }, roomId);
+}
+
 // C5 — claim / hand off / release the driving baton. A read-modify-writeState, so
 // the claim bumps the monotonic rev and rides authoritative-apply — an in-flight
 // poll at the old rev can never revert it. `driver` is the target (self for a
@@ -1708,6 +1719,8 @@ export async function getPublicState(
     lobbyCountVisible: state.lobbyCountVisible ?? true,
     // D2 — host-driven projector high-contrast mode (default off).
     projectorA11y: state.projectorA11y === true,
+    // C6 — room-wide timer-sound opt-out (default off → sound on).
+    timerSoundOff: state.timerSoundOff === true,
     takeaway,
   };
 }
@@ -1761,6 +1774,8 @@ export async function roomSignature(
     state.lobbyCountVisible === false ? "0" : "1",
     // D2 — tick when the host toggles projector high-contrast.
     state.projectorA11y ? "a11y" : "",
+    // C6 — tick when the host toggles the room-wide timer sound.
+    state.timerSoundOff ? "snd0" : "",
   ].join("|");
 }
 

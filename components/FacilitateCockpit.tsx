@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
+import { useTimerMilestones, warnThresholds } from "@/components/useTimerMilestones";
 import { useWakeLock } from "@/components/useWakeLock";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getClientRenderer } from "@/lib/modules/registry.client";
@@ -60,6 +61,31 @@ export function FacilitateCockpit({
     });
   };
 
+  // C6 — a transient "Warned the room · 2:00 left" confirmation. The room goes
+  // amber (and chimes, unless muted) when the timer crosses the authored warn
+  // threshold; this tells the DRIVER it happened, so they don't second-guess it.
+  const warnSeconds =
+    (s.config as { timerWarnSeconds?: number } | null)?.timerWarnSeconds ?? 120;
+  const thresholds = useMemo(() => warnThresholds(warnSeconds), [warnSeconds]);
+  const [warned, setWarned] = useState<string | null>(null);
+  const warnedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onWarn = useCallback(() => {
+    const m = Math.floor(warnSeconds / 60);
+    const sec = warnSeconds % 60;
+    const left = sec === 0 ? `${m}:00` : `${m}:${String(sec).padStart(2, "0")}`;
+    if (!muted) chime("warn");
+    setWarned(`Warned the room · ${left} left`);
+    if (warnedTimer.current) clearTimeout(warnedTimer.current);
+    warnedTimer.current = setTimeout(() => setWarned(null), 6000);
+  }, [warnSeconds, muted, chime]);
+  useTimerMilestones(s.timerEndsAt, s.timerRemainingMs, onWarn, thresholds);
+  useEffect(
+    () => () => {
+      if (warnedTimer.current) clearTimeout(warnedTimer.current);
+    },
+    [],
+  );
+
   return (
     <main className="flex min-h-screen flex-col bg-[#070710] text-white">
       {/* Band 1 — status */}
@@ -100,6 +126,16 @@ export function FacilitateCockpit({
         />
         {paused && (
           <p className="text-sm uppercase tracking-[0.3em] text-white/45">paused</p>
+        )}
+        {/* C6 — transient confirmation that the room was just warned. */}
+        {warned && (
+          <p
+            role="status"
+            aria-live="polite"
+            className="animate-fadeInUp rounded-full border border-[#ffb454]/40 px-3 py-1 text-sm text-[#ffb454]"
+          >
+            🔔 {warned}
+          </p>
         )}
 
         <div className="flex flex-wrap items-center justify-center gap-3">

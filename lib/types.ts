@@ -245,6 +245,10 @@ export interface SessionState {
   // D2 — host-set high-contrast / colour-safe mode for the PROJECTOR (the shared
   // wall has no per-device a11y prefs, so the facilitator drives it for everyone).
   projectorA11y?: boolean;
+  // C6 — room-wide timer-sound opt-out. When true, the timer warn/arrival chime is
+  // silenced on every room surface (projector + participants). Distinct from the
+  // per-device cockpit mute; this is the host's choice for the WHOLE room.
+  timerSoundOff?: boolean;
   // F3 — set at end when a take-away is published. The token keys the snapshot.
   publishedTakeaway?: { token: string; publishedAt: number };
   // F2 — the action-item register. Lives ON the state key (not a side hash) so
@@ -413,6 +417,9 @@ export interface PublicState {
   lobbyCountVisible?: boolean;
   // D2 — host-driven projector high-contrast / colour-safe mode (default false).
   projectorA11y?: boolean;
+  // C6 — room-wide timer-sound opt-out (default false → sound on). Surfaced so the
+  // projector + participant timers can silence the chime for the whole room.
+  timerSoundOff?: boolean;
 }
 
 // C2 — content-free participation signal. Every value is an integer count; no

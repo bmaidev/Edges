@@ -44,9 +44,12 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
   // C6 — room-felt timer cues on the projector. Chime only in present mode (a real
   // gesture unlocked audio); previously the projector clock was entirely silent.
   const chime = useChime();
+  // C6 — respect the room-wide timer-sound opt-out (the host can silence the
+  // chime for everyone, independent of the per-device cockpit mute).
+  const soundOff = state?.timerSoundOff === true;
   const onWarn = useCallback(() => {
-    if (present.active) chime("warn");
-  }, [present.active, chime]);
+    if (present.active && !soundOff) chime("warn");
+  }, [present.active, soundOff, chime]);
   // C6 full — honour the builder-authored amber threshold; the chime + clock tint
   // fire at the facilitator's chosen "minutes left", and the drain bar's window
   // matches it. Defaults to 120s when unauthored.

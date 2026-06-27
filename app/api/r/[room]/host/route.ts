@@ -43,6 +43,7 @@ import {
   setDriver,
   setLobbyCue,
   setProjectorA11y,
+  setTimerSound,
   setMode,
   setSpotlight,
   resumeAmbient,
@@ -159,6 +160,7 @@ const COMMAND_CAP: Record<string, Capability> = {
   setLobbyCue: "timer",
   // D2 — toggle the projector's high-contrast mode (a display control, timer-tier).
   setProjectorA11y: "timer",
+  setTimerSound: "timer",
   // C7 — the lead's co-facilitator off-switch + sensitivity is a room-setup
   // control (admin-only configure tier). Dismissing a live nudge is a nav-tier
   // move (cohost can dismiss).
@@ -610,6 +612,14 @@ export async function POST(
       return NextResponse.json({
         ok: true,
         state: await navState(room, await setProjectorA11y(Boolean(a.on), room), role ?? "facilitator"),
+      });
+    }
+    case "setTimerSound": {
+      // C6 — room-wide timer-sound opt-out. `off:true` silences the chime for
+      // every room surface.
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setTimerSound(Boolean(a.off), room), role ?? "facilitator"),
       });
     }
     case "cofacToggle": {
