@@ -56,7 +56,8 @@ export const STAGE_OF: Record<ModuleKind, ArcStage> = {
   synthesis: "converge",
   readaround: "converge",
   equity: "converge",
-  // close
+  // close — commit, wrap
+  actions: "close",
   close: "close",
 };
 
@@ -103,6 +104,7 @@ export const ENERGY_OF: Record<ModuleKind, number> = {
   synthesis: 0.4,
   readaround: 0.45,
   equity: 0.3,
+  actions: 0.4,
   close: 0.2,
 };
 
@@ -149,6 +151,7 @@ export const DEFAULT_MINUTES: Record<ModuleKind, number> = {
   synthesis: 5,
   readaround: 8,
   equity: 3,
+  actions: 5,
   close: 5,
 };
 
@@ -166,6 +169,8 @@ export const TIMED: Record<ModuleKind, boolean> = (() => {
     "stations",
     "twentyfive10",
     "worldcafe",
+    // F2 — a timeboxed "capture your commitments" close.
+    "actions",
     // E3 — a placed break / countdown wants a duration (the minutes input).
     "ambient",
   ]);

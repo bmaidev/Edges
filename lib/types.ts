@@ -46,6 +46,8 @@ export type Primitive =
   | "issuemap"
   | "promptrelay"
   | "builder"
+  // F2 — yours-first commitments capture (the closing "what will you do?").
+  | "actions"
   // E3 — a calm ambient "break / hold" screen, summoned over the live sequence.
   | "ambient";
 
