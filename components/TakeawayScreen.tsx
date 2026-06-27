@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { buildIcs } from "@/lib/ics";
 import type { TakeawayPayload } from "@/lib/types";
 
 // F3 — the recap a participant keeps. Handle-free synthesis only (no raw
@@ -23,6 +24,19 @@ export function TakeawayScreen({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  // F3 — download dated action items as a calendar file.
+  const ics = buildIcs(t.actionItems ?? [], title);
+  function addToCalendar() {
+    if (!ics) return;
+    const blob = new Blob([ics], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "session-actions.ics";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -113,6 +127,14 @@ export function TakeawayScreen({
           >
             Save / print
           </button>
+          {ics && (
+            <button
+              onClick={addToCalendar}
+              className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:border-accent"
+            >
+              Add actions to calendar
+            </button>
+          )}
         </div>
       )}
 
