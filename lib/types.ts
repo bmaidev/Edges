@@ -435,6 +435,10 @@ export interface FacilitatorState extends PublicState {
   // a one-line peek at the next phase. Derived; never on PublicState.
   runsheets?: Record<string, RunSheet>;
   nextPeek?: string | null;
+  // F4 — plan-vs-actual phase timing (host-only; null until the room advances).
+  // Content-free: per-phase planned vs measured seconds + a verdict. Derived from
+  // the off-the-record advance log, never stored on PublicState.
+  phaseTimings?: import("./timing").PhaseTiming[] | null;
   // C4 — the raw spotlight ref (host-only), so the cockpit can ring the active
   // submission card + render the clear chip. Never on the participant/projector.
   spotlightRef?: SpotlightRef | null;

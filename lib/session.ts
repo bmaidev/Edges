@@ -29,6 +29,7 @@ export interface RoomKeys {
   seen: string; // C2 liveness heartbeat hash; field = <token> -> epoch-ms
   undo: string; // C3 depth-1 nav undo snapshot (nav only — never resurrects data)
   hostPresence: string; // C5 host presence hash; field = <presenceId> -> JSON
+  phaseLog: string; // F4 phase-advance timing log; entries {phaseId, at} (content-free)
 }
 
 // Room-scoped key factory. `room:{roomId}:…` namespaces every key per room.
@@ -48,5 +49,6 @@ export function roomKeys(roomId: string = DEFAULT_ROOM_ID): RoomKeys {
     seen: `${base}:seen`,
     undo: `${base}:undo`,
     hostPresence: `${base}:hostPresence:hash`,
+    phaseLog: `${base}:phaseLog:list`,
   };
 }

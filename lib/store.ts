@@ -10,6 +10,7 @@ import {
 } from "./session";
 import { getMode, getPhase } from "./modes";
 import { computeRoomHealth } from "./health";
+import { planVsActual } from "./timing";
 import { computeReadiness } from "./preflight";
 import { aiAvailable } from "./ai";
 import {
@@ -362,7 +363,26 @@ export async function setPhase(
     roomId,
   );
   await runOnEnter(roomId, written); // D4 — let the entered module freeze its cohort
+  // F4 — append a content-free phase-entry stamp (phaseId + time) so the host can
+  // review plan-vs-actual phase timing after the run. Best-effort: a logging hiccup
+  // must never block the advance. Wiped with everything else on endSession.
+  await backend
+    .rpush(roomKeys(roomId).phaseLog, { phaseId, at: Date.now() })
+    .catch(() => {});
   return written;
+}
+
+// F4 — a content-free phase-advance timing log: one {phaseId, at} stamp per
+// setPhase, in chronological order. Off-the-record like everything else (wiped on
+// endSession). Read by the host Session tab to show planned-vs-actual per phase.
+export interface PhaseLogEntry {
+  phaseId: string;
+  at: number;
+}
+export async function readPhaseLog(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<PhaseLogEntry[]> {
+  return backend.lrange<PhaseLogEntry>(roomKeys(roomId).phaseLog);
 }
 
 // C4 — set (or clear, with null) the spotlighted response. A read-modify-write of
@@ -1181,6 +1201,7 @@ export async function endSession(
     KEYS.seen,
     KEYS.undo,
     KEYS.hostPresence, // C5 — the "burn now" wipe clears co-facilitator presence too
+    KEYS.phaseLog, // F4 — the timing log is off-the-record too; wiped with the rest
   );
   await writeState({ ...DEFAULT_STATE, ended: true }, roomId);
 }
@@ -1639,6 +1660,8 @@ export async function getFacilitatorState(
       readHeartbeats(roomId),
       readHostPresence(roomId),
     ]);
+  // F4 — plan-vs-actual phase timing, from the content-free advance log.
+  const phaseLog = await readPhaseLog(roomId);
   // H1 — room-wide health (every phase), from C2's existing liveness hash.
   const roomHealth = computeRoomHealth(participants, heartbeats);
   // H2 — advisory pre-flight readiness for the built session (pure compute).
@@ -1662,6 +1685,25 @@ export async function getFacilitatorState(
     const rs = extractRunsheet(p.config);
     if (hasRunsheet(rs)) runsheets[p.id] = rs!;
   }
+  // F4 — one timing row per sequence phase (planned vs measured), or null when the
+  // session hasn't advanced yet (nothing to learn from). Content-free.
+  const phaseTimings = phaseLog.length
+    ? planVsActual(
+        phaseLog,
+        seq.map((p) => ({
+          id: p.id,
+          label:
+            (p.config.label as string) ||
+            getServerModule(p.moduleId)?.meta.name ||
+            p.moduleId,
+          plannedSec:
+            typeof p.config.timerSeconds === "number"
+              ? (p.config.timerSeconds as number)
+              : null,
+        })),
+        Date.now(),
+      )
+    : null;
   const curIdx = seq.findIndex((p) => p.id === state.phaseId);
   const nextPhase = curIdx >= 0 && curIdx < seq.length - 1 ? seq[curIdx + 1] : null;
   const nextPeek = nextPhase
@@ -1678,6 +1720,8 @@ export async function getFacilitatorState(
     readiness,
     runsheets,
     nextPeek,
+    // F4 — plan-vs-actual phase timing (host-only; null until the room advances).
+    phaseTimings,
     // C4 — the raw ref (host-only) so the cockpit can ring the active card.
     spotlightRef: state.spotlight ?? null,
     // C5 — the live co-facilitators (host-only; derived, never stored).
