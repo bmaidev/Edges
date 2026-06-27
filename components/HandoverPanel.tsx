@@ -5,6 +5,7 @@ import { Button, Modal } from "@/components/ui";
 import { ReportDocument } from "@/lib/report/ReportDocument";
 import { ReportCurator } from "@/components/ReportCurator";
 import { reportToMarkdown } from "@/lib/report/markdown";
+import { ActionItemsExport } from "@/components/ActionItemsExport";
 import type { FacilitatorState } from "@/lib/types";
 import type { RoomArchive } from "@/lib/rooms";
 
@@ -133,6 +134,10 @@ export function HandoverPanel({
                 {curating ? "Done curating" : "✎ Curate"}
               </Button>
             )}
+          </div>
+          {/* F2 — send-after export of the captured action-item register. */}
+          <div className="mt-2">
+            <ActionItemsExport items={archive.actionItems} slug={archive.slug} />
           </div>
           {curating ? (
             <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-lg border border-border p-3">
