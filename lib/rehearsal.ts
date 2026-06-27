@@ -46,6 +46,49 @@ const WORDS = ["clarity", "focus", "trust", "momentum", "energy", "calm", "speed
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
+// B5 — canned-AI: the AI-synthesis modules cache their result as votes["__ai__"]
+// ({ <items>, generatedAt, inputCount }) and computeView is a pure read of it. So
+// rehearsing one with NO real AI call (free + instant) just means seeding a
+// plausible canned result here — the dry-run then previews the synthesis exactly
+// as the room would see it. A "use real AI" toggle skips this so a real generate
+// can run (when an API key is present).
+const CANNED_AI: Record<string, () => Record<string, unknown>> = {
+  synthesis: () => ({
+    bullets: [
+      "The room keeps returning to trust as the unlock",
+      "Speed and quality are framed as a trade-off no one wants",
+    ],
+    tension: "Move fast vs. get it right",
+  }),
+  needs: () => ({
+    needs: [
+      {
+        need: "Confidence the work will land",
+        jtbd: "When I commit to a plan, I want early signal it's working, so I can adjust without losing face.",
+        evidence: ["“we never know if it's working until too late”"],
+        confidence: "high",
+      },
+    ],
+  }),
+  devil: () => ({
+    objections: [
+      { title: "Who actually owns this?", body: "With no single accountable person, the plan stalls at the first resistance." },
+      { title: "What if adoption is only partial?", body: "A half-adopted change can be worse than today." },
+    ],
+  }),
+  friction: () => ({
+    tensions: [
+      { axis: "Speed vs. rigor", tension: "The room wants to move fast but fears shipping something half-baked.", poleA: "Ship and learn", poleB: "Get it right first", intensity: 4 },
+    ],
+  }),
+};
+
+async function seedAiResult(shadowId: string, phase: PhaseInstance, inputCount: number): Promise<void> {
+  const make = CANNED_AI[phase.moduleId];
+  if (!make) return;
+  await castVote(phase.id, "__ai__", { ...make(), generatedAt: 0, inputCount }, shadowId);
+}
+
 // B5 — per-module response seeding: cast plausible, DETERMINISTIC votes (keyed by
 // the real cast tokens) for a vote-gather phase, so a rehearsed poll/scale/etc.
 // previews a POPULATED result instead of a blank "nobody voted yet" screen. Reuses
@@ -116,7 +159,11 @@ export async function seedRehearsal(
   shadowId: string,
   phases: PhaseInstance[],
   castSize: number,
+  // B5 — seed canned AI results by default (free/instant preview); pass false to
+  // leave AI phases empty so a real generate can run during the rehearsal.
+  opts: { cannedAi?: boolean } = {},
 ): Promise<{ tokens: string[]; handles: string[] }> {
+  const cannedAi = opts.cannedAi !== false;
   const n = Math.max(MIN_CAST, Math.min(castSize, MAX_CAST));
   await setPhases(phases, "Rehearsal", shadowId);
   const tokens: string[] = [];
@@ -138,6 +185,10 @@ export async function seedRehearsal(
       }
     } else if (mod?.capabilities.gatherSource === "votes") {
       await seedVotePhase(shadowId, p, voters);
+    }
+    // Canned AI result for the synthesis modules (so the dry-run shows the output).
+    if (cannedAi && mod?.capabilities.usesAi) {
+      await seedAiResult(shadowId, p, voters.length);
     }
   }
   return { tokens, handles };
