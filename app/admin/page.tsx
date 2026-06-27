@@ -662,7 +662,19 @@ function RoomCard({
             </p>
           )}
           <p className="text-xs text-muted">
-            /{room.slug} · {room.status}
+            /{room.slug}{" "}
+            {/* A1 — at-a-glance draft / live / archived badge. */}
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                room.status === "live"
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : room.status === "archived"
+                    ? "bg-white/10 text-muted"
+                    : "bg-accent/20 text-accent"
+              }`}
+            >
+              {room.status}
+            </span>
             {room.lastRun && (
               <span>
                 {" "}· last run: {room.lastRun.participantCount} joined,{" "}
