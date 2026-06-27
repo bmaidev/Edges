@@ -1095,6 +1095,29 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                   )}
                 </div>
 
+                {/* C2 — per-gather-phase room signals (passthrough config, read by
+                    the store/host route). Only meaningful where the phase gathers. */}
+                {SERVER_MODULES[p.moduleId]?.capabilities.gatherSource !== "none" && (
+                  <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-border bg-bg/40 p-2.5 text-xs">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={p.config.showLiveCount === true}
+                        onChange={(e) => setConfig(i, { ...p.config, showLiveCount: e.target.checked })}
+                      />
+                      Show the live response count on the big screen (3+ present)
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={p.config.nudgeable !== false}
+                        onChange={(e) => setConfig(i, { ...p.config, nudgeable: e.target.checked })}
+                      />
+                      Allow “nudge the room” on this phase
+                    </label>
+                  </div>
+                )}
+
                 {/* B3 — author the facilitator-private run-sheet for this phase. */}
                 <RunSheetSection config={p.config} onChange={(c) => setConfig(i, c)} />
 
