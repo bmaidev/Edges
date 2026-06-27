@@ -11,8 +11,10 @@ import { TourCoach } from "@/components/TourCoach";
 import { FacilitateCockpit } from "@/components/FacilitateCockpit";
 import { ConfirmSheet } from "@/components/recovery/ConfirmSheet";
 import { UndoToast } from "@/components/recovery/UndoToast";
+import { GhostDataNote } from "@/components/recovery/GhostDataNote";
 import {
   currentPhaseResponseCount,
+  ghostDataCount,
   isCollectingPhase,
   phaseAnswerCount,
 } from "@/components/recovery/recovery";
@@ -424,22 +426,39 @@ export function HostConsole({
                   {nudgeMsg && <p className="text-xs text-accent">{nudgeMsg}</p>}
                 </div>
               )}
-              {/* C3 — re-run a contaminated phase clean, in place. */}
-              {isCollectingPhase(s) && s.phaseId && (
-                <button
-                  onClick={() =>
-                    setConfirm({
-                      kind: "reset",
-                      phaseId: s.phaseId!,
-                      label: (s.config?.label as string) ?? "this phase",
-                      count: currentPhaseResponseCount(s),
-                    })
-                  }
-                  className="self-start text-xs text-muted underline hover:text-accent"
-                >
-                  ↻ Reset this phase
-                </button>
-              )}
+              {/* C3 — flag leftover answers from an earlier run before they
+                  surface to the room (the note carries its own reset). */}
+              {s.phaseId &&
+                (ghostDataCount(s) > 0 ? (
+                  <GhostDataNote
+                    state={s}
+                    onReset={() =>
+                      setConfirm({
+                        kind: "reset",
+                        phaseId: s.phaseId!,
+                        label: (s.config?.label as string) ?? "this phase",
+                        count: currentPhaseResponseCount(s),
+                      })
+                    }
+                  />
+                ) : (
+                  // C3 — otherwise the plain "re-run this phase clean" affordance.
+                  isCollectingPhase(s) && (
+                    <button
+                      onClick={() =>
+                        setConfirm({
+                          kind: "reset",
+                          phaseId: s.phaseId!,
+                          label: (s.config?.label as string) ?? "this phase",
+                          count: currentPhaseResponseCount(s),
+                        })
+                      }
+                      className="self-start text-xs text-muted underline hover:text-accent"
+                    >
+                      ↻ Reset this phase
+                    </button>
+                  )
+                ))}
               {role === "cohost" && (
                 <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted">
                   Co-host mode — you can drive the room, but ending, reconfiguring,

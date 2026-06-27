@@ -15,9 +15,11 @@ import {
   writeUndo,
 } from "@/lib/store";
 import {
+  ghostDataCount,
   phaseAnswerCount,
   phaseVoteCount,
 } from "@/components/recovery/recovery";
+import type { FacilitatorState } from "@/lib/types";
 
 // C3 — calm recovery controls. In-memory store, no KV/AI.
 
@@ -180,5 +182,44 @@ describe("pure recovery counters", () => {
   it("phaseVoteCount excludes reserved __markers__", () => {
     const fields = ["p1::a", "p1::b", "p1::__constraint__", "p2::a"];
     expect(phaseVoteCount(fields, "p1")).toBe(2);
+  });
+});
+
+describe("ghostDataCount (C3 leftover-answer detection)", () => {
+  // A minimal FacilitatorState shape — only the fields ghostDataCount reads.
+  const fs = (over: Partial<FacilitatorState>): FacilitatorState =>
+    ({ phaseId: "p1", submissions: [], participation: null, ...over }) as FacilitatorState;
+
+  it("flags stored answers when NO current participant produced them (responded 0)", () => {
+    const s = fs({
+      submissions: [{ phaseId: "p1" }, { phaseId: "p1" }] as FacilitatorState["submissions"],
+      participation: { present: 3, responded: 0, typing: 0, quiet: 0 },
+    });
+    expect(ghostDataCount(s)).toBe(2);
+  });
+
+  it("stays silent during live collection (responders present)", () => {
+    const s = fs({
+      submissions: [{ phaseId: "p1" }, { phaseId: "p1" }] as FacilitatorState["submissions"],
+      participation: { present: 3, responded: 2, typing: 0, quiet: 0 },
+    });
+    expect(ghostDataCount(s)).toBe(0);
+  });
+
+  it("is 0 when the phase holds nothing", () => {
+    expect(ghostDataCount(fs({ submissions: [] }))).toBe(0);
+  });
+
+  it("counts only the ACTIVE phase's leftovers", () => {
+    const s = fs({
+      phaseId: "p2",
+      submissions: [{ phaseId: "p1" }, { phaseId: "p2" }] as FacilitatorState["submissions"],
+      participation: { present: 1, responded: 0, typing: 0, quiet: 0 },
+    });
+    expect(ghostDataCount(s)).toBe(1);
+  });
+
+  it("is 0 with no active phase", () => {
+    expect(ghostDataCount(fs({ phaseId: null }))).toBe(0);
   });
 });
