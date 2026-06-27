@@ -1272,6 +1272,21 @@ export async function undoLastAction(
 // B5 — fully delete EVERY key for a room, including the state key (unlike
 // endSession, which re-writes an empty ended state). Used to tear down a
 // disposable rehearsal shadow room so it leaves nothing behind.
+// A4 — move a NON-LIVE room's session state to a new room id (slug rename). Only
+// the `state` key can hold data for a non-live room (a draft that's been built;
+// a live room is gated out of rename, and an archived one's live keys are wiped),
+// so this is a single plain-value copy + delete. Returns whether anything moved.
+export async function migrateRoomState(
+  oldId: string,
+  newId: string,
+): Promise<boolean> {
+  const raw = await backend.get<SessionState>(roomKeys(oldId).state);
+  if (raw == null) return false;
+  await backend.set(roomKeys(newId).state, raw);
+  await backend.del(roomKeys(oldId).state);
+  return true;
+}
+
 export async function purgeRoom(roomId: string): Promise<void> {
   const KEYS = roomKeys(roomId);
   await backend.del(

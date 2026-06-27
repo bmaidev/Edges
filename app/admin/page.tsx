@@ -573,7 +573,9 @@ function RoomCard({
     });
     onChanged();
   }
-  const [panel, setPanel] = useState<"theme" | "report" | "access" | null>(null);
+  const [panel, setPanel] = useState<
+    "theme" | "report" | "access" | "address" | null
+  >(null);
   const [theme, setTheme] = useState<ThemeDraft>(EMPTY_THEME);
   const [report, setReport] = useState<any>(null);
   // A4 — inline-edit the display name (never the slug — that's the room's key).
@@ -614,6 +616,36 @@ function RoomCard({
     });
     onChanged();
   }
+  // A4 — change the room's address (slug). Non-live only; old links redirect.
+  const [slugDraft, setSlugDraft] = useState(room.slug);
+  const [slugBusy, setSlugBusy] = useState(false);
+  const [slugError, setSlugError] = useState<string | null>(null);
+  async function renameSlug() {
+    const next = slugDraft.trim();
+    if (!next || next === room.slug) {
+      setPanel(null);
+      return;
+    }
+    setSlugBusy(true);
+    setSlugError(null);
+    try {
+      const res = await fetch(`/api/admin/rooms/${room.slug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, action: "rename", slug: next }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setPanel(null);
+        onChanged();
+      } else {
+        setSlugError(d.error ?? "Couldn't change the address.");
+      }
+    } finally {
+      setSlugBusy(false);
+    }
+  }
+
   // Existing rooms keep only passcode HASHES, so we can't show their links — a
   // facilitator regenerates a role to mint a fresh shareable link. The returned
   // plaintext is spliced straight in (authoritative-apply, no read-back).
@@ -744,6 +776,17 @@ function RoomCard({
           <button onClick={duplicate} disabled={dupBusy} className="text-accent">
             {dupBusy ? "duplicating…" : "duplicate"}
           </button>
+          {room.status !== "live" && (
+            <button
+              onClick={() => {
+                setSlugDraft(room.slug);
+                setSlugError(null);
+                setPanel(panel === "address" ? null : "address");
+              }}
+            >
+              address
+            </button>
+          )}
           {room.status === "draft" && (
             <button onClick={markLive} className="text-emerald-400">make live</button>
           )}
@@ -779,6 +822,35 @@ function RoomCard({
             codes={accessCodes}
             onRegenerate={regenRole}
           />
+        </div>
+      )}
+
+      {/* A4 — change the shareable address. Old links/QRs redirect to the new
+          slug, so nothing in someone's pocket breaks. Live rooms are excluded. */}
+      {panel === "address" && (
+        <div className="mt-3 space-y-2 border-t border-border pt-3 text-sm">
+          <label className="block text-xs text-muted" htmlFor={`slug-${room.slug}`}>
+            New address — letters, numbers and hyphens. The old link will redirect here.
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-muted">/r/</span>
+            <input
+              id={`slug-${room.slug}`}
+              autoFocus
+              value={slugDraft}
+              onChange={(e) => setSlugDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") renameSlug();
+                if (e.key === "Escape") setPanel(null);
+              }}
+              maxLength={60}
+              className="flex-1 rounded border border-border bg-bg px-2 py-1 font-mono text-sm focus:border-accent focus:outline-none"
+            />
+            <Button onClick={renameSlug} disabled={slugBusy}>
+              {slugBusy ? "Changing…" : "Change"}
+            </Button>
+          </div>
+          {slugError && <p className="text-xs text-[#ff8a8a]">{slugError}</p>}
         </div>
       )}
 

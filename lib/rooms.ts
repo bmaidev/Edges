@@ -479,7 +479,7 @@ export async function regenerateRoleCode(
 
 // ---- Archive / reporting --------------------------------------------------
 
-import { anonymousPhaseIds, endSession, getFacilitatorState, publishAndEnd, readVotes, withLock } from "./store";
+import { anonymousPhaseIds, endSession, getFacilitatorState, migrateRoomState, publishAndEnd, readVotes, withLock } from "./store";
 import type { SessionMetrics } from "./session-metrics";
 import { aiAvailable, asData, capItems, generateJSON, topicLine } from "./ai";
 import type { TakeawaySnapshot } from "./types";
@@ -848,6 +848,71 @@ export async function deleteRoom(slug: string): Promise<boolean> {
   });
   if (ok) await endSession(slug); // wipe live participants/submissions/etc. now
   return ok;
+}
+
+// ---- A4: slug rename + redirect -------------------------------------------
+
+const redirectKey = (slug: string) => `rooms:redirect:${slug}`;
+const METRICS_RENAME_INDEX = "rooms:metricsidx";
+
+// A4 — rename a room's slug (its shareable address). Gated on a LIVE-QUIESCE
+// signal: a live room is refused (end/pause first) so there's no key migration
+// race while people are connected. For a non-live room only the durable record +
+// (for a draft) the session `state` + (for an archive) the archive/metrics need to
+// move. Leaves a durable redirect old→new so shared links keep working.
+export async function renameRoom(
+  oldSlug: string,
+  newSlug: string,
+): Promise<{ ok: true; slug: string } | { ok: false; error: string }> {
+  const room = await getRoom(oldSlug);
+  if (!room) return { ok: false, error: "No such room." };
+  if (room.status === "live")
+    return { ok: false, error: "End or pause the live session before renaming its address." };
+
+  const normalized = normalizeSlug(newSlug);
+  if (normalized === oldSlug) return { ok: true, slug: oldSlug }; // no-op
+  const v = validateSlug(normalized);
+  if (!v.ok) return { ok: false, error: slugReasonMessage(v.reason!) };
+
+  return withRoomLock(oldSlug, async () => {
+    // Claim the new slug atomically; if lost, it's taken.
+    const won = await db.setNX(roomKey(normalized), { ...room, slug: normalized });
+    if (!won) return { ok: false as const, error: "That address is already taken." };
+
+    // Move the session state (a built-but-unlaunched draft) + archive + metrics.
+    await migrateRoomState(oldSlug, normalized);
+    const archive = await db.get<RoomArchive>(archiveKey(oldSlug));
+    if (archive) {
+      await db.set(archiveKey(normalized), { ...archive, slug: normalized });
+      await db.del(archiveKey(oldSlug));
+    }
+    const metrics = await db.get(`rooms:metrics:${oldSlug}`);
+    if (metrics) {
+      await db.set(`rooms:metrics:${normalized}`, { ...(metrics as object), slug: normalized });
+      await db.del(`rooms:metrics:${oldSlug}`);
+      const mIdx = (await db.get<string[]>(METRICS_RENAME_INDEX)) ?? [];
+      if (mIdx.includes(oldSlug))
+        await db.set(METRICS_RENAME_INDEX, mIdx.map((s) => (s === oldSlug ? normalized : s)));
+    }
+
+    // Room index: swap old→new (dedup defensively).
+    const index = (await db.get<string[]>(ROOM_INDEX_KEY)) ?? [];
+    const swapped = index.map((s) => (s === oldSlug ? normalized : s));
+    await db.set(ROOM_INDEX_KEY, Array.from(new Set(swapped)));
+
+    // Durable redirect so old links resolve, then drop the old record.
+    await db.set(redirectKey(oldSlug), normalized);
+    await db.del(roomKey(oldSlug));
+    return { ok: true as const, slug: normalized };
+  });
+}
+
+// A4 — resolve a (possibly-renamed) slug to its current address, or null if it was
+// never renamed. Single-hop; a chain of renames resolves to the latest at write
+// time (each rename targets a fresh, free slug).
+export async function resolveRedirect(slug: string): Promise<string | null> {
+  const target = await db.get<string>(redirectKey(slug));
+  return typeof target === "string" ? target : null;
 }
 
 // F3 — publish the participant take-away and end the session. NO AI in this path
