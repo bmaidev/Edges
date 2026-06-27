@@ -161,11 +161,13 @@ export interface RoomCreated {
 
 // ---- helpers --------------------------------------------------------------
 
-function sha256(s: string): string {
+// Exported so the workspace layer (lib/workspaces.ts) hashes/compares admin
+// passcodes with the SAME primitives — never a second crypto path.
+export function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
 }
 
-function safeEqualHex(a: string, b: string): boolean {
+export function safeEqualHex(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   try {
     return timingSafeEqual(Buffer.from(a), Buffer.from(b));
