@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { normalizeSlug } from "@/lib/slug";
+import { groupRooms } from "@/lib/room-groups";
 import { Button } from "@/components/ui";
 import { RoomAccessCard } from "@/components/RoomAccessCard";
 import { CreateWorkshop } from "@/components/wizard/CreateWorkshop";
@@ -273,9 +274,7 @@ function Admin() {
                 No rooms of your own yet — create one above, or poke the demo first.
               </p>
             ) : (
-              realRooms.map((r) => (
-                <RoomCard key={r.slug} room={r} code={code} onChanged={() => load(code)} />
-              ))
+              <MyWorkshops rooms={realRooms} code={code} onChanged={() => load(code)} />
             )}
           </div>
         </>
@@ -504,6 +503,43 @@ function CreateRoom({
         </div>
       )}
     </section>
+  );
+}
+
+// A5 — "My workshops": group the rooms into Live now / Drafts / Recent so a busy
+// facilitator finds the live session at a glance and re-opens a recent archive,
+// with a calm trust banner about the 24h wipe.
+function MyWorkshops({
+  rooms,
+  code,
+  onChanged,
+}: {
+  rooms: RoomRow[];
+  code: string;
+  onChanged: () => void;
+}) {
+  const { live, drafts, recent } = groupRooms(rooms);
+  const Section = ({ title, items }: { title: string; items: RoomRow[] }) =>
+    items.length === 0 ? null : (
+      <>
+        <h3 className="mt-3 text-xs font-semibold uppercase tracking-wide text-muted">
+          {title} <span className="text-muted/50">· {items.length}</span>
+        </h3>
+        {items.map((r) => (
+          <RoomCard key={r.slug} room={r} code={code} onChanged={onChanged} />
+        ))}
+      </>
+    );
+  return (
+    <>
+      <div className="rounded-lg border border-border bg-bg/40 px-3 py-2 text-xs text-muted">
+        Rooms auto-wipe 24h after they end — only the design and a content-free
+        summary persist. Nothing here is shared until you share it.
+      </div>
+      <Section title="Live now" items={live} />
+      <Section title="Drafts" items={drafts} />
+      <Section title="Recent" items={recent} />
+    </>
   );
 }
 
