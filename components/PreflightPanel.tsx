@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { Modal } from "@/components/ui";
-import type { Readiness, Severity } from "@/lib/types";
+import type { Readiness, Role, Severity } from "@/lib/types";
 
 const TONE: Record<string, { dot: string; text: string; border: string }> = {
   blocker: { dot: "bg-[#ff8a8a]", text: "text-[#ff8a8a]", border: "border-[#ff8a8a]/40" },
@@ -47,24 +48,59 @@ const SECTIONS: { sev: Severity; heading: string }[] = [
 
 export function PreflightSheet({
   readiness,
+  role = "facilitator",
   onClose,
   onRemedy,
+  onRecheck,
 }: {
   readiness: Readiness;
+  // H2 — a cohost can't reach the Session/Content tabs, so a "Fix" there is dead.
+  // We relabel it for them rather than offer a button that goes nowhere.
+  role?: Role;
   onClose: () => void;
   onRemedy: (tab: "session" | "content") => void;
+  onRecheck?: () => void;
 }) {
+  // H2 — pass rows lead with nothing actionable, so collapse the "for awareness"
+  // section by default; the sheet opens on what needs attention.
+  const [showInfo, setShowInfo] = useState(false);
+  const isCohost = role === "cohost";
+  const infoCount = readiness.checks.filter((c) => c.severity === "info").length;
+
   return (
     <Modal title="Pre-flight check" onClose={onClose}>
-      <p className="text-xs text-muted">
-        A heads-up before the room arrives. Nothing here blocks you — you decide
-        when to launch.
-      </p>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs text-muted">
+          A heads-up before the room arrives. Nothing here blocks you — you decide
+          when to launch.
+        </p>
+        {onRecheck && (
+          <button
+            onClick={onRecheck}
+            className="shrink-0 text-xs text-accent underline hover:text-white"
+            title="Re-run the check now"
+          >
+            ↻ Re-check
+          </button>
+        )}
+      </div>
       <div className="mt-4 flex flex-col gap-4">
         {SECTIONS.map(({ sev, heading }) => {
           const items = readiness.checks.filter((c) => c.severity === sev);
           if (!items.length) return null;
           const t = TONE[sev === "blocker" ? "blocker" : sev === "warning" ? "warning" : "ok"];
+          // Collapse the info ("for awareness") rows behind a toggle.
+          if (sev === "info" && !showInfo) {
+            return (
+              <button
+                key={sev}
+                onClick={() => setShowInfo(true)}
+                className="self-start text-xs text-muted underline hover:text-white"
+              >
+                Show {infoCount} more for awareness
+              </button>
+            );
+          }
           return (
             <div key={sev}>
               <p className={`text-xs font-semibold uppercase tracking-wide ${t.text}`}>
@@ -83,14 +119,17 @@ export function PreflightSheet({
                         <span className="block text-xs text-muted">{c.detail}</span>
                       )}
                     </span>
-                    {c.remedyTab && (
-                      <button
-                        onClick={() => onRemedy(c.remedyTab!)}
-                        className="shrink-0 text-xs text-accent underline"
-                      >
-                        Fix
-                      </button>
-                    )}
+                    {c.remedyTab &&
+                      (isCohost && c.remedyTab === "session" ? (
+                        <span className="shrink-0 text-xs text-muted">lead fixes</span>
+                      ) : (
+                        <button
+                          onClick={() => onRemedy(c.remedyTab!)}
+                          className="shrink-0 text-xs text-accent underline"
+                        >
+                          Fix
+                        </button>
+                      ))}
                   </li>
                 ))}
               </ul>
