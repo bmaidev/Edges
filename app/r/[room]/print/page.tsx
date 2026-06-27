@@ -10,7 +10,7 @@ interface PrintPhase {
   label: string;
   minutes: number;
   script?: string;
-  talkingPoints?: string;
+  talkingPoints?: string[];
   contingency?: string;
 }
 interface PrintPayload {
@@ -81,8 +81,12 @@ export default function PrintPage() {
               <span className="text-sm text-[#888]">~{p.minutes} min</span>
             </div>
             {p.script && <p className="mt-1 leading-relaxed">{p.script}</p>}
-            {p.talkingPoints && (
-              <p className="mt-1 whitespace-pre-line text-sm text-[#444]">{p.talkingPoints}</p>
+            {p.talkingPoints && p.talkingPoints.length > 0 && (
+              <ul className="mt-1 list-inside list-disc text-sm text-[#444]">
+                {p.talkingPoints.filter((t) => t.trim()).map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
             )}
             {p.contingency && (
               <p className="mt-1 text-sm text-[#666]">

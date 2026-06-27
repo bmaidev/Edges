@@ -214,12 +214,14 @@ DEPENDENCIES — important: the modules marked "[needs sourcePhaseId …]" above
 
 ${tg.text}
 
+RUN-SHEET — for each phase, add a short facilitator-private "runsheet" to its config: { "script": "one line to say as you open it", "talkingPoints": ["2-4 short bullets"], "contingency": "what to do if it goes quiet" }. Keep it concise and practical; it's the lead's private script, never shown to the room.
+
 Return JSON only, in this shape:
 {
   "sessionName": "Short session name",
   "rationale": "2-3 sentences on why this sequence fits the goal",
   "phases": [
-    { "id": "kebab-id", "moduleId": "capture", "config": { "label": "…", "prompt": "…" } }
+    { "id": "kebab-id", "moduleId": "capture", "config": { "label": "…", "prompt": "…", "runsheet": { "script": "…", "talkingPoints": ["…"], "contingency": "…" } } }
   ]
 }`,
   });

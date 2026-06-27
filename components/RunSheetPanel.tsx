@@ -16,8 +16,9 @@ export function RunSheetPanel({
   // deadline, so the facilitator can run from the sheet AND watch the clock.
   timing?: { plannedSec?: number; timerEndsAt: number | null; timerRemainingMs: number | null };
 }) {
+  const points = (runsheet?.talkingPoints ?? []).filter((t) => t.trim());
   const has = Boolean(
-    runsheet && (runsheet.script || runsheet.talkingPoints || runsheet.contingency),
+    runsheet && (runsheet.script || points.length > 0 || runsheet.contingency),
   );
   const chip = timingChip(timing);
   if (!has && !nextPeek && !chip) return null;
@@ -36,8 +37,12 @@ export function RunSheetPanel({
           {runsheet?.script && (
             <p className="leading-relaxed text-white/90">{runsheet.script}</p>
           )}
-          {runsheet?.talkingPoints && (
-            <p className="whitespace-pre-line text-muted">{runsheet.talkingPoints}</p>
+          {points.length > 0 && (
+            <ul className="list-inside list-disc text-muted">
+              {points.map((t, i) => (
+                <li key={i}>{t}</li>
+              ))}
+            </ul>
           )}
           {runsheet?.contingency && (
             <p className="text-xs text-muted">

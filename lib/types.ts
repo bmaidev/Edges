@@ -136,7 +136,7 @@ export interface Mode {
 // (stripped role-side before computeView + before the returned config).
 export interface RunSheet {
   script?: string; // what to say / do
-  talkingPoints?: string; // bullet notes
+  talkingPoints?: string[]; // B3 — discrete bullet notes (was a single string)
   contingency?: string; // "if it goes quiet…"
 }
 
