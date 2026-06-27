@@ -28,6 +28,7 @@ import {
   renamePattern,
   reorderPatterns,
   resumeTimer,
+  setDriver,
   setMode,
   setSpotlight,
   tryNudge,
@@ -96,6 +97,10 @@ const COMMAND_CAP: Record<string, Capability> = {
   setDesign: "advance",
   saveDesign: "configure",
   deleteDesign: "configure",
+  // C5 — the driving baton is a soft nav-tier signal (cohost can claim/hand off).
+  claimDriver: "advance",
+  handoffDriver: "advance",
+  releaseDriver: "advance",
   addContent: "inject",
   updateContent: "inject",
   deleteContent: "inject",
@@ -282,7 +287,16 @@ export async function POST(
       const releasedIds = forward
         ? (await listContent(room)).filter((c) => c.queued).map((c) => c.id)
         : [];
-      const written = await setPhase(target, room, { release: forward });
+      // C5 — a take-over Advance claims the baton in the same write as the move.
+      const claimDriver =
+        typeof a.claimDriverId === "string" && a.claimDriverId
+          ? {
+              driverId: a.claimDriverId,
+              driverName: typeof a.claimDriverName === "string" ? a.claimDriverName : "",
+              claimedAt: Date.now(),
+            }
+          : undefined;
+      const written = await setPhase(target, room, { release: forward, claimDriver });
       await writeUndo(
         {
           prevPhaseId: before.phaseId,
@@ -407,6 +421,26 @@ export async function POST(
         state: await navState(room, await setSpotlight(ref, room), role ?? "facilitator"),
       });
     }
+    // C5 — claim/hand off/release the driving baton (advisory; controls never block).
+    case "claimDriver":
+    case "handoffDriver": {
+      const driverId = String(a.driverId ?? "");
+      if (!driverId) return NextResponse.json({ error: "Missing driverId" }, { status: 400 });
+      const driver = {
+        driverId,
+        driverName: typeof a.driverName === "string" ? a.driverName : "",
+        claimedAt: Date.now(),
+      };
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setDriver(driver, room), role ?? "facilitator"),
+      });
+    }
+    case "releaseDriver":
+      return NextResponse.json({
+        ok: true,
+        state: await navState(room, await setDriver(null, room), role ?? "facilitator"),
+      });
     case "addContent":
       return NextResponse.json({
         ok: true,

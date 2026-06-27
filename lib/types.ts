@@ -206,6 +206,11 @@ export interface SessionState {
   // sole writer is writeState and every set/clear bumps rev (authoritative-apply).
   // Cleared on every relaunch/advance/end so a stale spotlight can't linger.
   spotlight?: SpotlightRef | null;
+  // C5 — the co-facilitator currently "driving" the room (a soft, advisory baton).
+  // Lives ON the state key (NOT the presence hash) so a claim bumps rev and rides
+  // the monotonic-apply guard — otherwise an in-flight poll at the same rev could
+  // silently revert the claim. Host-only (never on PublicState). Cleared on end.
+  driver?: DriverInfo | null;
   // F3 — set at end when a take-away is published. The token keys the snapshot.
   publishedTakeaway?: { token: string; publishedAt: number };
   // F2 — the action-item register. Lives ON the state key (not a side hash) so
@@ -416,6 +421,19 @@ export interface FacilitatorState extends PublicState {
   // Host-only; NEVER on the participant/projector surface. Derived from a
   // heartbeat hash, never stored on the session state.
   presence?: HostPresence[] | null;
+  // C5 — the current driving baton (host-only; mirrors SessionState.driver). Never
+  // on PublicState — the room must not see co-facilitator names.
+  driver?: DriverInfo | null;
+  // C5 — true when state.driver is set but no longer live (its presenceId aged out
+  // of the roster, or the claim is stale). Derived on read; the next claim wins.
+  driverStale?: boolean;
+}
+
+// C5 — the soft driving baton. driverId is the host's presenceId (per-tab).
+export interface DriverInfo {
+  driverId: string;
+  driverName: string;
+  claimedAt: number;
 }
 
 // C5 — one present host console. `name` is self-asserted (a localStorage label,

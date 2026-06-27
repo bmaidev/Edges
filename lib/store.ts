@@ -18,7 +18,7 @@ import {
   stripRunsheet,
 } from "./modules/runsheet";
 import { resolveAttribution } from "./modules/attribution";
-import { HEARTBEAT_THROTTLE_MS, liveRoster } from "./presence";
+import { HEARTBEAT_THROTTLE_MS, isDriverLive, liveRoster } from "./presence";
 import {
   PROJECTOR_FLOOR,
   computeParticipationSignal,
@@ -216,6 +216,7 @@ const DEFAULT_STATE: SessionState = {
   ended: false,
   actionItems: [],
   spotlight: null, // C4 — so endSession ({...DEFAULT_STATE}) clears a spotlight for free
+  driver: null, // C5 — the driving baton is cleared on end for free
   rev: 0, // a real write always has rev > 0, so the fallback never wins a race
 };
 
@@ -323,7 +324,9 @@ export async function setPhases(
 export async function setPhase(
   phaseId: string,
   roomId: string = DEFAULT_ROOM_ID,
-  opts: { release?: boolean } = {},
+  // C5 — opts.claimDriver lets a take-over Advance claim the baton in the SAME
+  // write as the phase change (one rev, no flap window).
+  opts: { release?: boolean; claimDriver?: import("./types").DriverInfo } = {},
 ): Promise<SessionState> {
   const state = await getState(roomId);
   if (opts.release !== false) await releaseQueuedContent(roomId);
@@ -335,6 +338,7 @@ export async function setPhase(
       timerRemainingMs: null,
       readaroundIndex: 0,
       spotlight: null, // C4 — advancing clears any spotlight from the prior phase
+      ...(opts.claimDriver ? { driver: opts.claimDriver } : {}), // C5 — co-claim
     },
     roomId,
   );
@@ -351,6 +355,18 @@ export async function setSpotlight(
 ): Promise<SessionState> {
   const state = await getState(roomId);
   return writeState({ ...state, spotlight: ref ?? null }, roomId);
+}
+
+// C5 — claim / hand off / release the driving baton. A read-modify-writeState, so
+// the claim bumps the monotonic rev and rides authoritative-apply — an in-flight
+// poll at the old rev can never revert it. `driver` is the target (self for a
+// claim, someone else for a handoff) or null to release.
+export async function setDriver(
+  driver: import("./types").DriverInfo | null,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  return writeState({ ...state, driver: driver ?? null }, roomId);
 }
 
 // C1 — every timer mutation is a read-compute-write of the state key, so two
@@ -1470,6 +1486,9 @@ export async function roomSignature(
         ? `s:${state.spotlight.id}`
         : `l:${state.spotlight.text.length}`
       : "",
+    // C5 — tick the stream when the driving baton changes, so the chip updates
+    // within ~1 SSE beat instead of waiting for the 2s poll.
+    state.driver ? `d:${state.driver.driverId}` : "",
   ].join("|");
 }
 
@@ -1546,5 +1565,10 @@ export async function getFacilitatorState(
     spotlightRef: state.spotlight ?? null,
     // C5 — the live co-facilitators (host-only; derived, never stored).
     presence,
+    // C5 — the driving baton (host-only; mirrors the state field).
+    driver: state.driver ?? null,
+    // C5 — the baton is stale when its console aged out (the next claim wins).
+    // Derived on read; never written back here (the "no write in getState" rule).
+    driverStale: state.driver ? !isDriverLive(state.driver, presence, Date.now()) : false,
   };
 }
