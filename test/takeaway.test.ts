@@ -85,6 +85,38 @@ describe("publishTakeaway", () => {
   });
 });
 
+describe("F3 — previewTakeaway (review before the irreversible publish)", () => {
+  it("returns the shared recap + anonymity meta WITHOUT ending the session", async () => {
+    const { previewTakeaway } = await import("@/lib/rooms");
+    const slug = "f3-preview";
+    await seed(slug);
+    const out = await previewTakeaway(slug);
+    expect(out?.preview.participantCount).toBe(2);
+    expect(out?.preview.actionItems?.[0].text).toBe("Book the venue");
+    // never the raw per-token contributions
+    expect("contributions" in (out?.preview ?? {})).toBe(false);
+    expect(out?.meta).toBeTruthy();
+    // the session is NOT ended (preview is non-destructive)
+    expect((await getState(slug)).ended).toBe(false);
+    expect((await listParticipants(slug)).length).toBe(2);
+  });
+
+  it("excludeActionItems drops chosen items from the preview AND the published recap", async () => {
+    const { previewTakeaway } = await import("@/lib/rooms");
+    const slug = "f3-curate";
+    await seed(slug);
+    const itemId = (await getState(slug)).actionItems?.[0]?.id ?? "";
+    expect(itemId).toBeTruthy();
+
+    const preview = await previewTakeaway(slug, { excludeActionItems: [itemId] });
+    expect(preview?.preview.actionItems ?? []).toHaveLength(0);
+
+    const res = await publishTakeaway(slug, { excludeActionItems: [itemId] });
+    const snap = await getTakeaway(slug, res!.token);
+    expect(snap!.actionItems ?? []).toHaveLength(0);
+  });
+});
+
 describe("F3 anonymity — anonymous-phase contributions never enter the recap", () => {
   async function seedAnon(slug: string) {
     const { hashes } = freshPasscodes();
