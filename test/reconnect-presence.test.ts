@@ -3,7 +3,10 @@ import { createRoom } from "@/lib/rooms";
 import {
   addParticipant,
   dispatchAction,
+  getFacilitatorState,
   getPublicState,
+  holdLatecomer,
+  placeLatecomer,
   readVotes,
   setPhase,
   setPhases,
@@ -12,7 +15,9 @@ import {
   appendCafeExtras,
   appendExtras,
   cohortTokens,
+  heldLatecomers,
   readCohort,
+  readPlaced,
 } from "@/lib/modules/groups";
 import type { PhaseInstance } from "@/lib/types";
 
@@ -49,6 +54,27 @@ describe("groups: cohort-freeze helpers", () => {
     const { cohort, extras } = cohortTokens({ __cohort__: [] }, ["b", "a"]);
     expect(cohort).toEqual(["a", "b"]);
     expect(extras).toEqual([]);
+  });
+
+  // D4 — the hold policy.
+  it("under hold, only PLACED latecomers become extras; the rest are parked", () => {
+    const votes = { __cohort__: ["a", "b"], __placed__: ["m"] };
+    // append (default): all latecomers fold in.
+    expect(cohortTokens(votes, ["a", "b", "m", "z"]).extras).toEqual(["m", "z"]);
+    // hold: only the placed one (m) folds; z stays held.
+    expect(cohortTokens(votes, ["a", "b", "m", "z"], { hold: true }).extras).toEqual(["m"]);
+  });
+
+  it("heldLatecomers = live − cohort − placed (sorted); empty before any freeze", () => {
+    const votes = { __cohort__: ["a", "b"], __placed__: ["m"] };
+    expect(heldLatecomers(votes, ["a", "b", "m", "z", "c"])).toEqual(["c", "z"]);
+    expect(heldLatecomers({}, ["a", "b"])).toEqual([]); // no freeze → nothing held
+  });
+
+  it("readPlaced returns the placed token list or empty", () => {
+    expect(readPlaced({ __placed__: ["x", "y"] })).toEqual(["x", "y"]);
+    expect(readPlaced({})).toEqual([]);
+    expect(readPlaced({ __placed__: "nope" })).toEqual([]);
   });
 
   it("appendExtras folds each latecomer into the smallest group, never moving seated members", () => {
@@ -227,5 +253,53 @@ describe("25/10: a join during scoring never changes who holds which card", () =
         ?.data as { assignedCard?: { id: string } | null };
       expect(v.assignedCard?.id ?? null).toBe(cardBefore.get(`t${i}`));
     }
+  });
+});
+
+// ---- D4 slice 2: explicit latecomer place / hold --------------------------
+
+describe("latecomer hold policy: a latecomer waits until the host places them", () => {
+  const P = phase("onetwofour", { label: "1-2-4-All", prompt: "?", latecomerHold: true });
+
+  it("holds the latecomer (not seated + waiting state), then place seats them", async () => {
+    const roomId = await room(P, 4);
+    await dispatchAction(roomId, { type: "nextRound" }, "facilitator"); // → pairs
+    await addParticipant("LATE", "Latecomer", roomId);
+
+    // Under hold, the latecomer is NOT folded into anyone's pair...
+    const seated = (await getPublicState("t0", roomId, "participant")).view
+      ?.data as { groupMembers: string[] };
+    expect(seated.groupMembers).not.toContain("Latecomer");
+
+    // ...they see the calm waiting state...
+    const lateView = (await getPublicState("LATE", roomId, "participant")).view
+      ?.data as { held?: boolean };
+    expect(lateView.held).toBe(true);
+
+    // ...and the host sees them in the held list.
+    const fs = await getFacilitatorState(roomId);
+    expect(fs.heldLatecomers?.map((h) => h.handle)).toEqual(["Latecomer"]);
+
+    // Place them → they fold into a group and the held list empties.
+    await placeLatecomer(P.id, ["LATE"], roomId);
+    const after = await getFacilitatorState(roomId);
+    expect(after.heldLatecomers ?? []).toEqual([]);
+    const lateAfter = (await getPublicState("LATE", roomId, "participant")).view
+      ?.data as { held?: boolean; groupMembers: string[] };
+    expect(lateAfter.held).toBeFalsy();
+
+    // Hold them again → back to waiting.
+    await holdLatecomer(P.id, ["LATE"], roomId);
+    const reheld = await getFacilitatorState(roomId);
+    expect(reheld.heldLatecomers?.map((h) => h.handle)).toEqual(["Latecomer"]);
+  });
+
+  it("default (append) policy still auto-seats latecomers (no regression)", async () => {
+    const appendP = phase("onetwofour", { label: "1-2-4-All", prompt: "?" });
+    const roomId = await room(appendP, 4);
+    await dispatchAction(roomId, { type: "nextRound" }, "facilitator");
+    await addParticipant("LATE", "Latecomer", roomId);
+    const fs = await getFacilitatorState(roomId);
+    expect(fs.heldLatecomers ?? []).toEqual([]); // nothing held under append
   });
 });

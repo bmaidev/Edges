@@ -446,6 +446,10 @@ export interface FacilitatorState extends PublicState {
   // Content-free: per-phase planned vs measured seconds + a verdict. Derived from
   // the off-the-record advance log, never stored on PublicState.
   phaseTimings?: import("./timing").PhaseTiming[] | null;
+  // D4 — latecomers awaiting placement on a hold-policy grouping phase (host-only;
+  // handle + token, which the facilitator already sees). Empty when none / not a
+  // hold phase.
+  heldLatecomers?: { token: string; handle: string }[];
   // C4 — the raw spotlight ref (host-only), so the cockpit can ring the active
   // submission card + render the clear chip. Never on the participant/projector.
   spotlightRef?: SpotlightRef | null;

@@ -11,6 +11,7 @@ import {
 import { getMode, getPhase } from "./modes";
 import { computeRoomHealth } from "./health";
 import { planVsActual } from "./timing";
+import { PLACED_KEY, heldLatecomers, readPlaced } from "./modules/groups";
 import { computeReadiness } from "./preflight";
 import { aiAvailable } from "./ai";
 import {
@@ -936,6 +937,36 @@ export async function readVotes(
   return out;
 }
 
+// D4 — place / hold latecomers under the hold policy. Placement is stored in the
+// phase's votes hash (PLACED_KEY), so a grouping module's cohortTokens folds the
+// placed tokens in on its next poll. We bump rev with a no-op writeState so every
+// screen re-syncs promptly (rather than waiting on the votes-only change).
+export async function placeLatecomer(
+  phaseId: string,
+  tokens: string[],
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const votes = await readVotes(phaseId, roomId);
+  const placed = new Set(readPlaced(votes));
+  for (const t of tokens) placed.add(t);
+  await castVote(phaseId, PLACED_KEY, Array.from(placed), roomId);
+  return writeState({ ...(await getState(roomId)) }, roomId);
+}
+
+// D4 — send a placed latecomer back to "held" (the facilitator changed their mind
+// before they were really seated). Removes the token(s) from PLACED_KEY.
+export async function holdLatecomer(
+  phaseId: string,
+  tokens: string[],
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const votes = await readVotes(phaseId, roomId);
+  const drop = new Set(tokens);
+  const placed = readPlaced(votes).filter((t) => !drop.has(t));
+  await castVote(phaseId, PLACED_KEY, placed, roomId);
+  return writeState({ ...(await getState(roomId)) }, roomId);
+}
+
 // ---- Word cloud (append-only list, entries carry phaseId) -----------------
 
 interface WordEntry {
@@ -1733,6 +1764,19 @@ export async function getFacilitatorState(
         Date.now(),
       )
     : null;
+  // D4 — held latecomers awaiting placement, but ONLY on a grouping phase the
+  // builder set to "hold" (so normal phases pay no extra read). Maps tokens to the
+  // handles the host already sees; content-free.
+  let heldLate: { token: string; handle: string }[] = [];
+  const activePhase = seq.find((p) => p.id === state.phaseId);
+  if (activePhase && activePhase.config.latecomerHold === true) {
+    const pVotes = await readVotes(activePhase.id, roomId);
+    const handleByToken = new Map(participants.map((p) => [p.token, p.handle]));
+    heldLate = heldLatecomers(
+      pVotes,
+      participants.map((p) => p.token),
+    ).map((t) => ({ token: t, handle: handleByToken.get(t) ?? "—" }));
+  }
   const curIdx = seq.findIndex((p) => p.id === state.phaseId);
   const nextPhase = curIdx >= 0 && curIdx < seq.length - 1 ? seq[curIdx + 1] : null;
   const nextPeek = nextPhase
@@ -1751,6 +1795,9 @@ export async function getFacilitatorState(
     nextPeek,
     // F4 — plan-vs-actual phase timing (host-only; null until the room advances).
     phaseTimings,
+    // D4 — latecomers waiting to be placed (host-only; only on a hold-policy
+    // grouping phase). Empty otherwise.
+    heldLatecomers: heldLate,
     // C4 — the raw ref (host-only) so the cockpit can ring the active card.
     spotlightRef: state.spotlight ?? null,
     // C5 — the live co-facilitators (host-only; derived, never stored).

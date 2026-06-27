@@ -73,6 +73,16 @@ const OneTwoFourParticipant: Renderer = ({ view, act, token, phaseId }) => {
           <p className="text-lg leading-relaxed text-white/90">{v.prompt}</p>
         )}
 
+        {v.held ? (
+          <div className="rounded-xl border border-accent/40 bg-accent/10 px-4 py-4 text-center">
+            <p className="text-base font-medium text-white/90">
+              You&apos;re joining in a moment
+            </p>
+            <p className="mt-1 text-sm text-muted">
+              The facilitator will place you in a group shortly — hang tight.
+            </p>
+          </div>
+        ) : (
         <div className="rounded-xl border border-border bg-surface px-4 py-3">
           {v.round > 0 && !v.wholeRoom ? (
             <GroupChips members={v.groupMembers} label="Working with" />
@@ -87,8 +97,9 @@ const OneTwoFourParticipant: Renderer = ({ view, act, token, phaseId }) => {
             </>
           )}
         </div>
+        )}
 
-        {wantCapture &&
+        {!v.held && wantCapture &&
           (done ? (
             <CaptureDone
               title="Your shared answer is in."
@@ -113,7 +124,7 @@ const OneTwoFourParticipant: Renderer = ({ view, act, token, phaseId }) => {
             </>
           ))}
 
-        {!wantCapture && (
+        {!v.held && !wantCapture && (
           <p className="text-base leading-relaxed text-muted">
             {v.round === 0
               ? "Jot your own thoughts in silence — you'll compare them next."
@@ -122,7 +133,7 @@ const OneTwoFourParticipant: Renderer = ({ view, act, token, phaseId }) => {
         )}
       </div>
 
-      {wantCapture && !done && (
+      {!v.held && wantCapture && !done && (
         <StickyAction
           label="Capture your shared answer"
           disabled={!text.trim()}
