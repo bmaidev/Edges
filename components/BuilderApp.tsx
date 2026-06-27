@@ -14,6 +14,7 @@ import { AgendaArc } from "@/components/AgendaArc";
 import { RunSheetSection } from "@/components/RunSheetSection";
 import { RoomMockup } from "@/components/RoomMockup";
 import { RehearsalTheatre } from "@/components/RehearsalTheatre";
+import { ShareImportPanel } from "@/components/ShareImportPanel";
 import { acceptsTimerEdit, phaseMinutes, phaseStage } from "@/lib/arc";
 import type { ModuleKind } from "@/lib/types";
 
@@ -682,6 +683,47 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
     else setMsg("Couldn't delete (needs the admin passcode).");
   }
 
+  // B4 — share a saved design as a portable code, then copy it to the clipboard.
+  async function shareDesign(id: string, dname: string) {
+    const res = await fetch(`${apiBase}/host`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "exportDesign", id, code, origin: name || undefined }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!d.code) {
+      setMsg("Couldn't export that design.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(d.code);
+      setMsg(`Copied a share code for “${dname}” to your clipboard.`);
+    } catch {
+      window.prompt(`Share code for “${dname}” (copy it):`, d.code);
+    }
+  }
+
+  // B4 — duplicate a saved design: load it, then save a fresh copy. Re-uses the
+  // validated phases the library already holds (saveDesign re-validates anyway).
+  async function duplicateDesign(id: string) {
+    const got = await fetch(`${apiBase}/designs?code=${encodeURIComponent(code)}&id=${id}`);
+    if (!got.ok) return;
+    const { design } = await got.json();
+    if (!design) return;
+    const res = await fetch(`${apiBase}/host`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "saveDesign", name: `${design.name} (copy)`.slice(0, 80), phases: design.phases, code }),
+    });
+    if (res.ok) {
+      setMsg(`Duplicated “${design.name}”.`);
+      loadDesigns();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setMsg(d.error ?? "Couldn't duplicate (needs the admin passcode).");
+    }
+  }
+
   function exportDesign() {
     const json = JSON.stringify({ version: 1, name, phases: parsedPhases() }, null, 2);
     navigator.clipboard?.writeText(json).then(
@@ -987,33 +1029,46 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           Import JSON
         </button>
       </div>
-      {userDesigns.length > 0 && (
-        <>
-          <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
-            Your templates
-          </h2>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {userDesigns.map((d) => (
-              <div key={d.id} className="flex items-center gap-2 text-xs">
-                <button
-                  onClick={() => editDesign(d.id)}
-                  className="flex-1 rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-left hover:border-accent"
-                >
-                  {d.name}{" "}
-                  <span className="text-muted">· {d.phaseCount} phase{d.phaseCount === 1 ? "" : "s"}</span>
-                </button>
-                <button
-                  onClick={() => removeDesign(d.id)}
-                  className="text-[#ff8a8a] underline"
-                  title="Delete (admin only)"
-                >
-                  delete
-                </button>
-              </div>
-            ))}
+      <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
+        Your templates
+      </h2>
+      <div className="mt-2 flex flex-col gap-1.5">
+        {userDesigns.map((d) => (
+          <div key={d.id} className="flex items-center gap-2 text-xs">
+            <button
+              onClick={() => editDesign(d.id)}
+              className="flex-1 rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-left hover:border-accent"
+            >
+              {d.name}{" "}
+              <span className="text-muted">· {d.phaseCount} phase{d.phaseCount === 1 ? "" : "s"}</span>
+            </button>
+            {/* B4 — share / duplicate / delete a saved design. */}
+            <button
+              onClick={() => shareDesign(d.id, d.name)}
+              className="text-muted underline hover:text-accent"
+              title="Copy a shareable code"
+            >
+              share
+            </button>
+            <button
+              onClick={() => duplicateDesign(d.id)}
+              className="text-muted underline hover:text-accent"
+              title="Duplicate (admin only)"
+            >
+              duplicate
+            </button>
+            <button
+              onClick={() => removeDesign(d.id)}
+              className="text-[#ff8a8a] underline"
+              title="Delete (admin only)"
+            >
+              delete
+            </button>
           </div>
-        </>
-      )}
+        ))}
+      </div>
+      {/* B4 — import a design someone shared with you. */}
+      <ShareImportPanel apiBase={apiBase} code={code} onImported={(nm) => { setMsg(`Imported “${nm}”.`); loadDesigns(); }} />
 
       <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
         Add a module
