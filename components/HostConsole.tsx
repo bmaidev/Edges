@@ -534,6 +534,16 @@ export function HostConsole({
               />
               High-contrast big screen (colour-safe, for the whole room)
             </label>
+            {/* C6 — silence the timer chime for the whole room (the amber tint
+                still carries the cue). The per-device cockpit mute is separate. */}
+            <label className="flex w-fit items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={s.timerSoundOff === true}
+                onChange={(e) => cmd("setTimerSound", { off: e.target.checked })}
+              />
+              Mute the timer chime for the whole room
+            </label>
             {/* B1 — the agenda arc during the run: does it still breathe? */}
             <HostArcStrip state={s} />
             {/* D4 — who's in the room: live/quiet dots + join order. */}

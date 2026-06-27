@@ -234,7 +234,12 @@ function StatusBar({ state }: { state: PublicState }) {
   // C6 — room-felt milestones: a soft "warn" chime + a calm low-time tint as the
   // clock crosses 2:00 then 0:30. Derived client-side; the chime self-swallows
   // when audio isn't unlocked, so the tint is the guaranteed channel.
-  const onWarn = useCallback(() => chime("warn"), [chime]);
+  // C6 — respect the room-wide timer-sound opt-out (the tint still carries the
+  // signal; only the chime is silenced).
+  const soundOff = (state as { timerSoundOff?: boolean }).timerSoundOff === true;
+  const onWarn = useCallback(() => {
+    if (!soundOff) chime("warn");
+  }, [soundOff, chime]);
   // C6 full — honour the builder-authored amber threshold (falls back to 2:00).
   const warnSeconds =
     (state.config as { timerWarnSeconds?: number } | null)?.timerWarnSeconds ??
