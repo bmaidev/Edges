@@ -10,6 +10,10 @@ import { QUIET_MS } from "./modules/registry.server";
 export interface RoomHealth {
   present: number; // participants in the room
   here: number; // those whose heartbeat is fresh (not gone quiet)
+  // H1 full — who's gone quiet (handle + ms since last seen), so the facilitator
+  // can decide whether to pause before advancing. Handle only (a self-chosen
+  // display name the host already sees) — never a token, never content.
+  dropped: { handle: string; since: number }[];
 }
 
 export function computeRoomHealth(
@@ -18,10 +22,14 @@ export function computeRoomHealth(
   now: number = Date.now(),
 ): RoomHealth {
   const present = participants.length;
-  let quiet = 0;
+  const dropped: { handle: string; since: number }[] = [];
   for (const p of participants) {
     const seen = heartbeats[p.token];
-    if (typeof seen === "number" && now - seen > QUIET_MS) quiet++;
+    if (typeof seen === "number" && now - seen > QUIET_MS) {
+      dropped.push({ handle: p.handle, since: now - seen });
+    }
   }
-  return { present, here: present - quiet };
+  // Most-recently-dropped first.
+  dropped.sort((a, b) => a.since - b.since);
+  return { present, here: present - dropped.length, dropped };
 }
