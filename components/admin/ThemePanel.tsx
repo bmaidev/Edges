@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { ContrastStrip } from "@/components/admin/ContrastStrip";
+
 export const PALETTE_KEYS = ["bg", "surface", "accent", "muted", "border"] as const;
 export const PALETTE_DEFAULTS: Record<string, string> = {
   bg: "#0F1A35",
@@ -110,6 +112,9 @@ export function ThemePanel({
           Reset colours
         </button>
       </div>
+
+      {/* D2 — live AA contrast read-out for the chosen palette (advisory). */}
+      <ContrastStrip palette={value.palette} />
 
       <div className="flex items-center gap-3">
         {value.logoUrl && (
