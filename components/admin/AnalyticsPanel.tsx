@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Analytics } from "@/lib/analytics";
+import type { MetricsSummary } from "@/lib/session-metrics";
+import { SERVER_MODULES } from "@/lib/modules/registry.server";
+import type { ModuleKind } from "@/lib/types";
+
+type AnalyticsData = Analytics & { metrics?: MetricsSummary };
 
 // F4 — the admin cross-session analytics view. Aggregate counts across every
 // room: sessions run, participation, contributions, a sessions-over-time trend,
 // and the most-used designs. No per-person data — account-less by design.
 export function AnalyticsPanel({ code }: { code: string }) {
-  const [data, setData] = useState<Analytics | null>(null);
+  const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -74,12 +79,82 @@ export function AnalyticsPanel({ code }: { code: string }) {
         </ul>
       </div>
 
+      {/* F4 — method engagement + ended-early, from the de-identified metrics. */}
+      {data.metrics && data.metrics.methods.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              Method engagement
+            </h3>
+            <div className="flex items-center gap-3 text-xs">
+              <a
+                href={`/api/admin/analytics?code=${encodeURIComponent(code)}&export=csv`}
+                className="text-accent underline"
+              >
+                CSV
+              </a>
+              <a
+                href={`/api/admin/analytics?code=${encodeURIComponent(code)}&export=json`}
+                className="text-accent underline"
+              >
+                JSON
+              </a>
+              <button
+                onClick={async () => {
+                  if (!window.confirm("Clear all session metrics history? This can't be undone.")) return;
+                  await fetch(`/api/admin/analytics?code=${encodeURIComponent(code)}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "clear" }),
+                  });
+                  load();
+                }}
+                className="text-[#ff8a8a] underline"
+              >
+                Clear history
+              </button>
+            </div>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            How much of the room each method drew in, averaged across sessions.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {data.metrics.methods.map((m) => (
+              <li key={m.moduleId} className="flex items-center gap-3 text-sm">
+                <span className="w-32 shrink-0 truncate">{methodLabel(m.moduleId)}</span>
+                <span className="h-2 flex-1 overflow-hidden rounded-full bg-surface">
+                  <span
+                    className="block h-full rounded-full bg-accent/70"
+                    style={{ width: `${Math.round(m.avgEngagement * 100)}%` }}
+                  />
+                </span>
+                <span className="w-24 shrink-0 text-right text-xs text-muted tabular-nums">
+                  {Math.round(m.avgEngagement * 100)}% · {m.sessions}×
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-muted">
+            {Math.round(data.metrics.endedEarlyRate * 100)}% of sessions ended before the
+            final phase
+            {data.metrics.suppressed > 0 && (
+              <> · {data.metrics.suppressed} small session{data.metrics.suppressed === 1 ? "" : "s"} hidden (under {3} people)</>
+            )}
+            .
+          </p>
+        </div>
+      )}
+
       <p className="text-xs text-muted">
         Aggregate counts only — never any participant&apos;s words or identity. Edges keeps no
         per-person record.
       </p>
     </div>
   );
+}
+
+function methodLabel(moduleId: string): string {
+  return SERVER_MODULES[moduleId as ModuleKind]?.meta.name ?? moduleId;
 }
 
 function Stat({ label, value, sub }: { label: string; value: number; sub?: string }) {
