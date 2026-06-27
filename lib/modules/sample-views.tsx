@@ -7,7 +7,16 @@
 
 import type { ModuleKind } from "@/lib/types";
 import type { ContentItem } from "@/lib/types";
-import { pollView, samplePollVotes } from "./vote-compute";
+import {
+  dotVoteView,
+  pollView,
+  rankView,
+  sampleDotVotes,
+  samplePollVotes,
+  sampleRankVotes,
+  sampleScaleVotes,
+  scaleView,
+} from "./vote-compute";
 import type {
   AllocateView,
   CaptureView,
@@ -122,38 +131,38 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
       "participant",
     );
   },
+  // B2 faithfulness — the vote previews are the REAL shapers over synthetic votes.
   dotvote: (c): DotVoteView => {
     const options = arr(c, "options").length ? arr(c, "options") : ["Idea A", "Idea B", "Idea C"];
     const dots = num(c, "dots", 5);
-    return {
-      prompt: str(c, "prompt", "Spend your dots"),
-      options,
-      dots,
-      counts: Object.fromEntries(options.map((o, i) => [o, [4, 3, 2][i % 3]])),
-      mine: { [options[0]]: 2 },
-      remaining: dots - 2,
-    };
+    return dotVoteView(
+      { prompt: str(c, "prompt", "Spend your dots"), options, dots },
+      sampleDotVotes(options, dots),
+      "me",
+    );
   },
   rank: (c): RankView => {
     const items = arr(c, "items").length ? arr(c, "items") : ["First", "Second", "Third"];
-    return {
-      prompt: str(c, "prompt", "Drag to rank"),
-      items,
-      results: items.map((item, i) => ({ item, score: items.length - i })),
-      mine: items,
-    };
+    return rankView(
+      { prompt: str(c, "prompt", "Drag to rank"), items },
+      sampleRankVotes(items),
+      "me",
+    );
   },
   scale: (c): ScaleView => {
     const statements = arr(c, "statements").length ? arr(c, "statements") : ["This excites me"];
     const labels = arr(c, "labels");
-    return {
-      statements,
-      min: num(c, "min", 1),
-      max: num(c, "max", 5),
-      labels: labels.length >= 2 ? [labels[0], labels[1]] : undefined,
-      stats: statements.map(() => ({ mean: 3.6, count: 6 })),
-      mine: statements.map(() => 4),
-    };
+    const max = num(c, "max", 5);
+    return scaleView(
+      {
+        statements,
+        min: num(c, "min", 1),
+        max,
+        labels: labels.length >= 2 ? [labels[0], labels[1]] : undefined,
+      },
+      sampleScaleVotes(statements, max),
+      "me",
+    );
   },
   wordcloud: (c): WordCloudView => ({
     prompt: str(c, "prompt", "One word that comes to mind?"),

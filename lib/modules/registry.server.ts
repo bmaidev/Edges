@@ -21,7 +21,7 @@ import type {
   LobbyView,
   ReadAroundView,
 } from "./views";
-import { pollView } from "./vote-compute";
+import { dotVoteView, pollView, rankView, scaleView } from "./vote-compute";
 // Fleet-built modules (research roadmap) — one self-contained def per file.
 import { brainwriteModule } from "./defs/brainwrite.server";
 import { marketplaceModule } from "./defs/marketplace.server";
@@ -486,20 +486,9 @@ const dotvote: ModuleServerDef = {
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
   capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
-    const c = ctx.config as Record<string, any>;
-    const options: string[] = c.options ?? [];
-    const dots: number = c.dots ?? 3;
+    // B2 faithfulness — shared shaper over the real votes (preview uses the same).
     const votes = await ctx.store.readVotes(ctx.phase.id);
-    const counts: Record<string, number> = {};
-    options.forEach((o) => (counts[o] = 0));
-    for (const v of Object.values(votes)) {
-      const map = (v ?? {}) as Record<string, number>;
-      for (const [opt, n] of Object.entries(map))
-        if (opt in counts) counts[opt] += Number(n) || 0;
-    }
-    const mine = ((ctx.me ? votes[ctx.me.token] : null) ?? {}) as Record<string, number>;
-    const used = Object.values(mine).reduce((s, n) => s + (Number(n) || 0), 0);
-    return { prompt: c.prompt ?? "", options, dots, counts, mine, remaining: Math.max(0, dots - used) };
+    return dotVoteView(ctx.config, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
     if (!action.token) return { ok: false, reason: "missing" };
@@ -535,22 +524,9 @@ const rank: ModuleServerDef = {
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
   capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
-    const c = ctx.config as Record<string, any>;
-    const items: string[] = c.items ?? [];
+    // B2 faithfulness — shared shaper over the real votes (preview uses the same).
     const votes = await ctx.store.readVotes(ctx.phase.id);
-    const score: Record<string, number> = {};
-    items.forEach((i) => (score[i] = 0));
-    for (const v of Object.values(votes)) {
-      const order = Array.isArray(v) ? (v as string[]) : [];
-      order.forEach((item, idx) => {
-        if (item in score) score[item] += items.length - idx;
-      });
-    }
-    const results = items
-      .map((item) => ({ item, score: score[item] }))
-      .sort((a, b) => b.score - a.score);
-    const mine = (ctx.me ? (votes[ctx.me.token] as string[]) : null) ?? null;
-    return { prompt: c.prompt ?? "", items, results, mine };
+    return rankView(ctx.config, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
     if (!action.token) return { ok: false, reason: "missing" };
@@ -583,33 +559,9 @@ const scale: ModuleServerDef = {
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
   capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
   async computeView(ctx) {
-    const c = ctx.config as Record<string, any>;
-    const statements: string[] = c.statements ?? [];
+    // B2 faithfulness — shared shaper over the real votes (preview uses the same).
     const votes = await ctx.store.readVotes(ctx.phase.id);
-    const sums = statements.map(() => 0);
-    const counts = statements.map(() => 0);
-    for (const v of Object.values(votes)) {
-      const vals = Array.isArray(v) ? (v as number[]) : [];
-      vals.forEach((n, i) => {
-        if (i < statements.length && typeof n === "number") {
-          sums[i] += n;
-          counts[i]++;
-        }
-      });
-    }
-    const stats = statements.map((_, i) => ({
-      mean: counts[i] ? Math.round((sums[i] / counts[i]) * 10) / 10 : 0,
-      count: counts[i],
-    }));
-    const mine = (ctx.me ? (votes[ctx.me.token] as number[]) : null) ?? null;
-    return {
-      statements,
-      min: c.min ?? 1,
-      max: c.max ?? 5,
-      labels: c.labels,
-      stats,
-      mine,
-    };
+    return scaleView(ctx.config, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
     if (!action.token) return { ok: false, reason: "missing" };

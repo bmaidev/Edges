@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { pollView, samplePollVotes } from "@/lib/modules/vote-compute";
+import {
+  pollView,
+  sampleDotVotes,
+  samplePollVotes,
+  sampleRankVotes,
+  sampleScaleVotes,
+} from "@/lib/modules/vote-compute";
 import { getSampleView } from "@/lib/modules/sample-views";
 import {
   addParticipant,
@@ -78,4 +84,40 @@ describe("faithfulness: preview == live view", () => {
     expect(Object.keys(v.counts)).toEqual(["Apple", "Pear", "Plum"]);
     expect(v.mine).toEqual(["Apple"]);
   });
+
+  // The whole vote family: replay the preview's synthetic votes into a real room
+  // and assert the in-builder preview is byte-identical to the live view.
+  const CASES = [
+    {
+      // A real prompt in config (the preview's placeholder default only kicks in
+      // when none is set; here we prove the preview honours the configured one).
+      moduleId: "dotvote" as const,
+      config: { label: "D", prompt: "Spend wisely", options: ["A", "B", "C"], dots: 5 },
+      votes: () => sampleDotVotes(["A", "B", "C"], 5),
+    },
+    {
+      moduleId: "rank" as const,
+      config: { label: "R", prompt: "Order these", items: ["A", "B", "C"] },
+      votes: () => sampleRankVotes(["A", "B", "C"]),
+    },
+    {
+      moduleId: "scale" as const,
+      config: { label: "S", statements: ["A", "B"], min: 1, max: 5 },
+      votes: () => sampleScaleVotes(["A", "B"], 5),
+    },
+  ];
+
+  for (const cse of CASES) {
+    it(`${cse.moduleId}: preview is byte-identical to the live view`, async () => {
+      const { room } = await createRoom(`Faith-${cse.moduleId}`, "Topic");
+      await setPhases([{ id: "p1", moduleId: cse.moduleId, config: cse.config }], "T", room.slug);
+      await addParticipant("me", "Me", room.slug);
+      for (const [token, value] of Object.entries(cse.votes())) {
+        await castVote("p1", token, value, room.slug);
+      }
+      const live = (await getPublicState("me", room.slug, "participant")).view?.data;
+      const preview = getSampleView(cse.moduleId, cse.config);
+      expect(preview).toEqual(live);
+    });
+  }
 });

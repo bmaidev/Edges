@@ -9,7 +9,7 @@
 // so they're trivially testable and run client-side for the preview.
 
 import type { Role } from "../types";
-import type { PollView } from "./views";
+import type { DotVoteView, PollView, RankView, ScaleView } from "./views";
 
 type Cfg = Record<string, unknown>;
 
@@ -79,4 +79,112 @@ export function samplePollVotes(
   });
   if (options.length) votes["me"] = multi ? [options[0]] : options[0];
   return votes;
+}
+
+// ---- dotvote (budget voting) ----------------------------------------------
+
+export function dotVoteView(
+  config: Cfg,
+  votes: Record<string, unknown>,
+  meToken: string | null,
+): DotVoteView {
+  const options = strArray(config.options);
+  const dots = typeof config.dots === "number" ? config.dots : 3;
+  const counts: Record<string, number> = {};
+  options.forEach((o) => (counts[o] = 0));
+  for (const v of Object.values(votes)) {
+    const map = (v ?? {}) as Record<string, number>;
+    for (const [opt, n] of Object.entries(map)) if (opt in counts) counts[opt] += Number(n) || 0;
+  }
+  const mine = ((meToken ? votes[meToken] : null) ?? {}) as Record<string, number>;
+  const used = Object.values(mine).reduce((s, n) => s + (Number(n) || 0), 0);
+  return {
+    prompt: typeof config.prompt === "string" ? config.prompt : "",
+    options,
+    dots,
+    counts,
+    mine,
+    remaining: Math.max(0, dots - used),
+  };
+}
+
+export function sampleDotVotes(options: string[], dots: number): Record<string, unknown> {
+  const votes: Record<string, unknown> = {};
+  if (options.length) votes["me"] = { [options[0]]: Math.min(2, dots) };
+  options.forEach((opt, i) => {
+    votes[`s${i}`] = { [opt]: Math.max(1, 3 - i) };
+  });
+  return votes;
+}
+
+// ---- rank (Borda) ----------------------------------------------------------
+
+export function rankView(
+  config: Cfg,
+  votes: Record<string, unknown>,
+  meToken: string | null,
+): RankView {
+  const items = strArray(config.items);
+  const score: Record<string, number> = {};
+  items.forEach((i) => (score[i] = 0));
+  for (const v of Object.values(votes)) {
+    const order = Array.isArray(v) ? (v as string[]) : [];
+    order.forEach((item, idx) => {
+      if (item in score) score[item] += items.length - idx;
+    });
+  }
+  const results = items
+    .map((item) => ({ item, score: score[item] }))
+    .sort((a, b) => b.score - a.score);
+  const mine = (meToken ? (votes[meToken] as string[]) : null) ?? null;
+  return { prompt: typeof config.prompt === "string" ? config.prompt : "", items, results, mine };
+}
+
+export function sampleRankVotes(items: string[]): Record<string, unknown> {
+  return { me: [...items], s0: [...items], s1: [...items].reverse() };
+}
+
+// ---- scale (rating sliders) -----------------------------------------------
+
+export function scaleView(
+  config: Cfg,
+  votes: Record<string, unknown>,
+  meToken: string | null,
+): ScaleView {
+  const statements = strArray(config.statements);
+  const sums = statements.map(() => 0);
+  const counts = statements.map(() => 0);
+  for (const v of Object.values(votes)) {
+    const vals = Array.isArray(v) ? (v as number[]) : [];
+    vals.forEach((n, i) => {
+      if (i < statements.length && typeof n === "number") {
+        sums[i] += n;
+        counts[i]++;
+      }
+    });
+  }
+  const stats = statements.map((_, i) => ({
+    mean: counts[i] ? Math.round((sums[i] / counts[i]) * 10) / 10 : 0,
+    count: counts[i],
+  }));
+  const mine = (meToken ? (votes[meToken] as number[]) : null) ?? null;
+  return {
+    statements,
+    min: typeof config.min === "number" ? config.min : 1,
+    max: typeof config.max === "number" ? config.max : 5,
+    labels: Array.isArray(config.labels) && config.labels.length >= 2
+      ? [String(config.labels[0]), String(config.labels[1])]
+      : undefined,
+    stats,
+    mine,
+  };
+}
+
+export function sampleScaleVotes(statements: string[], max: number): Record<string, unknown> {
+  const mid = Math.max(1, Math.round(max * 0.7));
+  return {
+    me: statements.map(() => mid),
+    s0: statements.map(() => Math.max(1, mid - 1)),
+    s1: statements.map(() => Math.min(max, mid + 1)),
+  };
 }
