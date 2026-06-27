@@ -45,7 +45,9 @@ export type Primitive =
   | "emptychair"
   | "issuemap"
   | "promptrelay"
-  | "builder";
+  | "builder"
+  // E3 — a calm ambient "break / hold" screen, summoned over the live sequence.
+  | "ambient";
 
 export type ModeId = "case-dissection" | "counter-mapping" | "provocation";
 
@@ -206,6 +208,10 @@ export interface SessionState {
   // sole writer is writeState and every set/clear bumps rev (authoritative-apply).
   // Cleared on every relaunch/advance/end so a stale spotlight can't linger.
   spotlight?: SpotlightRef | null;
+  // E3 — a calm ambient break/hold summoned over the live sequence. When set, the
+  // active phase resolves to a synthetic "ambient" module. Snapshots where to
+  // return so resume is non-destructive (restores the prior phase + its timer).
+  ambient?: AmbientState | null;
   // C5 — the co-facilitator currently "driving" the room (a soft, advisory baton).
   // Lives ON the state key (NOT the presence hash) so a claim bumps rev and rides
   // the monotonic-apply guard — otherwise an in-flight poll at the same rev could
@@ -427,6 +433,15 @@ export interface FacilitatorState extends PublicState {
   // C5 — true when state.driver is set but no longer live (its presenceId aged out
   // of the roster, or the claim is stale). Derived on read; the next claim wins.
   driverStale?: boolean;
+}
+
+// E3 — the calm ambient state. `break` runs a countdown; `hold` is open-ended.
+// returnPhaseId/returnTimerEndsAt are the snapshot to restore on resume.
+export interface AmbientState {
+  kind: "break" | "hold";
+  note?: string;
+  returnPhaseId: string | null;
+  returnTimerEndsAt: number | null;
 }
 
 // C5 — the soft driving baton. driverId is the host's presenceId (per-tab).

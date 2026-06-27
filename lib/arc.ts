@@ -15,6 +15,7 @@ export type ArcStage = "open" | "diverge" | "converge" | "close";
 export const STAGE_OF: Record<ModuleKind, ArcStage> = {
   // open — orient, present, group
   lobby: "open",
+  ambient: "open", // E3 — synthetic break/hold (never in a real arc)
   content: "open",
   media: "open",
   allocate: "open",
@@ -63,6 +64,7 @@ export const STAGE_OF: Record<ModuleKind, ArcStage> = {
 // Used only to draw the energy sparkline; not a runtime value.
 export const ENERGY_OF: Record<ModuleKind, number> = {
   lobby: 0.1,
+  ambient: 0, // E3
   content: 0.2,
   media: 0.3,
   allocate: 0.4,
@@ -108,6 +110,7 @@ export const ENERGY_OF: Record<ModuleKind, number> = {
 // for untimed long-form dialogue (a fishbowl/open-space genuinely runs long).
 export const DEFAULT_MINUTES: Record<ModuleKind, number> = {
   lobby: 2,
+  ambient: 0, // E3
   content: 5,
   media: 8,
   allocate: 3,

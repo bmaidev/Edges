@@ -217,6 +217,7 @@ const DEFAULT_STATE: SessionState = {
   actionItems: [],
   spotlight: null, // C4 — so endSession ({...DEFAULT_STATE}) clears a spotlight for free
   driver: null, // C5 — the driving baton is cleared on end for free
+  ambient: null, // E3 — a calm break is cleared on end for free
   rev: 0, // a real write always has rev > 0, so the fallback never wins a race
 };
 
@@ -261,9 +262,26 @@ function resolvePhases(state: SessionState): import("./types").PhaseInstance[] {
   return state.mode ? modePhaseInstances(state.mode) : [];
 }
 
+// E3 — the synthetic phase id used while a calm ambient break/hold is on screen.
+const AMBIENT_PHASE_ID = "__ambient__";
+
 function resolveActive(
   state: SessionState,
 ): import("./types").PhaseInstance | null {
+  // E3 — when ambient is active, the active phase is a SYNTHETIC ambient module
+  // (never a real sequence phase), so the room shows the calm screen without
+  // touching the underlying sequence.
+  if (state.phaseId === AMBIENT_PHASE_ID && state.ambient) {
+    return {
+      id: AMBIENT_PHASE_ID,
+      moduleId: "ambient",
+      config: {
+        label: state.ambient.kind === "hold" ? "Hold" : "Break",
+        kind: state.ambient.kind,
+        note: state.ambient.note,
+      },
+    };
+  }
   return resolvePhases(state).find((p) => p.id === state.phaseId) ?? null;
 }
 
@@ -367,6 +385,60 @@ export async function setDriver(
 ): Promise<SessionState> {
   const state = await getState(roomId);
   return writeState({ ...state, driver: driver ?? null }, roomId);
+}
+
+// E3 — summon a calm ambient break/hold over the live sequence. Snapshots the
+// current phase + timer so resume is non-destructive. A break runs a server-
+// stamped countdown (durationSec); a hold is open-ended. Rides authoritative-apply
+// (writeState bumps rev). Idempotent re-entry keeps the ORIGINAL return pointer so
+// extending a break can't strand the room on the ambient screen.
+export async function setAmbient(
+  kind: "break" | "hold",
+  durationSec: number | null,
+  note: string | undefined,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  const already = state.phaseId === AMBIENT_PHASE_ID && state.ambient;
+  const endsAt = kind === "break" && durationSec && durationSec > 0
+    ? Date.now() + Math.floor(durationSec) * 1000
+    : null;
+  return writeState(
+    {
+      ...state,
+      phaseId: AMBIENT_PHASE_ID,
+      ambient: {
+        kind,
+        note: note?.slice(0, 200),
+        // Keep the original snapshot across re-entry (extend / break→hold).
+        returnPhaseId: already ? state.ambient!.returnPhaseId : state.phaseId,
+        returnTimerEndsAt: already ? state.ambient!.returnTimerEndsAt : state.timerEndsAt,
+      },
+      timerEndsAt: endsAt,
+      timerRemainingMs: null,
+    },
+    roomId,
+  );
+}
+
+// E3 — leave the ambient screen, restoring the EXACT prior phase + timer. Crucially
+// NOT via setPhase (which nulls the timer and releases queued content) — a break
+// must hand the room back exactly as it left it.
+export async function resumeAmbient(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<SessionState> {
+  const state = await getState(roomId);
+  if (!state.ambient) return state;
+  return writeState(
+    {
+      ...state,
+      phaseId: state.ambient.returnPhaseId,
+      timerEndsAt: state.ambient.returnTimerEndsAt,
+      timerRemainingMs: null,
+      ambient: null,
+    },
+    roomId,
+  );
 }
 
 // C1 — every timer mutation is a read-compute-write of the state key, so two
@@ -1489,6 +1561,8 @@ export async function roomSignature(
     // C5 — tick the stream when the driving baton changes, so the chip updates
     // within ~1 SSE beat instead of waiting for the 2s poll.
     state.driver ? `d:${state.driver.driverId}` : "",
+    // E3 — tick when a calm break/hold is summoned or resumed.
+    state.ambient ? `amb:${state.ambient.kind}` : "",
   ].join("|");
 }
 

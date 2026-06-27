@@ -48,6 +48,7 @@ import { issuemapModule } from "./defs/issuemap.server";
 import { promptrelayModule } from "./defs/promptrelay.server";
 import { builderModule } from "./defs/builder.server";
 import { mediaModule } from "./defs/media.server";
+import { ambientModule } from "./defs/ambient.server";
 
 const CONTENT_TYPES = ["case", "lens", "prompt", "argument", "note"] as const;
 
@@ -837,6 +838,7 @@ export const SERVER_MODULES: Record<ModuleKind, ModuleServerDef<any>> = {
   lobby,
   content,
   media: mediaModule,
+  ambient: ambientModule,
   capture,
   allocate,
   coordinator,
