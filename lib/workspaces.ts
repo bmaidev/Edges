@@ -8,7 +8,7 @@
 // `workspaceId` onto rooms/metrics/designs and the per-workspace indexes below.
 
 import { randomBytes } from "node:crypto";
-import { checkSuperAdmin, getDb, safeEqualHex, sha256 } from "./rooms";
+import { checkSuperAdmin, getDb, getRoom, safeEqualHex, sha256 } from "./rooms";
 import { withLock } from "./store";
 import { decrypt, encrypt, secretsConfigured } from "./secrets";
 
@@ -363,6 +363,21 @@ export async function workspaceAiKeyInfo(
 ): Promise<{ set: boolean; last4: string | null }> {
   const ws = await getDb().get<Workspace>(workspaceKey(workspaceId));
   return { set: Boolean(ws?.aiKey), last4: ws?.aiKey?.last4 ?? null };
+}
+
+// The EFFECTIVE Anthropic key for a workspace: its own BYO key if set, else the
+// global env baseline. Null when neither exists (AI unavailable). Server-only.
+export async function resolveAiKeyForWorkspace(
+  workspaceId: string,
+): Promise<string | null> {
+  return (await getWorkspaceAiKey(workspaceId)) ?? process.env.ANTHROPIC_API_KEY ?? null;
+}
+
+// The effective key for a room, via its owning workspace. Used at the request
+// boundaries (host route, design route) to set the AI key for the whole handler.
+export async function resolveAiKeyForRoom(slug: string): Promise<string | null> {
+  const room = await getRoom(slug);
+  return resolveAiKeyForWorkspace(room?.workspaceId ?? DEFAULT_WORKSPACE_ID);
 }
 
 // Resolve a code to the workspace it administers + the ROLE it grants. The env
