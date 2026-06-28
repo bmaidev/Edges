@@ -116,6 +116,7 @@ function Admin() {
     workspaceId: string;
     name: string;
     isSuperAdmin: boolean;
+    role: "owner" | "member" | null;
   } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
@@ -277,6 +278,11 @@ function Admin() {
       {/* A4 — the active workspace (tenant) + super-admin workspace controls. */}
       {context && <WorkspaceBar code={code} context={context} />}
 
+      {/* C2 — workspace members (owner-only: add/revoke named people). */}
+      {context && (context.isSuperAdmin || context.role === "owner") && (
+        <MembersPanel code={code} />
+      )}
+
       {/* F4 — Rooms / Analytics tabs. */}
       <div className="mt-3 flex gap-1 border-b border-border text-sm">
         {(["rooms", "analytics"] as const).map((t) => (
@@ -328,8 +334,14 @@ function Admin() {
 // A workspace admin just sees which workspace they're in (their code already
 // scopes everything); the super-admin can list workspaces and mint a new one,
 // handing its admin code to an org — "the code is the key" to that workspace.
-type WsContext = { workspaceId: string; name: string; isSuperAdmin: boolean };
+type WsContext = {
+  workspaceId: string;
+  name: string;
+  isSuperAdmin: boolean;
+  role: "owner" | "member" | null;
+};
 type WsMeta = { id: string; name: string; createdAt: number };
+type MemberMeta = { id: string; name: string; role: "owner" | "member"; createdAt: number };
 
 function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
   const [open, setOpen] = useState(false);
@@ -454,6 +466,163 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
                   {linkCopied ? "Sign-in link copied ✓" : "Copy sign-in link"}
                 </button>
                 <PasscodeReveal code={created.adminCode} label="raw code" />
+              </div>
+              <button
+                className="mt-2 text-xs text-muted underline"
+                onClick={() => setCreated(null)}
+              >
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// C2 — the workspace's members. Owner-only: list the named people, add one (which
+// mints their bookmarkable sign-in link, shown once), and revoke. Rooms are shared
+// across the workspace, so this is about WHO can act + attribution, not silos.
+function MembersPanel({ code }: { code: string }) {
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<MemberMeta[] | null>(null);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<"owner" | "member">("member");
+  const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<{ name: string; link: string; code: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const res = await fetch(`/api/admin/members?code=${encodeURIComponent(code)}`, {
+      cache: "no-store",
+    });
+    if (res.ok) setList((await res.json()).members ?? []);
+  }, [code]);
+
+  async function openPanel() {
+    const next = !open;
+    setOpen(next);
+    if (next && list === null) await refresh();
+  }
+
+  async function add() {
+    const n = name.trim();
+    if (!n) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: n, role }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setCreated({ name: d.member.name, link: d.link, code: d.code });
+        setName("");
+        await refresh();
+      } else {
+        setErr(d.error ?? "Couldn't add the member.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke(memberId: string, who: string) {
+    if (!window.confirm(`Revoke ${who}? Their sign-in link stops working.`)) return;
+    await fetch("/api/admin/members", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, memberId }),
+    });
+    await refresh();
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted">
+          Members{list ? ` · ${list.length}` : ""}
+        </p>
+        <button onClick={openPanel} className="text-accent underline">
+          {open ? "Close" : "Manage members"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
+          <ul className="flex flex-col gap-1">
+            {(list ?? []).map((m) => (
+              <li key={m.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {m.name}{" "}
+                  <span className="rounded bg-bg px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                    {m.role}
+                  </span>
+                </span>
+                <button
+                  onClick={() => revoke(m.id, m.name)}
+                  className="text-xs text-[#ff8a8a] underline"
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+            {list && list.length === 0 && (
+              <li className="text-muted">
+                No named members yet — just the workspace&apos;s own admin link.
+              </li>
+            )}
+          </ul>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-1 flex-col gap-1 text-xs">
+              <span className="text-muted">Add a member</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && add()}
+                placeholder="Their name"
+                maxLength={60}
+                className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+            </label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as "owner" | "member")}
+              className="rounded-lg border border-border bg-bg px-2 py-2 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="member">member</option>
+              <option value="owner">owner</option>
+            </select>
+            <Button onClick={add} disabled={busy || !name.trim()}>
+              {busy ? "Adding…" : "Add"}
+            </Button>
+          </div>
+          {err && <p className="text-xs text-[#ff8a8a]">{err}</p>}
+
+          {created && (
+            <div className="rounded-lg border border-emerald-400/40 bg-emerald-400/5 p-3">
+              <p className="text-sm text-emerald-300">
+                Added <strong>{created.name}</strong>. Send them this sign-in link to
+                bookmark — it&apos;s their key (shown once).
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(created.link).then(() => {
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    });
+                  }}
+                  className="rounded-lg border border-accent px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+                >
+                  {linkCopied ? "Link copied ✓" : "Copy sign-in link"}
+                </button>
+                <PasscodeReveal code={created.code} label="raw code" />
               </div>
               <button
                 className="mt-2 text-xs text-muted underline"

@@ -26,12 +26,13 @@ export async function GET(req: NextRequest) {
   const rooms = await listRooms(ctx.workspaceId);
   const ws = await getWorkspace(ctx.workspaceId);
   return NextResponse.json({
-    // Phase A4 — which workspace this code administers, so the portal can show
-    // the active tenant + (for the super-admin) the workspace controls.
+    // Phase A4/C — which workspace this code administers + the caller's role, so
+    // the portal can show the active tenant + the right (owner-only) controls.
     context: {
       workspaceId: ctx.workspaceId,
       name: ws?.name ?? ctx.workspaceId,
       isSuperAdmin: ctx.isSuperAdmin,
+      role: ctx.role,
     },
     rooms: rooms.map((r) => ({
       slug: r.slug,
