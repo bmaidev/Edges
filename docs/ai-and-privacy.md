@@ -13,11 +13,22 @@ to a server log, and all session data deletes itself within 24 hours.
 
 ## 1. What needs an AI key
 
-Every AI feature is powered by a single Anthropic API key, set as the
-`ANTHROPIC_API_KEY` environment variable (in Vercel project settings for
-production, or in `.env.local` for local development). All AI calls in the
-platform go through one shared service, so the key is the one and only switch
-that turns AI on.
+Every AI feature is powered by an Anthropic API key. There are two ways one can
+be present:
+
+- **The instance key** — set by whoever runs the platform as the
+  `ANTHROPIC_API_KEY` environment variable (in Vercel project settings for
+  production, or in `.env.local` for local development). This is the shared
+  baseline that every workspace can use.
+- **Your workspace's own key (bring-your-own)** — a workspace owner can paste
+  their own Anthropic key in the admin console's **AI key** panel. When set, that
+  workspace's AI usage runs on (and bills to) that key instead of the instance
+  one. The key is **encrypted at rest** and never shown back; remove it any time
+  to fall back to the instance default.
+
+Either way, all AI calls go through one shared service, so a key being present
+(workspace key first, otherwise the instance key) is the one and only switch that
+turns AI on.
 
 **If the key is not set, the platform still works fully.** Every AI feature
 degrades gracefully: its button is hidden or shows "AI unavailable", and the

@@ -1,8 +1,10 @@
 # Facilitator guide
 
 This is how you run a session from the host console. You need a room's
-**facilitator** (or **co-host**, or **admin**) passcode — an admin creates the
-room and shares it (see the [Admin guide](admin-guide.md)).
+**facilitator** (or **co-host**, or **admin**) passcode — someone in your
+workspace creates the room and shares the host link + code with you (see the
+[Admin guide](admin-guide.md)). You don't need the admin console to run a room;
+the host URL and your passcode are enough.
 
 ## 1. Log in
 
@@ -13,11 +15,11 @@ Open **`/r/<room>/host`** and enter your passcode. (You'll briefly see
 
 If no session is running yet, you'll see the **session picker**:
 
-- **Built-in modes** — the three original guided sessions.
 - **Research-grounded templates** — ~21 one-tap sessions (pre-mortem, 1-2-4-All,
-  World Café, idea marketplace, AI red-team, and more). See the
-  [Templates catalog](templates.md).
-- **+ Build a custom session** — opens the builder (admin only to launch).
+  World Café, idea marketplace, AI red-team, and more), each a complete sequence
+  you can run as-is. See the [Templates catalog](templates.md).
+- **+ Build a custom session** — opens the builder (room-admin code needed to
+  launch).
 
 Tap a template and it loads into the room.
 
@@ -66,8 +68,8 @@ right after each action.)
 
 ## Designing a custom session
 
-Open **`/r/<room>/build`** (you'll need the **admin** passcode to *launch*; the
-AI design tools work with admin or facilitator):
+Open **`/r/<room>/build`** (you'll need the room's **admin** passcode to
+*launch*; the AI design tools work with the admin or facilitator code):
 
 - **✨ Suggest a session** — type your goal ("45 min, 12 people, decide between
   three options and leave with owners") and the AI proposes a full sequence of

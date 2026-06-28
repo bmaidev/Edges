@@ -43,6 +43,25 @@ Read-only material the facilitator pushes to the room (cases, prompts, notes, et
   - `contentHeading` — optional heading above the material.
   - `showContentTypes` — optionally limit to certain content types (`case`, `lens`, `prompt`, `argument`, `note`).
 
+### Presentation
+A simple slide-and-video deck on the room screen, advanced by the facilitator — for showing slides (PDF/images) or videos between activities.
+
+- **What participants do:** Watch the current slide/video (the same one that's on the projector). Nothing to submit.
+- **Facilitator / projector:** Facilitator loads and reorders the deck live and steps through it; the projector shows the current card large. PowerPoint/Keynote/PDF decks are converted to page images in your browser at upload time, so the projector only ever shows a plain image or an embedded video — playback is bulletproof.
+- **Key settings:**
+  - `label` — phase name.
+  - `cards` — the deck (built in the console by uploading files or pasting image/video URLs); can also be loaded and reordered live.
+
+### Break
+A calm "we're on a break" or "we'll resume shortly" holding screen, with optional breathing or countdown scenes. Unlike other modules you don't place it in a sequence — the facilitator **summons it live** at any point to pause the room.
+
+- **What participants do:** See a calm break/hold screen (and a countdown clock if a timer is running). Nothing to submit.
+- **Facilitator / projector:** The facilitator drops the room into a break and lifts it when ready. Projectable; everyone sees the same calm screen.
+- **Key settings:**
+  - `kind` — `break` or `hold`.
+  - `scene` — the look: `break`, `hold`, `breathe`, `countdown`, or `cuecard`.
+  - `note` — an optional line of copy on the screen.
+
 ### Close
 An end-of-session message, with a recap of each person's own contributions.
 
@@ -81,6 +100,17 @@ Asynchronous, anonymous pre-session divergence — people add ideas in their own
   - `placeholder` — input hint.
   - `brief` — a longer framing note explaining the pre-work.
   - `multiSubmit` — allow multiple ideas (on by default).
+
+### Actions
+"Yours-first" commitments capture — the closing move of a good session. Everyone leaves with something concrete *they'll* do.
+
+- **What participants do:** Capture their own short action items and see them listed back, theirs first — a personal to-do list, not a shared feed. They see only their own items, plus a soft anonymous "N people, M commitments" momentum signal.
+- **Facilitator / projector:** The facilitator and cohost see the full list (owner + text) for follow-up. The projector shows **counts only** — commitments never go on the big screen verbatim.
+- **Key settings:**
+  - `label`, `prompt` — the commitment prompt (default: "What's one thing you'll do differently?").
+  - `maxLen` — character limit per item (default 200).
+  - `maxItems` — how many items each person may capture (default 5).
+  - `askOwner` — ask who'll own each action (defaults to the author's handle, editable).
 
 ### Read-around
 The facilitator paces through submissions or detected patterns, one at a time, live to the room.

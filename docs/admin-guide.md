@@ -1,14 +1,29 @@
 # Admin guide
 
-The admin portal (`/admin`) is where you create and manage rooms. You need the
-super-admin passcode (`ADMIN_PASSCODE`).
+Your **workspace** is your own space on Edges — your rooms, your branding, your
+teammates, your reports. The admin console (`/admin`) is where you run it. This
+guide gets you from "I have a link" to "the room is live".
 
-## 1. Open the portal
+## 1. Get into your workspace
 
-Go to **`/admin`** and enter the super-admin passcode. (The site root `/`
-redirects here.)
+There are two ways in, depending on how you arrived:
 
-> **New here?** The fastest way to understand Edges is the **sample room & the
+- **You're starting fresh.** Go to **`/start`**, give your workspace a name
+  (your own name, a team, or an org like "ANU School of Applied Cybernetics"),
+  and — if the instance asks for one — paste the **sign-up code** you were given.
+  You'll get a private **sign-in link** to bookmark. That link *is* your key.
+- **Someone set one up for you.** They'll send you a **sign-in link** that looks
+  like `…/admin#k=XXXX`. Click it once and **bookmark it**. You're in.
+
+> **Your sign-in link is your password.** The code rides in the part of the URL
+> after the `#`, which your browser never sends to any server — so it stays
+> private. Bookmark the link; if you ever lose it, an owner of your workspace can
+> issue a new one (or you can start a fresh workspace). There's nothing to
+> "recover" — keep the bookmark safe and you never think about it again.
+
+Already signed in on this device? `/admin` just opens — no re-entry.
+
+> **New to Edges entirely?** The fastest way to *get* it is the **sample room &
 > 5-minute tour** — see the section near the end of this guide. It spins up a
 > safe demo you can't break and walks you through driving a live session.
 
@@ -22,14 +37,18 @@ than a generic one. Set it if you can.
 
 You'll immediately get a one-time panel with:
 
-- **Three passcodes** — `admin`, `facilitator`, `co-host`.
+- **Three room passcodes** — `admin`, `facilitator`, `co-host`.
 - **Three URLs** — Join (`/r/<room>`), Host (`/r/<room>/host`), Screen
   (`/r/<room>/screen`).
 
-> **Save these now.** Passcodes are shown once and stored only as hashes — they
-> cannot be recovered. Use **Copy all** to grab everything. If you lose a code,
-> just create a new room. See [Roles & passcodes](roles-and-passcodes.md) for
-> who should get which code.
+> **Save these now.** Room passcodes are shown once and stored only as hashes —
+> they cannot be recovered. Use **Copy all** to grab everything. If you lose a
+> code, just create a new room. See [Roles & passcodes](roles-and-passcodes.md)
+> for who should get which code.
+
+Rooms are **shared across your workspace** — anyone you invite (see step 5) sees
+the same rooms list and can help run them. Each room is stamped with who created
+it.
 
 ## 3. Share access — and the join QR
 
@@ -58,7 +77,31 @@ Each room card has a **theme** panel:
 
 Use **Preview the QR / lobby page** to see it, then **Save theme & branding**.
 
-## 5. After the session: reports
+## 5. Invite your teammates (optional)
+
+If you'll run sessions with others, add them as **members** so they have their
+own way in. In the **Members** panel (workspace owners only):
+
+- Add a person by name and pick a **role** — **owner** (full control, can invite
+  others and manage the workspace) or **member** (can create and run rooms).
+- Each gets their **own sign-in link** to bookmark. Revoke anyone's access at any
+  time; their link stops working immediately.
+
+Everyone in the workspace shares the same rooms, so two facilitators can tag-team
+the same event. See [Roles & passcodes](roles-and-passcodes.md) for the full
+breakdown of workspace roles vs. room roles.
+
+## 6. Use your own AI key (optional)
+
+The AI features run on an Anthropic API key. The instance may already have one
+set, in which case AI just works. If you'd rather **bring your own** — so AI
+usage bills to your account — open the **AI key** panel (owners only) and paste
+your key. It's **encrypted at rest** and never shown back to you. Remove it any
+time to fall back to the instance default. No key anywhere? Everything still
+works; the AI buttons simply read "AI unavailable". See
+[AI features & privacy](ai-and-privacy.md).
+
+## 7. After the session: reports
 
 When the facilitator **archives** a session, its live data is wiped and a
 snapshot is saved. Open the room's **report** panel in `/admin` to see it:
@@ -99,7 +142,7 @@ Privacy notes for the sample:
 - Sample passcodes are **generated randomly each time you seed** and shown only
   once — never committed to the codebase.
 - The only durable trace is a tiny non-PII "you've seen the tour" flag, keyed by
-  a hash of your admin code so the first-run nudge doesn't re-appear. Deleting
+  a hash of your sign-in code so the first-run nudge doesn't re-appear. Deleting
   the `sample-demo` room and that flag removes the feature entirely.
 
 ## Notes
@@ -108,6 +151,10 @@ Privacy notes for the sample:
   carries a 24-hour TTL; archiving/ending wipes the live data immediately. Full
   model in [AI features & privacy](ai-and-privacy.md).
 - **Building custom sessions:** facilitators usually pick a
-  [template](templates.md), but you (admin) can compose a bespoke sequence in the
-  builder at `/r/<room>/build` — including letting the AI **suggest** one from a
-  goal. See the [Facilitator guide](facilitator-guide.md#designing-a-custom-session).
+  [template](templates.md), but a workspace owner can compose a bespoke sequence
+  in the builder at `/r/<room>/build` — including letting the AI **suggest** one
+  from a goal. See the
+  [Facilitator guide](facilitator-guide.md#designing-a-custom-session).
+- **Closing a workspace:** an owner can permanently erase a whole workspace — all
+  its rooms, reports, analytics, designs and members — from the **Manage
+  workspaces** panel (typed-name confirmation, can't be undone).
