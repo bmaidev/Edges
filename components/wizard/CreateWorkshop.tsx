@@ -585,7 +585,9 @@ function StepShare({
         setPasscodes(crd.passcodes);
         onCreated();
       }
-      // 2. Apply the chosen design (super-admin satisfies configure — no 403).
+      // 2. Apply the chosen design with the workspace code. resolveRole grants a
+      //    member of the room's OWNING workspace the admin role, so setPhases'
+      //    `configure` cap is satisfied for owners/members, not just super-admin.
       if (intent.kind === "template" && intent.templateId)
         await host(id, "setTemplate", { templateId: intent.templateId });
       else if (intent.kind === "ai" && intent.phases)
