@@ -9,6 +9,14 @@ gradients of agreement, and the rest — aren't bespoke features here. They're
 **configured chains of a few irreducible interaction primitives** (capture, a
 vote, an allocation, a coordinated round). One small contract, many methods.
 
+It runs as an **always-free, multi-org platform**: isolated *workspaces* (an
+individual or an org), self-service sign-up, named members with roles, and an
+optional per-workspace bring-your-own Anthropic key. Host it yourself, or run a
+shared instance for a community.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbmaidev%2FEdges&env=ADMIN_PASSCODE,ANTHROPIC_API_KEY,EDGES_SECRET_KEY,SIGNUP_OPEN,SIGNUP_CODE&envDescription=ADMIN_PASSCODE%20is%20required%3B%20the%20rest%20are%20optional&envLink=https%3A%2F%2Fgithub.com%2Fbmaidev%2FEdges%2Fblob%2Fmain%2Fdocs%2Fself-hosting.md&stores=%5B%7B%22type%22%3A%22kv%22%7D%5D)
+&nbsp;·&nbsp; [Self-hosting guide](docs/self-hosting.md) ·&nbsp; Docker: `docker compose up`
+
 ## What it is
 
 Edges is a Next.js web app for facilitating live, in-person and remote
@@ -18,6 +26,11 @@ contributions are facilitator-only, and everything self-erases within 24 hours.
 
 ## Features
 
+- **Multi-org workspaces** — isolated tenants (an individual or an org), each with
+  its own rooms, designs, analytics and members; reached by a bookmarkable
+  magic-link, with self-service sign-up (operator-gated) and an optional
+  per-workspace bring-your-own Anthropic key. See the
+  [self-hosting guide](docs/self-hosting.md).
 - **Multi-room** — create as many independent rooms as you like, each with its
   own passcodes, theme, and session.
 - **25+ facilitation modules** — capture, polls, dot/idea voting, ranking,
@@ -83,18 +96,27 @@ In development, **Redis and AI are both optional**:
 
 ## Deploy
 
-Edges is built for Vercel:
+The fastest path is the **Deploy with Vercel** button above (it prompts for a KV
+store + the env vars). Or do it by hand:
 
 1. `vercel link`, then `vercel --prod`.
-2. Create a KV / Upstash (Redis) store in the Vercel dashboard and connect it to
-   the project — this provisions `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
-3. Set `ADMIN_PASSCODE` (and optionally `ANTHROPIC_API_KEY`) as project env vars.
+2. Connect a **KV / Upstash (Redis)** store in the Vercel dashboard — provisions
+   `KV_REST_API_URL` / `KV_REST_API_TOKEN`. **Production requires this** (the
+   in-memory fallback is single-process; serverless functions don't share memory).
+3. Set the env vars (see [`.env.example`](.env.example) for the full annotated list):
+   - **`ADMIN_PASSCODE`** — required; the super-admin who creates workspaces.
+   - **`ANTHROPIC_API_KEY`** — optional AI baseline (workspaces can BYO on top).
+   - **`EDGES_SECRET_KEY`** — optional; enables per-workspace BYO keys (encrypts
+     them at rest). `openssl rand -hex 32`.
+   - **`SIGNUP_OPEN=true`** or **`SIGNUP_CODE=…`** — optional; opens self-service
+     workspace sign-up at `/start` (default: closed / super-admin mints).
+   - **`BLOB_READ_WRITE_TOKEN`** — optional; logo uploads (else paste a logo URL).
 4. Disable Vercel Analytics in project settings (privacy requirement).
+5. **Verify:** open `/api/health` (uptime) and, signed in as super-admin, the
+   **Instance setup** panel in `/admin` (a checklist of what's enabled).
 
-**Production requires KV** — the in-memory fallback only works for a single
-local process, and serverless functions don't share memory. All required and
-optional environment variables are documented in
-[`.env.example`](.env.example).
+Running it elsewhere (Docker, your own Node host) and the full operator reference
+are in the **[self-hosting guide](docs/self-hosting.md)**.
 
 ## Architecture
 
