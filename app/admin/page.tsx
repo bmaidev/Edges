@@ -1314,8 +1314,8 @@ function RoomCard({
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           {editingName ? (
             <input
               autoFocus
@@ -1381,7 +1381,7 @@ function RoomCard({
             </div>
           )}
         </div>
-        <div className="flex gap-3 text-xs text-accent underline">
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-accent underline sm:max-w-[60%] sm:justify-end">
           <a href={`/r/${room.slug}`} target="_blank" rel="noreferrer">join</a>
           <a href={`/r/${room.slug}/host`} target="_blank" rel="noreferrer">host</a>
           <a href={`/r/${room.slug}/build`} target="_blank" rel="noreferrer">build</a>
