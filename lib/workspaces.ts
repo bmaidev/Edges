@@ -10,6 +10,7 @@
 import { randomBytes } from "node:crypto";
 import { checkSuperAdmin, getDb, safeEqualHex, sha256 } from "./rooms";
 import { withLock } from "./store";
+import { decrypt, encrypt, secretsConfigured } from "./secrets";
 
 // The single env super-admin (ADMIN_PASSCODE) administers this workspace, which
 // owns every room that predates the tenancy layer ("absent workspaceId = default").
@@ -42,8 +43,10 @@ export interface Workspace {
   // Phase C — named members with per-person codes + roles (absent on pre-C
   // workspaces → just the adminHashes owner).
   members?: Member[];
-  // Phase D — a per-workspace BYO Anthropic key reference. Reserved, unused in A.
-  aiKeyRef?: string;
+  // Phase D — the workspace's BYO Anthropic key, ENCRYPTED at rest (AES-256-GCM).
+  // last4 is the only plaintext kept, for a "····1234" display. Absent → the
+  // workspace uses the platform's global ANTHROPIC_API_KEY baseline.
+  aiKey?: import("./secrets").SealedSecret & { last4: string };
 }
 
 // What a resolved code grants: its workspace, role, and (for a named member) who.
@@ -309,6 +312,57 @@ export async function removeMember(
     await db.set(workspaceKey(workspaceId), { ...ws, members });
     return true;
   });
+}
+
+// ---- Phase D: per-workspace BYO Anthropic key (encrypted at rest) ----------
+
+// Set (or replace) a workspace's BYO Anthropic key — encrypted before storage.
+// Refused when no master key is configured (we never store a secret we can't
+// protect). Returns false if the workspace is missing or secrets are off.
+export async function setWorkspaceAiKey(
+  workspaceId: string,
+  plaintext: string,
+): Promise<boolean> {
+  if (!secretsConfigured()) return false;
+  const key = plaintext.trim();
+  if (!key) return false;
+  return withWorkspaceLock(workspaceId, async () => {
+    const db = getDb();
+    const ws = await db.get<Workspace>(workspaceKey(workspaceId));
+    if (!ws) return false;
+    const aiKey = { ...encrypt(key), last4: key.slice(-4) };
+    await db.set(workspaceKey(workspaceId), { ...ws, aiKey });
+    return true;
+  });
+}
+
+export async function clearWorkspaceAiKey(workspaceId: string): Promise<boolean> {
+  return withWorkspaceLock(workspaceId, async () => {
+    const db = getDb();
+    const ws = await db.get<Workspace>(workspaceKey(workspaceId));
+    if (!ws) return false;
+    const next = { ...ws };
+    delete next.aiKey;
+    await db.set(workspaceKey(workspaceId), next);
+    return true;
+  });
+}
+
+// Decrypt a workspace's BYO key for use in an AI call. SERVER-ONLY — the plaintext
+// must never leave the process. Null when unset or the master key can't decrypt it.
+export async function getWorkspaceAiKey(workspaceId: string): Promise<string | null> {
+  const ws = await getDb().get<Workspace>(workspaceKey(workspaceId));
+  if (!ws?.aiKey) return null;
+  return decrypt(ws.aiKey);
+}
+
+// Safe-to-surface info for the portal: whether a key is set + its last4. Never
+// the ciphertext or plaintext.
+export async function workspaceAiKeyInfo(
+  workspaceId: string,
+): Promise<{ set: boolean; last4: string | null }> {
+  const ws = await getDb().get<Workspace>(workspaceKey(workspaceId));
+  return { set: Boolean(ws?.aiKey), last4: ws?.aiKey?.last4 ?? null };
 }
 
 // Resolve a code to the workspace it administers + the ROLE it grants. The env
