@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { archiveRoom, buildReport, editReport, getRoom, previewTakeaway, publishTakeaway, regenerateReport, saveBlueprint, setReportMeta } from "@/lib/rooms";
-import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
+import { DEFAULT_WORKSPACE_ID, resolveAiKeyForRoom } from "@/lib/workspaces";
+import { runWithAiKey } from "@/lib/ai";
 import {
   deleteDesign,
   getDesign,
@@ -216,6 +217,12 @@ export async function POST(
     );
 
   const a = body as Record<string, any>;
+  // Phase D — run the whole command under the room's EFFECTIVE Anthropic key
+  // (its workspace's BYO key if set, else the global baseline), so any AI this
+  // command triggers (suggestSession, cluster, a module's generate, buildReport,
+  // archive) bills + routes through that key — with no change to the call sites.
+  const aiKey = await resolveAiKeyForRoom(room);
+  return runWithAiKey(aiKey, async () => {
   switch (command) {
     case "setMode":
       return NextResponse.json({
@@ -811,4 +818,5 @@ export async function POST(
     default:
       return NextResponse.json({ error: "Unknown command" }, { status: 400 });
   }
+  });
 }

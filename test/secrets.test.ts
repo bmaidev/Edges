@@ -30,8 +30,11 @@ describe("secrets (encrypt/decrypt)", () => {
   it("returns null on a tampered blob (auth-tag mismatch)", () => {
     process.env.EDGES_SECRET_KEY = "a-sufficiently-long-master-secret";
     const sealed = encrypt("secret");
-    const tampered = { ...sealed, ciphertext: sealed.ciphertext.replace(/.$/, "0") };
-    expect(decrypt(tampered)).toBeNull();
+    // Flip the first ciphertext hex digit to a GUARANTEED-different one (never a
+    // no-op — a "replace last char with 0" can silently match an existing 0).
+    const first = sealed.ciphertext[0];
+    const flipped = (first === "a" ? "b" : "a") + sealed.ciphertext.slice(1);
+    expect(decrypt({ ...sealed, ciphertext: flipped })).toBeNull();
   });
 
   it("a different master key cannot decrypt", () => {

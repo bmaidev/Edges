@@ -5,10 +5,56 @@
 // observability live in ONE place instead of being copy-pasted across modules.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { clusterAssistAvailable } from "./session";
 import type { ModuleStore } from "./modules/types";
 
-export const aiAvailable = clusterAssistAvailable;
+// Phase D — the EFFECTIVE Anthropic key for the current request. A request that
+// can trigger AI (the host route, the roomless design route) resolves the room's
+// workspace key — its own BYO key if set, else the global env baseline — and runs
+// its handler inside runWithAiKey(). Every AI call below then bills + routes
+// through that key, with ZERO changes to the ~12 call sites. Outside a wrapped
+// request (or when nothing set it), we fall back to the global env key.
+//
+// ai.ts is (regrettably) reachable from the client bundle via the schema registry
+// (BuilderApp imports SERVER_MODULES). So node:async_hooks is loaded LAZILY behind
+// a server guard + an opaque require — the client never runs AI, so the store
+// simply doesn't exist there and we fall back to the env key (undefined client-
+// side). This keeps the node builtin out of the client webpack graph.
+type KeyStore = {
+  getStore(): string | undefined;
+  run<T>(store: string, fn: () => T): T;
+};
+let _keyStore: KeyStore | null | undefined;
+function keyStore(): KeyStore | null {
+  if (_keyStore !== undefined) return _keyStore;
+  _keyStore = null;
+  if (typeof window === "undefined") {
+    try {
+      // eslint-disable-next-line no-eval
+      const nodeRequire = eval("require") as NodeRequire;
+      const { AsyncLocalStorage } = nodeRequire("node:async_hooks");
+      _keyStore = new AsyncLocalStorage() as KeyStore;
+    } catch {
+      _keyStore = null;
+    }
+  }
+  return _keyStore;
+}
+
+export function runWithAiKey<T>(key: string | null | undefined, fn: () => T): T {
+  const ks = keyStore();
+  return key && ks ? ks.run(key, fn) : fn();
+}
+
+// The key in force right now (ALS override → global env). Exported for tests.
+export function currentAiKey(): string | undefined {
+  return keyStore()?.getStore() ?? process.env.ANTHROPIC_API_KEY ?? undefined;
+}
+
+// AI is available when SOME key is in force — the per-request workspace key OR the
+// global baseline. (The pre-D global-only check is preserved when nothing wraps.)
+export function aiAvailable(): boolean {
+  return Boolean(currentAiKey());
+}
 
 // Model tiers. Heavy reasoning (red-team, tension analysis, issue-mapping,
 // latent-need inference, code/HTML generation) gets the strongest model;
@@ -35,10 +81,17 @@ export interface AiResult<T> {
   reason?: string; // human-readable failure reason
 }
 
-let client: Anthropic | null = null;
+// One client per distinct key (the global key + each workspace's BYO key), so a
+// busy mix of tenants doesn't rebuild a client on every call.
+const clients = new Map<string, Anthropic>();
 function getClient(): Anthropic {
-  if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  return client;
+  const apiKey = currentAiKey() ?? "";
+  let c = clients.get(apiKey);
+  if (!c) {
+    c = new Anthropic({ apiKey });
+    clients.set(apiKey, c);
+  }
+  return c;
 }
 
 // Abort an AI request before the route's maxDuration (60s) would 504 it, leaving

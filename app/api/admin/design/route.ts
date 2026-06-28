@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAdminContext } from "@/lib/auth";
+import { resolveAiKeyForWorkspace } from "@/lib/workspaces";
+import { runWithAiKey } from "@/lib/ai";
 import { critiqueSession, reviseSession, suggestSession } from "@/lib/design";
 import type { PhaseInstance } from "@/lib/types";
 
@@ -20,9 +22,14 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  if (!(await resolveAdminContext(body.code)).ok)
+  const ctx = await resolveAdminContext(body.code);
+  if (!ctx.ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+  // Phase D — this roomless design AI runs under the admin's WORKSPACE key (its
+  // BYO key if set, else the global baseline).
+  const aiKey = await resolveAiKeyForWorkspace(ctx.workspaceId);
+  return runWithAiKey(aiKey, async () => {
   const topic = String(body.topic ?? "");
   const minutes = typeof body.minutes === "number" ? body.minutes : undefined;
 
@@ -57,4 +64,5 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+  });
 }
