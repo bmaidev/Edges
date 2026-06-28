@@ -18,6 +18,7 @@ import {
 // at load), so the ESM cycle resolves cleanly.
 import {
   DEFAULT_WORKSPACE_ID,
+  resolveWorkspace,
   wsIndexAdd,
   wsIndexDrain,
   wsIndexList,
@@ -1087,5 +1088,19 @@ export async function resolveRole(
     safeEqualHex(h, room.passcodeHashes.projector)
   )
     return "projector";
+  // Phase A/C — a member of the room's OWNING workspace administers its rooms
+  // (rooms are SHARED across a workspace). The create-workshop wizard and the
+  // host console drive a room with the WORKSPACE code, not the room's own admin
+  // passcode (which is never surfaced to them), so without this a non-super-admin
+  // owner/member 403s at the Share step. Workspace members run the whole room →
+  // admin tier (capability-equal to facilitator). Cross-workspace codes don't
+  // match and still resolve to null. Reached only after the super-admin and
+  // room-passcode checks miss, so the common poll path pays no extra lookup.
+  const ws = await resolveWorkspace(code);
+  if (
+    ws.workspaceId &&
+    ws.workspaceId === (room.workspaceId ?? DEFAULT_WORKSPACE_ID)
+  )
+    return "admin";
   return null;
 }
