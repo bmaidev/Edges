@@ -30,6 +30,14 @@ export function tokenKey(slug: string): string {
   return `edges:k:${slug}`;
 }
 
+// Phase B — a workspace's bookmarkable sign-in link for the admin portal. The
+// admin/workspace code rides the URL FRAGMENT (never sent to a server, scrubbed
+// on arrival), exactly like a room link — so it never leaks via the query string.
+// `bootToken("admin")` / `clearToken("admin")` namespace the remembered token.
+export function adminMagicLink(origin: string, code: string): string {
+  return `${origin}/admin#k=${encodeURIComponent(code)}`;
+}
+
 // Client-only: pull the `#k=` token from the URL fragment, strip the fragment
 // from the address bar without navigating, and return the token (or null). MUST
 // run in the mount effect before anything that could leak the URL.
