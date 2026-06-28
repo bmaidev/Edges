@@ -285,6 +285,11 @@ function Admin() {
         <MembersPanel code={code} />
       )}
 
+      {/* D3 — the workspace's BYO Anthropic key (owner-only). */}
+      {context && (context.isSuperAdmin || context.role === "owner") && (
+        <AiKeyPanel code={code} />
+      )}
+
       {/* F4 — Rooms / Analytics tabs. */}
       <div className="mt-3 flex gap-1 border-b border-border text-sm">
         {(["rooms", "analytics"] as const).map((t) => (
@@ -633,6 +638,130 @@ function MembersPanel({ code }: { code: string }) {
                 Done
               </button>
             </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// D3 — a workspace's BYO Anthropic key (owner-only). Write-only: the portal only
+// ever learns whether a key is set + its last4. Setting one routes + bills this
+// workspace's AI through its own Anthropic account; removing it falls back to the
+// platform's shared key.
+function AiKeyPanel({ code }: { code: string }) {
+  const [open, setOpen] = useState(false);
+  const [info, setInfo] = useState<{ set: boolean; last4: string | null; secretsConfigured: boolean } | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    const res = await fetch(`/api/admin/ai-key?code=${encodeURIComponent(code)}`, {
+      cache: "no-store",
+    });
+    if (res.ok) setInfo(await res.json());
+  }, [code]);
+
+  async function openPanel() {
+    const next = !open;
+    setOpen(next);
+    if (next && info === null) await refresh();
+  }
+
+  async function save() {
+    const key = draft.trim();
+    if (!key) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/ai-key", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, key }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setDraft("");
+        await refresh();
+      } else {
+        setErr(d.error ?? "Couldn't save the key.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!window.confirm("Remove this workspace's key? Its AI falls back to the platform's shared key.")) return;
+    await fetch("/api/admin/ai-key", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    await refresh();
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted">
+          AI key:{" "}
+          <span className="text-white/90">
+            {info === null
+              ? "…"
+              : info.set
+                ? `your key · ····${info.last4}`
+                : "platform's shared key"}
+          </span>
+        </p>
+        <button onClick={openPanel} className="text-accent underline">
+          {open ? "Close" : "Manage"}
+        </button>
+      </div>
+
+      {open && info && (
+        <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
+          {!info.secretsConfigured ? (
+            <p className="text-xs text-muted">
+              Bringing your own key isn&apos;t enabled on this instance (no
+              encryption key configured). The platform&apos;s shared AI key is in use.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-muted">
+                Set your own Anthropic API key and this workspace&apos;s AI (session
+                reports, synthesis, design help) routes + bills through your own
+                account. It&apos;s encrypted at rest and never shown again.
+              </p>
+              {info.set ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded bg-bg px-2 py-1 font-mono text-xs text-muted">
+                    sk-…{info.last4}
+                  </span>
+                  <button onClick={remove} className="text-xs text-[#ff8a8a] underline">
+                    Remove
+                  </button>
+                </div>
+              ) : null}
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-1 flex-col gap-1 text-xs">
+                  <span className="text-muted">{info.set ? "Replace with a new key" : "Anthropic API key"}</span>
+                  <input
+                    type="password"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && save()}
+                    placeholder="sk-ant-…"
+                    className="rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none"
+                  />
+                </label>
+                <Button onClick={save} disabled={busy || !draft.trim()}>
+                  {busy ? "Saving…" : "Save key"}
+                </Button>
+              </div>
+              {err && <p className="text-xs text-[#ff8a8a]">{err}</p>}
+            </>
           )}
         </div>
       )}
