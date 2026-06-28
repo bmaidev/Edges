@@ -1,7 +1,7 @@
 // Role → capability mapping and the room-scoped gate used by host routes.
 
 import { resolveRole } from "./rooms";
-import { resolveWorkspace } from "./workspaces";
+import { resolveWorkspace, type WorkspaceRole } from "./workspaces";
 import type { Role } from "./types";
 
 export type Capability =
@@ -69,12 +69,31 @@ export function roleHasCapability(role: Role, cap: Capability): boolean {
 export async function resolveAdminContext(
   code: string | null | undefined,
   requestedWorkspaceId?: string | null,
-): Promise<{ ok: boolean; workspaceId: string; isSuperAdmin: boolean }> {
-  const { workspaceId, isSuperAdmin } = await resolveWorkspace(code);
-  if (!workspaceId) return { ok: false, workspaceId: "", isSuperAdmin: false };
+): Promise<{
+  ok: boolean;
+  workspaceId: string;
+  isSuperAdmin: boolean;
+  // Phase C — the role this code holds in the workspace, and (for a named
+  // member) who they are. Owner-only routes (member management) check `role`;
+  // `memberId`/`memberName` drive room attribution.
+  role: WorkspaceRole | null;
+  memberId: string | null;
+  memberName: string | null;
+}> {
+  const { workspaceId, isSuperAdmin, role, memberId, memberName } =
+    await resolveWorkspace(code);
+  if (!workspaceId)
+    return {
+      ok: false,
+      workspaceId: "",
+      isSuperAdmin: false,
+      role: null,
+      memberId: null,
+      memberName: null,
+    };
   const effective =
     isSuperAdmin && requestedWorkspaceId ? requestedWorkspaceId : workspaceId;
-  return { ok: true, workspaceId: effective, isSuperAdmin };
+  return { ok: true, workspaceId: effective, isSuperAdmin, role, memberId, memberName };
 }
 
 // Resolve the caller's role in a room and check a capability in one step.
