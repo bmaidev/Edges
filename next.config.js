@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Phase E — a self-contained server bundle (Next traces deps into
+  // .next/standalone) so the Docker image is small and `node server.js` runs the
+  // whole app. No effect on the Vercel deploy.
+  output: "standalone",
   // Privacy: no telemetry, no analytics. Don't log request bodies anywhere.
   poweredByHeader: false,
   // Defense-in-depth: never leak an admin URL (or any in-page super-admin code)
