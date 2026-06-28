@@ -48,6 +48,8 @@ export async function GET(req: NextRequest) {
         ? { chips: blueprintSummary(r.blueprint.phases), phaseCount: r.blueprint.phases.length }
         : null,
       lastRun: r.lastRun ?? null,
+      // C3 — attribution for the shared rooms list ("created by <name>").
+      createdBy: r.createdBy?.name ?? null,
     })),
   });
 }
@@ -97,6 +99,7 @@ export async function POST(req: NextRequest) {
       body.templateId ?? null,
       body.slug ?? null,
       ctx.workspaceId,
+      ctx.memberName ? { memberId: ctx.memberId, name: ctx.memberName } : undefined,
     );
     return NextResponse.json({
       slug: room.slug,
