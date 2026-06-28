@@ -9,10 +9,26 @@
 
 import { randomBytes } from "node:crypto";
 import { checkSuperAdmin, getDb, safeEqualHex, sha256 } from "./rooms";
+import { withLock } from "./store";
 
 // The single env super-admin (ADMIN_PASSCODE) administers this workspace, which
 // owns every room that predates the tenancy layer ("absent workspaceId = default").
 export const DEFAULT_WORKSPACE_ID = "default";
+
+// Phase C — a role WITHIN a workspace. "owner" manages members + settings; a
+// "member" creates and runs the workspace's (shared) rooms but can't manage
+// membership. The legacy bootstrap admin code (adminHashes) is an implicit owner.
+export type WorkspaceRole = "owner" | "member";
+
+// Phase C — a named person in a workspace, with their own personal code. Lets the
+// workspace see WHO did what, add/revoke one person without rotating a shared code.
+export interface Member {
+  id: string; // m-xxxx
+  name: string; // display name (attribution: "created by <name>")
+  codeHash: string; // sha256 of their personal `wsm-…` code (plaintext never stored)
+  role: WorkspaceRole;
+  createdAt: number;
+}
 
 export interface Workspace {
   id: string;
@@ -20,9 +36,23 @@ export interface Workspace {
   createdAt: number;
   // sha256 of each admin passcode (plaintext never stored). The DEFAULT workspace
   // keeps this empty — it's administered by the env super-admin via checkSuperAdmin.
+  // Phase C — these are the root OWNER codes (the create/bootstrap code); named
+  // members are layered additively in `members`.
   adminHashes: string[];
+  // Phase C — named members with per-person codes + roles (absent on pre-C
+  // workspaces → just the adminHashes owner).
+  members?: Member[];
   // Phase D — a per-workspace BYO Anthropic key reference. Reserved, unused in A.
   aiKeyRef?: string;
+}
+
+// What a resolved code grants: its workspace, role, and (for a named member) who.
+export interface WorkspaceContext {
+  workspaceId: string | null;
+  isSuperAdmin: boolean;
+  role: WorkspaceRole | null;
+  memberId: string | null;
+  memberName: string | null;
 }
 
 export interface WorkspaceMeta {
@@ -51,6 +81,12 @@ function genWorkspaceId(): string {
 }
 function genAdminCode(): string {
   return `wsa-${randomBytes(5).toString("hex")}`;
+}
+function genMemberId(): string {
+  return `m-${randomBytes(5).toString("hex")}`;
+}
+function genMemberCode(): string {
+  return `wsm-${randomBytes(5).toString("hex")}`;
 }
 
 // Copy a legacy global index into its per-workspace key ONCE. Idempotent: if the
@@ -191,23 +227,133 @@ export async function createWorkspace(
   throw new Error("Could not allocate a workspace id");
 }
 
-// Resolve a code to the workspace it administers. The env super-admin resolves to
-// the default workspace AND carries isSuperAdmin (can act across workspaces); a
-// workspace admin code resolves to exactly its own workspace; anything else → null.
+const NONE: WorkspaceContext = {
+  workspaceId: null,
+  isSuperAdmin: false,
+  role: null,
+  memberId: null,
+  memberName: null,
+};
+
+// ---- Phase C: member management (read-modify-write on the workspace record) ----
+// Serialised under a per-workspace lock so concurrent adds/removes never clobber
+// the members array (the durable backend has no atomic list op). Mirrors the
+// design-library lock in userTemplates.ts.
+async function withWorkspaceLock<T>(
+  workspaceId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  for (let i = 0; i < 10; i++) {
+    const res = await withLock(workspaceId, "members", fn, { ttlSeconds: 5 });
+    if (res.ok) return res.value;
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  return fn(); // last-resort unlocked run rather than fail an owner action
+}
+
+export interface MemberMeta {
+  id: string;
+  name: string;
+  role: WorkspaceRole;
+  createdAt: number;
+}
+
+// Add a named member to a workspace, minting their personal code. Returns the
+// plaintext ONCE (handed off as a magic link). Only the hash is stored.
+export async function addMember(
+  workspaceId: string,
+  name: string,
+  role: WorkspaceRole,
+): Promise<{ member: MemberMeta; code: string } | null> {
+  const clean = name.trim().slice(0, 60) || "Member";
+  const code = genMemberCode();
+  return withWorkspaceLock(workspaceId, async () => {
+    const db = getDb();
+    const ws = await db.get<Workspace>(workspaceKey(workspaceId));
+    if (!ws) return null;
+    const member: Member = {
+      id: genMemberId(),
+      name: clean,
+      codeHash: sha256(code),
+      role,
+      createdAt: Date.now(),
+    };
+    const members = [...(ws.members ?? []), member];
+    await db.set(workspaceKey(workspaceId), { ...ws, members });
+    return {
+      member: { id: member.id, name: member.name, role: member.role, createdAt: member.createdAt },
+      code,
+    };
+  });
+}
+
+// List a workspace's members — names/roles/ids only, NEVER code hashes.
+export async function listMembers(workspaceId: string): Promise<MemberMeta[]> {
+  const ws = await getDb().get<Workspace>(workspaceKey(workspaceId));
+  return (ws?.members ?? [])
+    .map((m) => ({ id: m.id, name: m.name, role: m.role, createdAt: m.createdAt }))
+    .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+// Revoke a member: drop them from the workspace so their code stops resolving.
+export async function removeMember(
+  workspaceId: string,
+  memberId: string,
+): Promise<boolean> {
+  return withWorkspaceLock(workspaceId, async () => {
+    const db = getDb();
+    const ws = await db.get<Workspace>(workspaceKey(workspaceId));
+    if (!ws) return false;
+    const members = (ws.members ?? []).filter((m) => m.id !== memberId);
+    if (members.length === (ws.members ?? []).length) return false; // no such member
+    await db.set(workspaceKey(workspaceId), { ...ws, members });
+    return true;
+  });
+}
+
+// Resolve a code to the workspace it administers + the ROLE it grants. The env
+// super-admin → the default workspace as an owner, isSuperAdmin (can act across
+// workspaces). A named member's code → that member's role/id/name. The legacy
+// bootstrap admin code (adminHashes) → owner with no member identity. Else null.
+// Members live IN the workspace record (already loaded in the scan) → no extra
+// lookups vs the pre-C resolve.
 export async function resolveWorkspace(
   code: string | null | undefined,
-): Promise<{ workspaceId: string | null; isSuperAdmin: boolean }> {
-  if (!code) return { workspaceId: null, isSuperAdmin: false };
+): Promise<WorkspaceContext> {
+  if (!code) return NONE;
   if (checkSuperAdmin(code))
-    return { workspaceId: DEFAULT_WORKSPACE_ID, isSuperAdmin: true };
+    return {
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      isSuperAdmin: true,
+      role: "owner",
+      memberId: null,
+      memberName: null,
+    };
   await ensureDefaultWorkspace();
   const db = getDb();
   const h = sha256(code);
   const idx = (await db.get<string[]>(WORKSPACE_INDEX_KEY)) ?? [];
   for (const id of idx) {
     const ws = await db.get<Workspace>(workspaceKey(id));
-    if (ws && ws.adminHashes.some((stored) => safeEqualHex(h, stored)))
-      return { workspaceId: id, isSuperAdmin: false };
+    if (!ws) continue;
+    // A named member wins (carries their identity); else the root owner code.
+    const member = (ws.members ?? []).find((m) => safeEqualHex(h, m.codeHash));
+    if (member)
+      return {
+        workspaceId: id,
+        isSuperAdmin: false,
+        role: member.role,
+        memberId: member.id,
+        memberName: member.name,
+      };
+    if (ws.adminHashes.some((stored) => safeEqualHex(h, stored)))
+      return {
+        workspaceId: id,
+        isSuperAdmin: false,
+        role: "owner",
+        memberId: null,
+        memberName: null,
+      };
   }
-  return { workspaceId: null, isSuperAdmin: false };
+  return NONE;
 }
