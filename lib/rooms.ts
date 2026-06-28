@@ -150,6 +150,9 @@ export interface Room {
   // Phase A — the owning workspace (tenant). Absent on rooms created before the
   // tenancy layer → read as the "default" workspace (DEFAULT_WORKSPACE_ID).
   workspaceId?: string;
+  // Phase C — who created this room (a named workspace member), for attribution
+  // in the shared rooms list. Absent for the bootstrap-owner/legacy creates.
+  createdBy?: { memberId?: string | null; name?: string };
   theme?: RoomTheme;
   // A5 — the design + last-run memory (both optional; older rooms lack them).
   blueprint?: RoomBlueprint;
@@ -260,6 +263,9 @@ export async function createRoom(
   // Phase A — the owning workspace. Defaults to the default workspace so every
   // pre-tenancy caller keeps working unchanged; A3 passes the resolved workspace.
   workspaceId: string = DEFAULT_WORKSPACE_ID,
+  // Phase C — the named member who created this (for attribution). Omitted by the
+  // bootstrap owner / legacy callers → no attribution line.
+  createdBy?: { memberId?: string | null; name?: string },
 ): Promise<RoomCreated> {
   const passcodes = {
     admin: randomPasscode("adm"),
@@ -275,6 +281,9 @@ export async function createRoom(
     status: "draft",
     createdAt: Date.now(),
     workspaceId,
+    // Only stamp attribution when a named member created it (keeps legacy/
+    // bootstrap-owner rooms clean — no empty "created by" line).
+    ...(createdBy?.name ? { createdBy: { memberId: createdBy.memberId ?? null, name: createdBy.name } } : {}),
     passcodeHashes: {
       admin: sha256(passcodes.admin),
       facilitator: sha256(passcodes.facilitator),

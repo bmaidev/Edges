@@ -32,6 +32,8 @@ interface RoomRow {
   // A5 — design summary + last-run memory.
   blueprint?: { chips: string[]; phaseCount: number } | null;
   lastRun?: { endedAt: number; participantCount: number; submissionCount: number } | null;
+  // C3 — who created it (a named member), for the shared rooms list.
+  createdBy?: string | null;
 }
 
 // Inlined (not imported from lib/sample) so no server-only code — node:crypto,
@@ -1104,6 +1106,8 @@ function RoomCard({
                 {room.lastRun.submissionCount} contributions
               </span>
             )}
+            {/* C3 — attribution in the shared workspace rooms list. */}
+            {room.createdBy && <span> · by {room.createdBy}</span>}
           </p>
           {/* A5 — the saved design at a glance. */}
           {room.blueprint && room.blueprint.chips.length > 0 && (
