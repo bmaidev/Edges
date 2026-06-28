@@ -7,6 +7,7 @@ import { groupRooms } from "@/lib/room-groups";
 import { Button } from "@/components/ui";
 import { RoomAccessCard } from "@/components/RoomAccessCard";
 import { PasscodeReveal } from "@/components/PasscodeReveal";
+import { adminMagicLink, bootToken, clearToken, tokenKey } from "@/lib/magicLink";
 import { CreateWorkshop } from "@/components/wizard/CreateWorkshop";
 import {
   EMPTY_THEME,
@@ -127,8 +128,11 @@ function Admin() {
   const [tourKey, setTourKey] = useState(0);
 
   useEffect(() => {
-    const c = params.get("code");
-    if (c) setCode(c);
+    // Phase B — prefer the bookmarkable magic link (#k= fragment, read once and
+    // scrubbed from the address bar), then a remembered token from this tab, then
+    // a legacy ?code= query for older links.
+    const t = bootToken("admin") || params.get("code");
+    if (t) setCode(t);
   }, [params]);
 
   const load = useCallback(async (c: string) => {
@@ -145,6 +149,13 @@ function Admin() {
     setContext(data.context ?? null);
     setAuthed(true);
     setErr(null);
+    // Phase B — remember the code for this tab so a reload stays signed in
+    // (covers manual passcode entry; a #k= link is already remembered by bootToken).
+    try {
+      sessionStorage.setItem(tokenKey("admin"), c);
+    } catch {
+      /* private mode — fine, just won't survive a reload */
+    }
     // Best-effort: has this admin already toured? (suppresses the first-run nudge)
     fetch(`/api/admin/tour-seen?code=${encodeURIComponent(c)}`, {
       cache: "no-store",
@@ -152,6 +163,15 @@ function Admin() {
       .then((r) => r.json())
       .then((d) => setTourSeen(Boolean(d.seen)))
       .catch(() => setTourSeen(false));
+  }, []);
+
+  const logout = useCallback(() => {
+    clearToken("admin");
+    setCode("");
+    setCodeInput("");
+    setAuthed(false);
+    setContext(null);
+    setRooms([]);
   }, []);
 
   const markTourSeen = useCallback(() => {
@@ -242,6 +262,9 @@ function Admin() {
           <a href="/help?doc=admin-guide" className="text-accent underline">
             📖 Guides
           </a>
+          <button onClick={logout} className="text-muted underline hover:text-white">
+            Log out
+          </button>
         </div>
       </div>
 
@@ -309,6 +332,9 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ name: string; adminCode: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [origin, setOrigin] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
+  useEffect(() => setOrigin(window.location.origin), []);
 
   async function openPanel() {
     const next = !open;
@@ -401,12 +427,27 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
           {created && (
             <div className="rounded-lg border border-emerald-400/40 bg-emerald-400/5 p-3">
               <p className="text-sm text-emerald-300">
-                Created <strong>{created.name}</strong>. This is its admin code —
-                shown once. Give it to the workspace&apos;s facilitators; entering it
-                at /admin is their key to this workspace (you can&apos;t see it again).
+                Created <strong>{created.name}</strong> — shown once. The link below
+                is its key: anyone with it administers this workspace. Send it to the
+                workspace&apos;s facilitators to bookmark (you can&apos;t see it again).
               </p>
-              <div className="mt-2">
-                <PasscodeReveal code={created.adminCode} label="workspace admin code" />
+              {/* B1 — the bookmarkable magic link (code in the #fragment, never the
+                  query) is the primary hand-off; the raw code is the fallback. */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard
+                      ?.writeText(adminMagicLink(origin, created.adminCode))
+                      .then(() => {
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2000);
+                      });
+                  }}
+                  className="rounded-lg border border-accent px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+                >
+                  {linkCopied ? "Sign-in link copied ✓" : "Copy sign-in link"}
+                </button>
+                <PasscodeReveal code={created.adminCode} label="raw code" />
               </div>
               <button
                 className="mt-2 text-xs text-muted underline"
