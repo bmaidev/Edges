@@ -213,6 +213,12 @@ function Admin() {
         />
         <Button onClick={() => setCode(codeInput)}>Enter</Button>
         {err && <p className="text-sm text-[#ff8a8a]">{err}</p>}
+        <p className="text-center text-xs text-muted">
+          No workspace yet?{" "}
+          <a href="/start" className="text-accent underline">
+            Create one
+          </a>
+        </p>
       </main>
     );
   }
