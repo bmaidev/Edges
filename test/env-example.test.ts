@@ -30,13 +30,13 @@ describe(".env.example completeness", () => {
     const used = new Set<string>();
     for (const f of files) {
       const src = readFileSync(f, "utf8");
-      for (const m of src.matchAll(/process\.env\.([A-Z_][A-Z0-9_]*)/g)) {
+      for (const m of Array.from(src.matchAll(/process\.env\.([A-Z_][A-Z0-9_]*)/g))) {
         if (!ALLOWLIST.has(m[1])) used.add(m[1]);
       }
     }
 
     const example = readFileSync(join(root, ".env.example"), "utf8");
-    const undocumented = [...used].filter((name) => !example.includes(name)).sort();
+    const undocumented = Array.from(used).filter((name) => !example.includes(name)).sort();
     expect(undocumented, `undocumented env vars in .env.example: ${undocumented.join(", ")}`).toEqual([]);
   });
 });
