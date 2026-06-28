@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAdminContext } from "@/lib/auth";
-import { createWorkspace, listWorkspaces } from "@/lib/workspaces";
+import {
+  DEFAULT_WORKSPACE_ID,
+  createWorkspace,
+  deleteWorkspace,
+  listWorkspaces,
+} from "@/lib/workspaces";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,4 +44,32 @@ export async function POST(req: NextRequest) {
     name: workspace.name,
     adminCode, // plaintext, shown once
   });
+}
+
+// DELETE /api/admin/workspaces { code, workspaceId } -> permanently erase a
+// workspace + ALL its data. Allowed for the super-admin, or for an OWNER of that
+// workspace (its own code). The default workspace can never be deleted.
+export async function DELETE(req: NextRequest) {
+  let body: { code?: string; workspaceId?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+  const target = (body.workspaceId ?? "").trim();
+  if (!target || target === DEFAULT_WORKSPACE_ID)
+    return NextResponse.json({ error: "That workspace can't be deleted." }, { status: 400 });
+
+  const ctx = await resolveAdminContext(body.code);
+  // Super-admin may erase any workspace; otherwise the caller must be an OWNER of
+  // the very workspace they're deleting (their code resolves to it as owner).
+  const allowed =
+    ctx.ok &&
+    (ctx.isSuperAdmin || (ctx.role === "owner" && ctx.workspaceId === target));
+  if (!allowed)
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const ok = await deleteWorkspace(target);
+  if (!ok) return NextResponse.json({ error: "No such workspace" }, { status: 404 });
+  return NextResponse.json({ ok: true });
 }

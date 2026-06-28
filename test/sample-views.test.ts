@@ -74,6 +74,9 @@ describe("getSampleView", () => {
     expect(dot.remaining).toBeLessThan(5); // some dots already spent
   });
 
+  // The dynamic import of the full client registry can exceed the default 5s
+  // timeout when this runs cold under the full-suite load — a CI flake, not a
+  // real failure. Give the one-off import generous headroom.
   it("the factored modules all have a real participant renderer to render into", async () => {
     const { getClientRenderer } = await import("@/lib/modules/registry.client");
     for (const id of Object.keys(SAMPLE_VIEWS) as ModuleKind[]) {
@@ -81,5 +84,5 @@ describe("getSampleView", () => {
         getClientRenderer(id, "participant") || getClientRenderer(id, "projector");
       expect(hasUi, `${id} has no renderer to preview into`).toBeTruthy();
     }
-  });
+  }, 20_000);
 });

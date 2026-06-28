@@ -8,7 +8,14 @@
 // `workspaceId` onto rooms/metrics/designs and the per-workspace indexes below.
 
 import { randomBytes } from "node:crypto";
-import { checkSuperAdmin, getDb, getRoom, safeEqualHex, sha256 } from "./rooms";
+import {
+  checkSuperAdmin,
+  deleteRoom,
+  getDb,
+  getRoom,
+  safeEqualHex,
+  sha256,
+} from "./rooms";
 import { withLock } from "./store";
 import { decrypt, encrypt, secretsConfigured } from "./secrets";
 
@@ -378,6 +385,41 @@ export async function resolveAiKeyForWorkspace(
 export async function resolveAiKeyForRoom(slug: string): Promise<string | null> {
   const room = await getRoom(slug);
   return resolveAiKeyForWorkspace(room?.workspaceId ?? DEFAULT_WORKSPACE_ID);
+}
+
+// ---- Phase D4: workspace deletion / erasure --------------------------------
+
+// Permanently delete a workspace and ALL its data — the "right to erasure". The
+// default workspace can never be deleted (it owns the legacy/global estate).
+// Enumerates via the per-workspace indexes (no key-scan), deleting each room
+// (which wipes its live session + archive), then metrics + designs + the record.
+export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
+  if (workspaceId === DEFAULT_WORKSPACE_ID) return false;
+  const db = getDb();
+  if ((await db.get<Workspace>(workspaceKey(workspaceId))) == null) return false;
+
+  // Rooms — deleteRoom wipes live data + archive AND removes the slug from this
+  // workspace's room index, so the index drains to empty as we go.
+  for (const slug of await wsIndexList("rooms", workspaceId)) {
+    await deleteRoom(slug);
+  }
+  await db.del(wsRoomsIndexKey(workspaceId));
+
+  // Metrics + designs — drain the index, then delete each record (key strings
+  // mirror lib/rooms.ts metricsKey + lib/userTemplates.ts designKey).
+  for (const slug of await wsIndexDrain("metrics", workspaceId)) {
+    await db.del(`rooms:metrics:${slug}`);
+  }
+  for (const id of await wsIndexDrain("designs", workspaceId)) {
+    await db.del(`rooms:design:${id}`);
+  }
+
+  // The workspace record (members + the encrypted AI key vanish with it) + its
+  // entry in the global index.
+  await db.del(workspaceKey(workspaceId));
+  const idx = (await db.get<string[]>(WORKSPACE_INDEX_KEY)) ?? [];
+  await db.set(WORKSPACE_INDEX_KEY, idx.filter((id) => id !== workspaceId));
+  return true;
 }
 
 // Resolve a code to the workspace it administers + the ROLE it grants. The env

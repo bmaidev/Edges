@@ -360,6 +360,22 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
   const [origin, setOrigin] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   useEffect(() => setOrigin(window.location.origin), []);
+  // D4 — erase-this-workspace (owner/super, never the default), typed-name confirm.
+  const [confirming, setConfirming] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  const canDelete =
+    (context.isSuperAdmin || context.role === "owner") &&
+    context.workspaceId !== "default";
+  async function eraseWorkspace() {
+    await fetch("/api/admin/workspaces", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, workspaceId: context.workspaceId }),
+    });
+    // The workspace (and this code) are gone — drop the remembered token + reset.
+    clearToken("admin");
+    window.location.href = "/admin";
+  }
 
   async function openPanel() {
     const next = !open;
@@ -407,12 +423,54 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
             </span>
           )}
         </p>
-        {context.isSuperAdmin && (
-          <button onClick={openPanel} className="text-accent underline">
-            {open ? "Close" : "Manage workspaces"}
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {canDelete && (
+            <button
+              onClick={() => setConfirming((v) => !v)}
+              className="text-[#ff8a8a] underline"
+            >
+              Delete workspace
+            </button>
+          )}
+          {context.isSuperAdmin && (
+            <button onClick={openPanel} className="text-accent underline">
+              {open ? "Close" : "Manage workspaces"}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* D4 — danger zone: typed-name confirm before erasing everything. */}
+      {canDelete && confirming && (
+        <div className="mt-3 flex flex-col gap-2 border-t border-[#ff8a8a]/30 pt-3">
+          <p className="text-xs text-[#ff8a8a]">
+            This permanently erases <strong>{context.name}</strong> and ALL its
+            rooms, reports, analytics, designs and members. It can&apos;t be undone.
+            Type the workspace name to confirm.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+              placeholder={context.name}
+              className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+            />
+            <button
+              onClick={eraseWorkspace}
+              disabled={confirmName.trim() !== context.name}
+              className="rounded-lg border border-[#ff8a8a] px-3 py-2 text-xs text-[#ff8a8a] hover:bg-[#ff8a8a]/10 disabled:opacity-40"
+            >
+              Erase everything
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              className="text-xs text-muted underline"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {context.isSuperAdmin && open && (
         <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
