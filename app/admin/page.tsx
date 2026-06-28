@@ -280,6 +280,9 @@ function Admin() {
       {/* A4 — the active workspace (tenant) + super-admin workspace controls. */}
       {context && <WorkspaceBar code={code} context={context} />}
 
+      {/* E1 — operator setup status (super-admin only). */}
+      {context?.isSuperAdmin && <SetupStatusPanel code={code} />}
+
       {/* C2 — workspace members (owner-only: add/revoke named people). */}
       {context && (context.isSuperAdmin || context.role === "owner") && (
         <MembersPanel code={code} />
@@ -698,6 +701,74 @@ function MembersPanel({ code }: { code: string }) {
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// E1 — the operator setup status (super-admin only). A green/grey checklist of
+// what this instance has configured, so a self-hoster can verify their deploy at
+// a glance. Pulls the secret-free /api/admin/config report.
+type InstanceCfg = {
+  superAdmin: boolean;
+  storage: { configured: boolean };
+  ai: { baseline: boolean; byoEncryption: boolean };
+  uploads: { blob: boolean };
+  signup: "open" | "code" | "closed";
+};
+
+function SetupStatusPanel({ code }: { code: string }) {
+  const [open, setOpen] = useState(false);
+  const [cfg, setCfg] = useState<InstanceCfg | null>(null);
+
+  async function openPanel() {
+    const next = !open;
+    setOpen(next);
+    if (next && cfg === null) {
+      const res = await fetch(`/api/admin/config?code=${encodeURIComponent(code)}`, {
+        cache: "no-store",
+      });
+      if (res.ok) setCfg(await res.json());
+    }
+  }
+
+  const Row = ({ on, label, hint }: { on: boolean; label: string; hint?: string }) => (
+    <li className="flex items-baseline gap-2">
+      <span aria-hidden className={on ? "text-emerald-400" : "text-muted"}>
+        {on ? "●" : "○"}
+      </span>
+      <span className={on ? "" : "text-muted"}>
+        {label}
+        {!on && hint && <span className="text-xs"> — {hint}</span>}
+      </span>
+    </li>
+  );
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted">Instance setup</p>
+        <button onClick={openPanel} className="text-accent underline">
+          {open ? "Close" : "Check status"}
+        </button>
+      </div>
+      {open && cfg && (
+        <ul className="mt-3 flex flex-col gap-1 border-t border-border pt-3">
+          <Row on={cfg.storage.configured} label="Datastore (KV / Upstash)" hint="set KV_REST_API_* or UPSTASH_REDIS_REST_*" />
+          <Row on={cfg.superAdmin} label="Super-admin passcode" hint="set ADMIN_PASSCODE" />
+          <Row on={cfg.ai.baseline} label="AI baseline key" hint="set ANTHROPIC_API_KEY (or rely on per-workspace BYO)" />
+          <Row on={cfg.ai.byoEncryption} label="BYO-key encryption" hint="set EDGES_SECRET_KEY to let workspaces store their own key" />
+          <Row on={cfg.uploads.blob} label="Logo uploads" hint="set BLOB_READ_WRITE_TOKEN (or paste a logo URL instead)" />
+          <li className="flex items-baseline gap-2">
+            <span aria-hidden className="text-accent">◆</span>
+            <span>
+              Signup:{" "}
+              <span className="font-medium">
+                {cfg.signup === "open" ? "open to all" : cfg.signup === "code" ? "community code" : "closed (invite only)"}
+              </span>
+            </span>
+          </li>
+        </ul>
       )}
     </div>
   );
