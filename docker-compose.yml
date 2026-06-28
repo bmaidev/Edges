@@ -1,0 +1,46 @@
+# Phase E — a fully self-contained Edges instance: the app + a local Redis behind
+# an Upstash-REST-compatible shim, so `docker compose up` needs nothing external.
+#
+#   cp .env.example .env     # set ADMIN_PASSCODE (+ optional keys)
+#   docker compose up --build
+#
+# To use HOSTED Upstash instead, delete the `redis` + `srh` services and set
+# UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN in .env.
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - edges-redis:/data
+    restart: unless-stopped
+
+  # Upstash-REST-compatible HTTP proxy over the local Redis, so @vercel/kv works
+  # off-Vercel with no code change.
+  srh:
+    image: hiett/serverless-redis-http:latest
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: example_token
+      SRH_CONNECTION_STRING: "redis://redis:6379"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    # Your secrets (ADMIN_PASSCODE, optional ANTHROPIC_API_KEY / EDGES_SECRET_KEY
+    # / SIGNUP_*) live in .env; the KV vars below point the app at the local shim.
+    env_file:
+      - .env
+    environment:
+      KV_REST_API_URL: "http://srh:80"
+      KV_REST_API_TOKEN: example_token
+    depends_on:
+      - srh
+    restart: unless-stopped
+
+volumes:
+  edges-redis:
