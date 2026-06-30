@@ -18,9 +18,9 @@
 // credentials, publish is a no-op and the whole platform falls back to polling.
 
 const APP_ID = process.env.PUSHER_APP_ID || "";
-const KEY = process.env.PUSHER_KEY || "";
-const SECRET = process.env.PUSHER_SECRET || "";
-const CLUSTER = process.env.PUSHER_CLUSTER || "";
+const KEY = process.env.PUSHER_APP_KEY || "";
+const SECRET = process.env.PUSHER_APP_SECRET || "";
+const CLUSTER = process.env.PUSHER_APP_CLUSTER || "";
 
 // Public channel by design. The payload is ONLY a version integer — never any
 // room content or PII — and fetching the actual state still requires the
@@ -89,7 +89,7 @@ export async function publishRoomChange(
 // into NEXT_PUBLIC_* so the browser bundle can read them; this server-side helper
 // is for any SSR surface that wants to know whether to render the subscriber.
 export function publicRealtimeConfig(): { key: string; cluster: string } | null {
-  const key = process.env.NEXT_PUBLIC_PUSHER_KEY || "";
-  const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "";
+  const key = process.env.NEXT_PUBLIC_PUSHER_APP_KEY || "";
+  const cluster = process.env.NEXT_PUBLIC_PUSHER_APP_CLUSTER || "";
   return key && cluster ? { key, cluster } : null;
 }

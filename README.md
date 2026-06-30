@@ -111,7 +111,7 @@ store + the env vars). Or do it by hand:
    - **`SIGNUP_OPEN=true`** or **`SIGNUP_CODE=…`** — optional; opens self-service
      workspace sign-up at `/start` (default: closed / super-admin mints).
    - **`BLOB_READ_WRITE_TOKEN`** — optional; logo uploads (else paste a logo URL).
-   - **`PUSHER_*`** + **`NEXT_PUBLIC_PUSHER_KEY`/`NEXT_PUBLIC_PUSHER_CLUSTER`** —
+   - **`PUSHER_APP_*`** + **`NEXT_PUBLIC_PUSHER_APP_KEY`/`NEXT_PUBLIC_PUSHER_APP_CLUSTER`** —
      optional but strongly recommended at scale; enables the realtime push tier so
      screens update sub-second without every phone polling. Without it the app
      falls back to polling (see the R1 tier in [ARCHITECTURE.md](ARCHITECTURE.md)).
