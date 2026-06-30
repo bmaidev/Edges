@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FacilitatorState, PublicState } from "@/lib/types";
+// Type-only (erased at build) — the runtime SDK is still pulled via dynamic import
+// so a polling-only deployment never bundles it.
+import type PusherClient from "pusher-js";
 
 // R1 — realtime model:
 //  - Pusher push is the ACCELERATOR. When a room changes, the server bumps a
@@ -33,6 +36,28 @@ const PUSH_CONFIGURED = Boolean(PUSHER_KEY && PUSHER_CLUSTER);
 // tick or a presence-count change still heals within a few seconds.
 const BACKSTOP_MS = 8000;
 const CHANGE_EVENT = "changed";
+
+// One shared Pusher connection per page (module-level, decoupled from any
+// component's lifecycle). Creating a client per hook mount — and disconnecting it
+// on every cleanup — tears down the whole WebSocket on any remount or second
+// screen, which shows up as connect/disconnect churn every few seconds. A
+// singleton keeps a single socket up for the page's life, so subscribe/unsubscribe
+// become cheap channel ops on a stable connection. The browser closes the socket
+// on navigation/unload, so it's never leaked.
+let pusherClient: PusherClient | null = null;
+let pusherClientPromise: Promise<PusherClient> | null = null;
+function getPusherClient(): Promise<PusherClient> {
+  if (pusherClient) return Promise.resolve(pusherClient);
+  if (!pusherClientPromise) {
+    // Dynamic import so pusher-js never bloats a polling-only deployment's bundle.
+    pusherClientPromise = import("pusher-js").then(({ default: Pusher }) => {
+      pusherClient =
+        pusherClient ?? new Pusher(PUSHER_KEY, { cluster: PUSHER_CLUSTER });
+      return pusherClient;
+    });
+  }
+  return pusherClientPromise;
+}
 
 // The room slug lives in the endpoint (/api/r/<room>/state) — pull it out so the
 // hook can subscribe to that room's channel without a second prop.
@@ -178,7 +203,7 @@ export function usePolledState<
     if (!roomId) return;
 
     let cancelled = false;
-    let cleanup: (() => void) | null = null;
+    let teardown: (() => void) | null = null;
     // Coalesce a burst of ticks (e.g. 300 phones voting at once → a few server
     // pushes) into one re-poll. The conditional request makes a spurious poll a
     // cheap 304, but debouncing still spares needless work.
@@ -188,23 +213,17 @@ export function usePolledState<
       debounce = setTimeout(() => pollRef.current(), 150);
     };
 
-    // Dynamic import so pusher-js never bloats a polling-only deployment's bundle
-    // and the build doesn't hard-depend on it.
-    import("pusher-js")
-      .then(({ default: Pusher }) => {
+    // Subscribe this room's channel on the SHARED connection. On cleanup we only
+    // unbind + unsubscribe the channel — never disconnect the socket — so a
+    // remount re-subscribes on the same live WebSocket instead of churning it.
+    getPusherClient()
+      .then((client) => {
         if (cancelled) return;
-        const client = new Pusher(PUSHER_KEY, {
-          cluster: PUSHER_CLUSTER,
-          // Reconnect aggressively; the backstop poll covers any gap meanwhile.
-          activityTimeout: 30000,
-          pongTimeout: 10000,
-        });
         const channel = client.subscribe(`room-${roomId}`);
         channel.bind(CHANGE_EVENT, onChange);
-        cleanup = () => {
+        teardown = () => {
           channel.unbind(CHANGE_EVENT, onChange);
           client.unsubscribe(`room-${roomId}`);
-          client.disconnect();
         };
       })
       .catch(() => {
@@ -214,7 +233,7 @@ export function usePolledState<
     return () => {
       cancelled = true;
       if (debounce) clearTimeout(debounce);
-      if (cleanup) cleanup();
+      if (teardown) teardown();
     };
   }, [pushActive, opts.endpoint]);
 
