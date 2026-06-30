@@ -36,6 +36,34 @@ export function realtimeEnabled(): boolean {
   return Boolean(APP_ID && KEY && SECRET && CLUSTER);
 }
 
+// A non-secret capability summary for /api/health. Reads env at CALL time (not the
+// module-load consts) so it always reflects the live environment. Crucially it
+// splits the two halves push needs, because they fail independently:
+//   - server: PUSHER_APP_* are set, so the app CAN publish ticks.
+//   - client: NEXT_PUBLIC_PUSHER_APP_* are set, so the browser bundle CAN
+//     subscribe. NOTE these are inlined at BUILD time, so this reflects the build
+//     the running deployment was compiled from — a redeploy is needed after
+//     changing them.
+// mode is "pusher" only when BOTH halves are present; any gap → "polling".
+// Leaks nothing: booleans + a mode string, never a key, id, or secret.
+export function realtimeHealth(): {
+  mode: "pusher" | "polling";
+  server: boolean;
+  client: boolean;
+} {
+  const server = Boolean(
+    process.env.PUSHER_APP_ID &&
+      process.env.PUSHER_APP_KEY &&
+      process.env.PUSHER_APP_SECRET &&
+      process.env.PUSHER_APP_CLUSTER,
+  );
+  const client = Boolean(
+    process.env.NEXT_PUBLIC_PUSHER_APP_KEY &&
+      process.env.NEXT_PUBLIC_PUSHER_APP_CLUSTER,
+  );
+  return { mode: server && client ? "pusher" : "polling", server, client };
+}
+
 // The per-room channel name. Room slugs already appear in URLs, so the name
 // leaks nothing; the auth route is what gates the subscription.
 export function roomChannel(roomId: string): string {
