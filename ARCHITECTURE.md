@@ -116,9 +116,8 @@ write stamps `rev = max(Date.now(), prev.rev + 1)` (see `writeState` in
 [`lib/store.ts`](lib/store.ts)), so monotonicity holds even across clock skew
 between serverless instances.
 
-Clients poll `/api/state` every **2 seconds** via
-[`components/usePolledState.ts`](components/usePolledState.ts), which enforces
-two guards:
+[`components/usePolledState.ts`](components/usePolledState.ts) enforces two
+guards on every applied response:
 
 - **Out-of-order:** every fetch carries a monotonic seq; a response is applied
   only if it's the newest one started.
@@ -127,12 +126,43 @@ two guards:
   can return stale state — without this guard, a screen could jump backwards or
   flap between phases. With it, screens only ever move forward.
 
-There is an optional SSE accelerator (`/api/r/[room]/stream` emits a "tick" so
-clients re-poll immediately), but **polling is the source of truth**, not SSE.
-This is deliberate: SSE connections drop, get buffered by proxies, and are
-awkward across serverless edges; a dropped or blocked stream here is completely
-harmless because the 2s poll still guarantees convergence. The system is correct
-with SSE entirely disabled.
+### R1 — the realtime tier (push + conditional polling)
+
+The hard requirement is *hundreds of people per room across hundreds of
+simultaneous rooms with no disconnects and perfect syncs*. A naive 2s poll that
+recomputes a full snapshot per request does not get there: at ~90k clients it is
+~270k Redis ops/s of identical work, which rate-limits the store and reads as
+disconnects. The realtime tier fixes this **without giving up the correctness the
+monotonic guard provides**, by making "did anything change?" cost one cheap read
+and pushing that answer instead of polling for it.
+
+- **The per-room version counter.** A single Redis `INCR` (`room:<id>:ver`) is
+  bumped on *every participant-visible write* — and only those: liveness
+  heartbeats are deliberately excluded so 300 phones a beat don't churn it. The
+  bump is wired centrally in the storage backend by key-suffix allow-list
+  (`BUMP_SUFFIXES` in `store.ts`), so no write path can forget it. The counter is
+  the one source of truth for "has this room moved", read in a single GET.
+- **Push (Pusher Channels).** After a bump, the server fans a tiny `{ver}` tick
+  out to the room's channel (throttled to ≤1/s/room so a vote burst coalesces).
+  Clients re-poll on the tick, so updates land sub-second with no per-client
+  drum-beat. Gated on `PUSHER_*`: with no credentials it is a no-op and the
+  system falls back to polling (see [`lib/realtime.ts`](lib/realtime.ts)).
+- **Conditional polling (304).** The participant `/state` route ETags its
+  response with `p:<ver>:<roomTag>`. A client echoes it as `If-None-Match`; an
+  unchanged room answers **304 with no body, skipping the five-key snapshot read
+  and `computeView` entirely**. With push active, the participant poll drops to a
+  slow backstop (~8s) whose steady state is a single tiny version read.
+- **Push is an accelerator, never the source of truth.** Correctness lives in the
+  counter (always written before the response returns) and the monotonic `rev`
+  guard. A dropped, duplicated, or out-of-order tick is harmless: a client
+  re-fetches on *any* tick (a no-op collapses to a 304), and the backstop poll
+  heals a tick that never arrives. Nothing is ever missed — the system is exactly
+  as correct with push entirely disabled.
+
+The legacy SSE accelerator (`/api/r/[room]/stream`) still exists for polling-only
+deployments and is now backed by the same counter (its signature is one read, not
+six); the client uses it only when Pusher is unconfigured, since the per-client
+SSE loop is exactly the connection-holding cost push removes.
 
 ## Storage
 

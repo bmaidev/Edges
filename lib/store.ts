@@ -20,6 +20,7 @@ import {
   stripRunsheet,
 } from "./modules/runsheet";
 import { resolveAttribution } from "./modules/attribution";
+import { publishRoomChange } from "./realtime";
 import { HEARTBEAT_THROTTLE_MS, isDriverLive, liveRoster } from "./presence";
 import { computeCofac } from "./cofac";
 import {
@@ -80,6 +81,10 @@ interface Backend {
   // Atomic per-field delete (Redis HDEL) — clears specific fields without a
   // whole-hash del window, so it never races writes to OTHER fields.
   hdel(key: string, ...fields: string[]): Promise<void>;
+  // Atomic increment (Redis INCR) — the basis for the monotonic per-room change
+  // counter. Returns the value AFTER incrementing. Concurrency-safe: 300 writers
+  // bumping the same room each get a distinct, strictly-increasing number.
+  incr(key: string, ttlSeconds: number): Promise<number>;
 }
 
 // Defensive: list/hash values may come back as objects (auto-deserialized) or
@@ -106,9 +111,11 @@ if (useKv) {
     },
     async set<T>(key: string, value: T) {
       await client.set(key, value, { ex: TTL_SECONDS });
+      await maybeBumpFromKey(key);
     },
     async setNX(key: string, value: unknown, ttlSeconds: number) {
       // Upstash/Vercel KV returns "OK" when the NX set lands, null otherwise.
+      // setNX backs locks + throttles, never a view change — so it never bumps.
       const res = await client.set(key, value, { nx: true, ex: ttlSeconds });
       return res === "OK" || res === true;
     },
@@ -118,6 +125,7 @@ if (useKv) {
     async rpush<T>(key: string, value: T) {
       await client.rpush(key, value as unknown as string);
       await client.expire(key, TTL_SECONDS);
+      await maybeBumpFromKey(key);
     },
     async lrange<T>(key: string): Promise<T[]> {
       const raw = (await client.lrange(key, 0, -1)) as unknown[];
@@ -129,10 +137,12 @@ if (useKv) {
         await client.rpush(key, ...(values as unknown as string[]));
         await client.expire(key, TTL_SECONDS);
       }
+      await maybeBumpFromKey(key);
     },
     async hset<T>(key: string, field: string, value: T) {
       await client.hset(key, { [field]: value });
       await client.expire(key, TTL_SECONDS);
+      await maybeBumpFromKey(key);
     },
     async hget<T>(key: string, field: string): Promise<T | null> {
       const v = await client.hget(key, field);
@@ -147,6 +157,12 @@ if (useKv) {
     },
     async hdel(key: string, ...fields: string[]) {
       if (fields.length) await client.hdel(key, ...fields);
+      await maybeBumpFromKey(key);
+    },
+    async incr(key: string, ttlSeconds: number) {
+      const next = (await client.incr(key)) as number;
+      await client.expire(key, ttlSeconds);
+      return next;
     },
   };
 } else {
@@ -160,6 +176,7 @@ if (useKv) {
     },
     async set<T>(key: string, value: T) {
       mem.set(key, value);
+      await maybeBumpFromKey(key);
     },
     async setNX(key: string, value: unknown) {
       // Atomic in dev: JS is single-threaded, so the has()/set() pair can't be
@@ -175,17 +192,20 @@ if (useKv) {
       const arr = (mem.get(key) as T[]) ?? [];
       arr.push(value);
       mem.set(key, arr);
+      await maybeBumpFromKey(key);
     },
     async lrange<T>(key: string): Promise<T[]> {
       return ((mem.get(key) as T[]) ?? []).slice();
     },
     async replaceList<T>(key: string, values: T[]) {
       mem.set(key, values.slice());
+      await maybeBumpFromKey(key);
     },
     async hset<T>(key: string, field: string, value: T) {
       const h = (mem.get(key) as Record<string, T>) ?? {};
       h[field] = value;
       mem.set(key, h);
+      await maybeBumpFromKey(key);
     },
     async hget<T>(key: string, field: string): Promise<T | null> {
       const h = (mem.get(key) as Record<string, T>) ?? {};
@@ -199,12 +219,92 @@ if (useKv) {
       if (!h) return;
       for (const f of fields) delete h[f];
       mem.set(key, h);
+      await maybeBumpFromKey(key);
+    },
+    async incr(key: string, _ttlSeconds: number) {
+      const next = ((mem.get(key) as number) ?? 0) + 1;
+      mem.set(key, next);
+      return next;
     },
   };
 }
 
 function newId(): string {
   return globalThis.crypto.randomUUID();
+}
+
+// ---- R1 realtime: monotonic per-room change counter ------------------------
+//
+// A single Redis INCR per room is the backbone of the push tier. It is bumped on
+// every participant-VISIBLE write (filtered by key suffix below) and read — as
+// one cheap GET — to answer conditional /state polls (304) and to fan out a
+// "room changed" push. Liveness/throttle/lock keys are deliberately excluded so
+// 300 heartbeats a beat don't churn the counter and defeat the 304s.
+//
+// Correctness rule: the INCR is AWAITED inside the write (so a poll immediately
+// after a write always sees the new version), while the push is best-effort. The
+// counter — not the push — is the source of truth, so nothing is ever missed.
+
+const BUMP_SUFFIXES: ReadonlySet<string> = new Set([
+  "state",
+  "participants:hash",
+  "submissions:list",
+  "votes:hash",
+  "words:list",
+  "content",
+  "patterns",
+]);
+
+// At most one push per room per second: a vote/submit burst from 300 phones bumps
+// the counter 300× (the ETag stays exact) but coalesces to ~1 push/s. The backstop
+// poll catches any write throttled away from a push, so the tail still converges.
+const PUBLISH_THROTTLE_SECONDS = 1;
+
+// Parse `room:<id>:<suffix>` → its parts. Room ids (slugs) carry no colon, so the
+// id is the second segment and the suffix is everything after it.
+function parseRoomKey(key: string): { roomId: string; suffix: string } | null {
+  if (!key.startsWith("room:")) return null;
+  const rest = key.slice("room:".length);
+  const colon = rest.indexOf(":");
+  if (colon < 0) return null;
+  return { roomId: rest.slice(0, colon), suffix: rest.slice(colon + 1) };
+}
+
+export async function getRoomVersion(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<number> {
+  const v = await backend.get<number>(roomKeys(roomId).ver);
+  return typeof v === "number" ? v : Number(v ?? 0) || 0;
+}
+
+export async function bumpRoomVersion(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<number> {
+  const ver = await backend.incr(roomKeys(roomId).ver, TTL_SECONDS);
+  // Best-effort, throttled fan-out. The push carries the version for diagnostics,
+  // but a client re-fetches on ANY push (the conditional poll collapses a no-op to
+  // a 304), so a stale/duplicate/dropped push can never cause a missed update.
+  void backend
+    .setNX(`lock:${roomId}:pubcd`, 1, PUBLISH_THROTTLE_SECONDS)
+    .then((fresh) => (fresh ? publishRoomChange(roomId, ver) : undefined))
+    .catch(() => {});
+  return ver;
+}
+
+// Called from inside every mutating backend op. Cheap and total: a non-room or
+// non-visible key returns instantly; a visible one awaits the INCR so the new
+// version is durable before the write resolves.
+async function maybeBumpFromKey(key: string): Promise<void> {
+  const parsed = parseRoomKey(key);
+  if (!parsed || !BUMP_SUFFIXES.has(parsed.suffix)) return;
+  try {
+    await bumpRoomVersion(parsed.roomId);
+  } catch (e) {
+    // A failed bump must never fail the underlying write. Worst case the version
+    // lags by one and a client gets a stale 304 until the next write/backstop.
+    const msg = e instanceof Error ? e.message : "error";
+    console.error(`[realtime] bump failed for ${parsed.roomId}: ${msg}`);
+  }
 }
 
 // ---- State ----------------------------------------------------------------
@@ -1725,58 +1825,17 @@ export async function getPublicState(
   };
 }
 
-// A cheap change signature for a room — used by the SSE stream to decide when
-// to push a "something changed" tick (clients then re-fetch full state).
+// A cheap change signature for a room — used by the legacy SSE stream to decide
+// when to tick. Backed by the R1 monotonic version counter, so it is a single
+// KV read (was six) and ticks on a strict superset of the old hand-rolled fields:
+// every participant-visible write — state change, submission, vote, word, join,
+// content, pattern — bumps the counter (see BUMP_SUFFIXES), while a liveness
+// heartbeat does not. The version is the same value the /state poll ETags and the
+// Pusher push carry, so polling, SSE, and push all converge on one source of truth.
 export async function roomSignature(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<string> {
-  const [state, parts, subs, content] = await Promise.all([
-    getState(roomId),
-    listParticipants(roomId),
-    listSubmissions(roomId),
-    listContent(roomId),
-  ]);
-  const votes = await backend.hgetall<unknown>(roomKeys(roomId).votes);
-  const words = await backend.lrange<unknown>(roomKeys(roomId).words);
-  const visible = content.filter((c) => c.visible);
-  return [
-    state.phaseId,
-    state.timerEndsAt,
-    // C1 — include paused-remaining so a pause / resume / +2-while-paused (which
-    // may not change timerEndsAt) still ticks the SSE stream to every screen.
-    state.timerRemainingMs ?? "",
-    state.ended,
-    state.readaroundIndex,
-    state.sessionName,
-    parts.length,
-    subs.length,
-    contentVersion(visible),
-    Object.keys(votes).length,
-    words.length,
-    // F2 — tick the stream when the register changes or is promoted/hidden.
-    (state.actionItems ?? []).map((a) => `${a.id}:${a.status}`).join(","),
-    state.actionItemsPromoted ? "1" : "",
-    // C4 — tick on a spotlight set/replace/clear so the projector blooms within ~1
-    // SSE beat instead of waiting up to 2s for the next poll. Primitive token only.
-    state.spotlight
-      ? state.spotlight.kind === "submission"
-        ? `s:${state.spotlight.id}`
-        : `l:${state.spotlight.text.length}:${state.spotlight.handle ? "a" : ""}`
-      : "",
-    // C5 — tick the stream when the driving baton changes, so the chip updates
-    // within ~1 SSE beat instead of waiting for the 2s poll.
-    state.driver ? `d:${state.driver.driverId}` : "",
-    // E3 — tick when a calm break/hold is summoned or resumed.
-    state.ambient ? `amb:${state.ambient.kind}` : "",
-    // E1 — tick when the lobby cue or count-visibility is re-authored, so the
-    // front-of-room join screen updates within ~1 SSE beat.
-    state.lobbyCue ?? "",
-    state.lobbyCountVisible === false ? "0" : "1",
-    // D2 — tick when the host toggles projector high-contrast.
-    state.projectorA11y ? "a11y" : "",
-    // C6 — tick when the host toggles the room-wide timer sound.
-    state.timerSoundOff ? "snd0" : "",
-  ].join("|");
+  return String(await getRoomVersion(roomId));
 }
 
 // Dispatch a participant action to the active phase's module (used by /api/action).
