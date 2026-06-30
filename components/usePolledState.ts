@@ -6,16 +6,18 @@ import type { FacilitatorState, PublicState } from "@/lib/types";
 // so a polling-only deployment never bundles it.
 import type PusherClient from "pusher-js";
 
-// R1 — realtime model:
-//  - Pusher push is the ACCELERATOR. When a room changes, the server bumps a
-//    monotonic version and fans out a tiny "changed" tick; we re-poll on it, so
-//    updates land in well under a second without a 2s drum-beat from 90k phones.
-//  - Polling is the BACKSTOP, not the heartbeat. With push active we poll slowly
-//    (just to heal a missed tick and refresh presence counts); without push we
-//    fall back to the classic fast cadence + the legacy SSE accelerator.
-//  - Conditional requests: we send the last ETag as If-None-Match. The participant
-//    /state route answers 304 (no body, no snapshot read) when nothing the client
-//    can see has changed — collapsing the steady-state poll to a single tiny read.
+// R1 — realtime model (push is a PURE ACCELERATOR):
+//  - Polling is the reliable source of truth: every client fetches the COMPLETE
+//    role-scoped /state body on a fixed cadence (~2s), and a full read every beat
+//    self-heals any eventually-consistent KV lag. This is never slowed down.
+//  - Pusher push only makes it faster. When a room changes the server fans out a
+//    tiny "changed" tick; we respond with one extra immediate (debounced) refetch.
+//    A dropped/duplicate/late tick is harmless — the steady poll still converges,
+//    so the worst case is exactly the plain-polling behaviour.
+//  - Without Pusher configured we fall back to the legacy SSE accelerator.
+//  - There is deliberately NO conditional 304: a cheap version-keyed ETag is
+//    strongly consistent while the body is read from eventually-consistent
+//    replicas, so it could certify and lock in a stale body. A full read wins.
 //
 // Two correctness guards make every screen stable, unchanged from before:
 //  - Out-of-order: every fetch carries a monotonic seq; a response is applied
@@ -31,10 +33,6 @@ const PUSHER_KEY = process.env.NEXT_PUBLIC_PUSHER_APP_KEY || "";
 const PUSHER_CLUSTER = process.env.NEXT_PUBLIC_PUSHER_APP_CLUSTER || "";
 const PUSH_CONFIGURED = Boolean(PUSHER_KEY && PUSHER_CLUSTER);
 
-// Backstop cadence when push is carrying the real-time load: slow enough to gut
-// the read storm (90k phones no longer poll every 2s), fast enough that a missed
-// tick or a presence-count change still heals within a few seconds.
-const BACKSTOP_MS = 8000;
 const CHANGE_EVENT = "changed";
 
 // One shared Pusher connection per page (module-level, decoupled from any
@@ -100,19 +98,17 @@ export function usePolledState<
   // than this, so a stale/eventually-consistent KV read can't make a screen jump
   // backwards (or flap between phases). This is the core anti-flash guard.
   const lastRevRef = useRef(-1);
-  // R1 — the ETag of the last applied response, echoed back as If-None-Match so
-  // an unchanged room answers 304 (no body, no snapshot read).
-  const lastEtagRef = useRef<string | null>(null);
 
   // A key that identifies "who we're polling as". When it changes we must reset
   // state and re-poll, so the auth gate never reads a previous identity's data.
   const authKey = `${opts.endpoint ?? ""}|${opts.code ?? ""}|${opts.token ?? ""}|${opts.role ?? ""}`;
 
-  // Push carries real-time updates for participant/projector screens (no code).
-  // A host console (code) stays on the fast, always-full cadence so its presence
-  // and health panels never lag.
+  // Push is a PURE ACCELERATOR: it only triggers an extra immediate refetch on
+  // top of the steady poll cadence below — it never slows polling down. So the
+  // worst case is exactly the reliable full-body polling; push just makes updates
+  // land sub-second when the socket is healthy. Active for participant/projector
+  // screens (no code); a host console keeps the same cadence via plain polling.
   const pushActive = PUSH_CONFIGURED && Boolean(opts.endpoint) && !opts.code;
-  const effectiveInterval = pushActive ? Math.max(intervalMs, BACKSTOP_MS) : intervalMs;
 
   useEffect(() => {
     let active = true;
@@ -123,7 +119,6 @@ export function usePolledState<
     appliedRef.current = 0;
     seqRef.current = 0;
     lastRevRef.current = -1;
-    lastEtagRef.current = null;
 
     async function poll() {
       const mySeq = ++seqRef.current;
@@ -141,19 +136,8 @@ export function usePolledState<
           if (presence.name) qs.set("pname", presence.name);
         }
         const url = qs.toString() ? `${base}?${qs}` : base;
-        const headers: Record<string, string> = {};
-        if (lastEtagRef.current) headers["If-None-Match"] = lastEtagRef.current;
-        const res = await fetch(url, { cache: "no-store", headers });
+        const res = await fetch(url, { cache: "no-store" });
         if (!active) return;
-        // R1 — 304: the server confirmed nothing the client can see has changed.
-        // Healthy liveness, not a stall — refresh the timestamp, keep our state.
-        if (res.status === 304) {
-          if (mySeq >= appliedRef.current) {
-            setError(false);
-            setLastAppliedAt(Date.now());
-          }
-          return;
-        }
         if (!res.ok) throw new Error("bad status");
         const data = (await res.json()) as T;
         if (!active) return;
@@ -174,9 +158,6 @@ export function usePolledState<
         if (rev !== null && rev < lastRevRef.current) return;
         appliedRef.current = mySeq;
         if (rev !== null) lastRevRef.current = Math.max(lastRevRef.current, rev);
-        // Store the ETag only for a response we actually applied (newest, not
-        // anti-flash-dropped), so the next If-None-Match reflects shown state.
-        lastEtagRef.current = res.headers.get("ETag");
         setState(data);
         setError(false);
         setLastAppliedAt(Date.now());
@@ -187,12 +168,12 @@ export function usePolledState<
 
     pollRef.current = poll;
     poll();
-    const id = setInterval(poll, effectiveInterval);
+    const id = setInterval(poll, intervalMs);
     return () => {
       active = false;
       clearInterval(id);
     };
-  }, [authKey, effectiveInterval]);
+  }, [authKey, intervalMs]);
 
   // R1 — Pusher accelerator: re-poll on a "changed" tick for this room. Polling
   // above remains the guaranteed backstop, so a dropped/blocked socket is
@@ -205,8 +186,7 @@ export function usePolledState<
     let cancelled = false;
     let teardown: (() => void) | null = null;
     // Coalesce a burst of ticks (e.g. 300 phones voting at once → a few server
-    // pushes) into one re-poll. The conditional request makes a spurious poll a
-    // cheap 304, but debouncing still spares needless work.
+    // pushes) into one re-poll, so a vote storm doesn't trigger a refetch per tick.
     let debounce: ReturnType<typeof setTimeout> | null = null;
     const onChange = () => {
       if (debounce) clearTimeout(debounce);
@@ -284,9 +264,6 @@ export function usePolledState<
     if (rev !== null && rev < lastRevRef.current) return;
     if (rev !== null) lastRevRef.current = Math.max(lastRevRef.current, rev);
     appliedRef.current = seqRef.current;
-    // A command response is a fresh full state; drop the stale ETag so the next
-    // poll re-validates against the server rather than 304-ing on an old tag.
-    lastEtagRef.current = null;
     setState(next);
     setError(false);
     setLastAppliedAt(Date.now());

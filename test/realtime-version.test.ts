@@ -124,68 +124,32 @@ describe("room version counter", () => {
   });
 });
 
-// The contract that actually carries the scale win: an unchanged participant poll
-// is a 304 (no body, no snapshot) and a write busts it. Drives the real route.
-describe("participant /state conditional 304 fast path", () => {
-  function partReq(slug: string, etag?: string) {
-    const headers: Record<string, string> = {};
-    if (etag) headers["If-None-Match"] = etag;
-    return new NextRequest(`http://x/api/r/${slug}/state?token=tok-1`, { headers });
+// Push is a pure accelerator now: the participant route always returns a full
+// body (no conditional 304s), so a stale eventually-consistent read can never get
+// locked in. It just must serve the participant view. Drives the real route.
+describe("participant /state always returns a full body", () => {
+  function partReq(slug: string) {
+    return new NextRequest(`http://x/api/r/${slug}/state?token=tok-1`);
   }
 
-  it("304s an unchanged poll and 200s after a visible write", async () => {
+  it("returns 200 with the participant view, no ETag/304 gating", async () => {
     const { room } = await createRoom("Sync", "topic");
     await setPhases(
       [{ id: "p1", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } }],
       "S",
       room.slug,
     );
-
-    // First poll: no validator → 200 full body, carries an ETag to echo back.
-    const first = await stateGET(partReq(room.slug), { params: { room: room.slug } });
-    expect(first.status).toBe(200);
-    const etag = first.headers.get("ETag");
-    expect(etag).toBeTruthy();
-    const body = await first.json();
+    const res = await stateGET(partReq(room.slug), { params: { room: room.slug } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("ETag")).toBeNull();
+    const body = await res.json();
     expect(body.role).toBe("participant");
-    expect(typeof body.ver).toBe("number");
 
-    // Second poll with that ETag and nothing changed → 304, no body.
-    const second = await stateGET(partReq(room.slug, etag!), {
-      params: { room: room.slug },
-    });
-    expect(second.status).toBe(304);
-    expect(await second.text()).toBe("");
-    expect(second.headers.get("ETag")).toBe(etag);
-
-    // A participant-visible write bumps the version → the SAME ETag no longer
-    // matches → the next poll is a full 200 with a new ETag.
-    await addSubmission("A", "an idea", "p1", null, "tok-1", room.slug);
-    const third = await stateGET(partReq(room.slug, etag!), {
-      params: { room: room.slug },
-    });
-    expect(third.status).toBe(200);
-    expect(third.headers.get("ETag")).not.toBe(etag);
-  });
-
-  it("busts the 304 when only the room topic changes (roomTag in the ETag)", async () => {
-    const { room } = await createRoom("Topic", "first topic");
-    await setPhases(
-      [{ id: "p1", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } }],
-      "S",
-      room.slug,
-    );
-    const first = await stateGET(partReq(room.slug), { params: { room: room.slug } });
-    const etag = first.headers.get("ETag")!;
-    // Same version, but the topic (a Room-record field the counter doesn't track)
-    // changes → roomTag changes → ETag changes → no stale 304.
-    const { updateRoom } = await import("@/lib/rooms");
-    await updateRoom(room.slug, { topic: "second topic" });
-    const after = await stateGET(partReq(room.slug, etag), {
-      params: { room: room.slug },
-    });
-    expect(after.status).toBe(200);
-    expect(after.headers.get("ETag")).not.toBe(etag);
+    // A second identical poll is still a full 200 (never a 304), so a fresh read
+    // always wins and self-heals — never a stale-locked view.
+    const again = await stateGET(partReq(room.slug), { params: { room: room.slug } });
+    expect(again.status).toBe(200);
+    expect((await again.json()).role).toBe("participant");
   });
 });
 

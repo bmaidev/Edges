@@ -2,39 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getFacilitatorState,
   getPublicState,
-  getRoomVersion,
   heartbeatHost,
   heartbeatProjector,
   touchParticipant,
 } from "@/lib/store";
 import { getRoom, resolveRedirect, resolveRole } from "@/lib/rooms";
-import type { Room } from "@/lib/rooms";
 import type { RoomBranding } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// R1 — a tiny signature of the room-record fields the /state body surfaces but
-// the version counter does NOT track (topic + branding live on the durable Room
-// record, edited via the admin path, not the session store). Folding it into the
-// participant ETag means a topic/logo/headline change busts the 304 for free,
-// without an extra read — roomRec is already in hand.
-function roomTag(rec: Room): string {
-  const t = rec.theme;
-  return [
-    rec.topic ?? "",
-    t?.logoUrl ?? "",
-    t?.headline ?? "",
-    t?.tagline ?? "",
-  ].join("");
-}
-
-// A short, stable hash so the ETag stays compact regardless of branding length.
-function shortHash(s: string): string {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
-  return (h >>> 0).toString(36);
-}
 
 // GET /api/r/[room]/state?token=...   -> participant view
 // GET /api/r/[room]/state?code=...    -> role-scoped (facilitator/cohost/admin)
@@ -101,32 +77,12 @@ export async function GET(
     return NextResponse.json({ ...state, topic: topic ?? state.topic, role: "projector", branding }, { headers });
   }
 
-  // R1 — the participant path is 99% of clients at scale, so it gets the 304 fast
-  // path. The ETag is `p:<version>:<roomTag>`. The monotonic version counter is a
-  // single cheap read and changes on every participant-visible write; roomTag
-  // covers the room-record fields (topic/branding) the counter doesn't. When the
-  // client's If-None-Match still matches, nothing it can see has changed, so we
-  // return 304 with no body — skipping the five-key snapshot read and computeView
-  // entirely. (Facilitator/projector paths above stay always-full: they are 1–2
-  // clients per room — negligible load — and keeping them live preserves the
-  // host's presence/health panel and the projector's exact counts.)
-  const ver = await getRoomVersion(room);
-  const etag = `"p:${ver}:${shortHash(roomTag(roomRec))}"`;
-  if (req.headers.get("if-none-match") === etag) {
-    // Still record liveness — a 304 is still a live participant. Throttled.
-    if (token) void touchParticipant(token, room).catch(() => {});
-    return new NextResponse(null, {
-      status: 304,
-      headers: { ...headers, ETag: etag },
-    });
-  }
-
   // C2 — record liveness for the presence signal. Fire-and-forget (throttled to
   // one write per token per 15s) so it never adds latency or fails the poll.
   if (token) void touchParticipant(token, room).catch(() => {});
   const state = await getPublicState(token, room, "participant");
   return NextResponse.json(
-    { ...state, ver, topic: topic ?? state.topic, role: "participant", branding },
-    { headers: { ...headers, ETag: etag } },
+    { ...state, topic: topic ?? state.topic, role: "participant", branding },
+    { headers },
   );
 }
