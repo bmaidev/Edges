@@ -24,8 +24,8 @@ import type { FacilitatorState, PublicState } from "@/lib/types";
 
 // Whether managed realtime (Pusher) is configured in this build. Read once at
 // module load — these are inlined NEXT_PUBLIC_* at build time.
-const PUSHER_KEY = process.env.NEXT_PUBLIC_PUSHER_KEY || "";
-const PUSHER_CLUSTER = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "";
+const PUSHER_KEY = process.env.NEXT_PUBLIC_PUSHER_APP_KEY || "";
+const PUSHER_CLUSTER = process.env.NEXT_PUBLIC_PUSHER_APP_CLUSTER || "";
 const PUSH_CONFIGURED = Boolean(PUSHER_KEY && PUSHER_CLUSTER);
 
 // Backstop cadence when push is carrying the real-time load: slow enough to gut
