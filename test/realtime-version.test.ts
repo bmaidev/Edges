@@ -188,3 +188,98 @@ describe("participant /state conditional 304 fast path", () => {
     expect(after.headers.get("ETag")).not.toBe(etag);
   });
 });
+
+// The /api/health "realtime" capability flag: splits server (can publish) from
+// client (browser can subscribe) so an asymmetric setup is obvious.
+describe("realtimeHealth() + /api/health", () => {
+  const KEYS = [
+    "PUSHER_APP_ID",
+    "PUSHER_APP_KEY",
+    "PUSHER_APP_SECRET",
+    "PUSHER_APP_CLUSTER",
+    "NEXT_PUBLIC_PUSHER_APP_KEY",
+    "NEXT_PUBLIC_PUSHER_APP_CLUSTER",
+  ] as const;
+
+  function withEnv(vars: Record<string, string>, fn: () => void) {
+    const saved: Record<string, string | undefined> = {};
+    for (const k of KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+    Object.assign(process.env, vars);
+    try {
+      fn();
+    } finally {
+      for (const k of KEYS) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    }
+  }
+
+  it("reports polling when nothing is configured", async () => {
+    const { realtimeHealth } = await import("@/lib/realtime");
+    withEnv({}, () => {
+      expect(realtimeHealth()).toEqual({
+        mode: "polling",
+        server: false,
+        client: false,
+      });
+    });
+  });
+
+  it("reports polling when ONLY the server half is set (the NEXT_PUBLIC mistake)", async () => {
+    const { realtimeHealth } = await import("@/lib/realtime");
+    withEnv(
+      {
+        PUSHER_APP_ID: "id",
+        PUSHER_APP_KEY: "k",
+        PUSHER_APP_SECRET: "s",
+        PUSHER_APP_CLUSTER: "mt1",
+      },
+      () => {
+        expect(realtimeHealth()).toEqual({
+          mode: "polling",
+          server: true,
+          client: false,
+        });
+      },
+    );
+  });
+
+  it("reports pusher when both halves are set", async () => {
+    const { realtimeHealth } = await import("@/lib/realtime");
+    withEnv(
+      {
+        PUSHER_APP_ID: "id",
+        PUSHER_APP_KEY: "k",
+        PUSHER_APP_SECRET: "s",
+        PUSHER_APP_CLUSTER: "mt1",
+        NEXT_PUBLIC_PUSHER_APP_KEY: "k",
+        NEXT_PUBLIC_PUSHER_APP_CLUSTER: "mt1",
+      },
+      () => {
+        expect(realtimeHealth()).toEqual({
+          mode: "pusher",
+          server: true,
+          client: true,
+        });
+      },
+    );
+  });
+
+  it("/api/health includes the realtime flag and never leaks a secret", async () => {
+    const { GET: healthGET } = await import("@/app/api/health/route");
+    const res = await healthGET();
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.realtime).toMatchObject({
+      mode: expect.stringMatching(/^(pusher|polling)$/),
+      server: expect.any(Boolean),
+      client: expect.any(Boolean),
+    });
+    // No secret ever appears in the public payload.
+    expect(JSON.stringify(body)).not.toContain("PUSHER_APP_SECRET");
+  });
+});
