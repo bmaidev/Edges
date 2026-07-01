@@ -71,6 +71,8 @@ import {
   Eye,
   EyeOff,
   Trash2,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -1355,6 +1357,128 @@ function PhaseStepper({
   );
 }
 
+// One content item: a clean, calm row with a real inline editor (title AND body,
+// not a body-only text link) and consistent icon actions. This is the whole card
+// treatment for the Content tab.
+function ContentRow({ item, cmd }: { item: ContentItem; cmd: Cmd }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(item.title);
+  const [body, setBody] = useState(item.body);
+
+  const status = item.visible ? "live" : item.queued ? "queued" : "held";
+  const dot =
+    status === "live"
+      ? "bg-emerald-400"
+      : status === "queued"
+        ? "bg-amber-400"
+        : "bg-white/25";
+  const statusLabel =
+    status === "live"
+      ? "Live on screens"
+      : status === "queued"
+        ? "Queued for the next phase"
+        : "Held — hidden until you show it";
+
+  function save() {
+    cmd("updateContent", { id: item.id, title: title.trim(), body: body.trim() });
+    setEditing(false);
+  }
+  function cancel() {
+    setTitle(item.title);
+    setBody(item.body);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="rounded-xl border border-accent/40 bg-surface/40 p-3.5">
+        <div className="mb-2.5 flex items-center gap-2">
+          <span className="rounded bg-white/[0.07] px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-muted">
+            {item.type}
+          </span>
+          <span className="text-xs font-medium text-accent">Editing</span>
+        </div>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title"
+          autoFocus
+          className="mb-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-medium focus:border-accent focus:outline-none"
+        />
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={Math.min(12, body.split("\n").length + 2)}
+          placeholder="Body — what the room sees"
+          className="w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm leading-relaxed focus:border-accent focus:outline-none"
+        />
+        <div className="mt-2.5 flex justify-end gap-2">
+          <UiButton variant="ghost" size="sm" onClick={cancel}>
+            Cancel
+          </UiButton>
+          <UiButton variant="primary" size="sm" onClick={save}>
+            <Check /> Save
+          </UiButton>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group flex items-center gap-3 rounded-xl border border-border/70 bg-surface/40 px-3.5 py-3 transition-colors hover:border-white/20 hover:bg-surface/60">
+      <span className={`size-2 shrink-0 rounded-full ${dot}`} title={statusLabel} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 rounded bg-white/[0.07] px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-muted">
+            {item.type}
+          </span>
+          <span className="truncate text-sm font-medium text-white/90">
+            {item.title && item.title !== "(untitled)" ? item.title : "Untitled"}
+          </span>
+        </div>
+        {item.body && (
+          <p className="mt-0.5 truncate text-xs text-muted">{item.body}</p>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+        <UiButton
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          title={item.visible ? "Hide from screens" : "Show on screens"}
+          onClick={() =>
+            cmd("updateContent", {
+              id: item.id,
+              visible: !item.visible,
+              queued: false,
+            })
+          }
+        >
+          {item.visible ? <EyeOff /> : <Eye />}
+        </UiButton>
+        <UiButton
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          title="Edit"
+          onClick={() => setEditing(true)}
+        >
+          <Pencil />
+        </UiButton>
+        <UiButton
+          variant="ghost"
+          size="icon"
+          className="size-8 text-muted hover:bg-[#ff6b6b]/10 hover:text-[#ff9a9a]"
+          title="Delete"
+          onClick={() => cmd("deleteContent", { id: item.id })}
+        >
+          <Trash2 />
+        </UiButton>
+      </div>
+    </div>
+  );
+}
+
 function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<ContentType>("note");
@@ -1510,85 +1634,7 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
         {allContent.length === 0 ? (
           <Empty>No content yet.</Empty>
         ) : (
-          allContent.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-start gap-3 rounded-lg border border-border bg-surface/50 px-3 py-2.5 transition-colors hover:border-white/20"
-              >
-                {/* Status at a glance: green = live on screens, amber = queued for
-                    the next phase, dim = held (hidden). */}
-                <span
-                  className={`mt-1.5 size-2 shrink-0 rounded-full ${
-                    c.visible
-                      ? "bg-emerald-400"
-                      : c.queued
-                        ? "bg-amber-400"
-                        : "bg-white/25"
-                  }`}
-                  title={
-                    c.visible
-                      ? "Live on screens"
-                      : c.queued
-                        ? "Queued for next phase"
-                        : "Held — hidden until you show it"
-                  }
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="shrink-0 rounded bg-white/10 px-1.5 py-px text-[0.6rem] font-semibold uppercase tracking-[0.06em] text-muted">
-                      {c.type}
-                    </span>
-                    <span className="truncate text-sm font-medium">
-                      {c.title && c.title !== "(untitled)"
-                        ? c.title
-                        : c.body.slice(0, 60) || "Untitled"}
-                    </span>
-                    <div className="ml-auto flex shrink-0 items-center gap-0.5">
-                      <UiButton
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        title={
-                          c.visible ? "Hide from screens" : "Show on screens"
-                        }
-                        onClick={() =>
-                          cmd("updateContent", {
-                            id: c.id,
-                            visible: !c.visible,
-                            queued: false,
-                          })
-                        }
-                      >
-                        {c.visible ? <EyeOff /> : <Eye />}
-                      </UiButton>
-                      <InlineEdit
-                        value={c.body}
-                        onSave={(body) =>
-                          cmd("updateContent", { id: c.id, body })
-                        }
-                      />
-                      <UiButton
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-[#ff8a8a] hover:bg-[#ff6b6b]/10"
-                        title="Delete"
-                        onClick={() => cmd("deleteContent", { id: c.id })}
-                      >
-                        <Trash2 />
-                      </UiButton>
-                    </div>
-                  </div>
-                  {c.title &&
-                    c.title !== "(untitled)" &&
-                    c.body && (
-                      <p className="mt-0.5 truncate text-xs text-muted">
-                        {c.body.slice(0, 160)}
-                        {c.body.length > 160 ? "…" : ""}
-                      </p>
-                    )}
-                </div>
-              </div>
-            ))
+          allContent.map((c) => <ContentRow key={c.id} item={c} cmd={cmd} />)
         )}
       </div>
     </Panel>
