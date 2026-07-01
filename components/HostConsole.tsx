@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { usePresence } from "@/components/usePresence";
 import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip";
@@ -545,50 +545,68 @@ export function HostConsole({
         {activeTab === "content" && <InjectPanel state={s} cmd={cmd} />}
         {activeTab === "patterns" && <PatternPanel state={s} cmd={cmd} />}
         {activeTab === "session" && role !== "cohost" && (
-          <>
-            <RecoveryControls
-              state={s}
-              onReopen={(phaseId, label, count) =>
-                setConfirm({ kind: "reopen", phaseId, label, count })
-              }
-            />
-            <HandoverPanel state={s} apiBase={apiBase} code={code} />
-            {/* D2 — drive the big screen's high-contrast mode for the room. */}
-            <label className="flex w-fit items-center gap-2 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={s.projectorA11y === true}
-                onChange={(e) => cmd("setProjectorA11y", { on: e.target.checked })}
+          <div className="flex flex-col gap-8">
+            <SessionSection title="Pacing & recovery">
+              {/* B1 — the agenda arc during the run: does it still breathe? */}
+              <HostArcStrip state={s} />
+              {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
+              <PhaseTimingPanel state={s} />
+              {/* Re-open an earlier phase to run it again (clears its old answers). */}
+              <RecoveryControls
+                state={s}
+                onReopen={(phaseId, label, count) =>
+                  setConfirm({ kind: "reopen", phaseId, label, count })
+                }
               />
-              High-contrast big screen (colour-safe, for the whole room)
-            </label>
-            {/* C6 — silence the timer chime for the whole room (the amber tint
-                still carries the cue). The per-device cockpit mute is separate. */}
-            <label className="flex w-fit items-center gap-2 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={s.timerSoundOff === true}
-                onChange={(e) => cmd("setTimerSound", { off: e.target.checked })}
+            </SessionSection>
+
+            <SessionSection title="Room settings">
+              {/* D2 / C6 — big-screen + timer-chime toggles for the whole room. */}
+              <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface/50 p-4">
+                <label className="flex items-center gap-2.5 text-sm text-white/85">
+                  <input
+                    type="checkbox"
+                    className="accent-accent"
+                    checked={s.projectorA11y === true}
+                    onChange={(e) =>
+                      cmd("setProjectorA11y", { on: e.target.checked })
+                    }
+                  />
+                  High-contrast big screen (colour-safe, for the whole room)
+                </label>
+                <label className="flex items-center gap-2.5 text-sm text-white/85">
+                  <input
+                    type="checkbox"
+                    className="accent-accent"
+                    checked={s.timerSoundOff === true}
+                    onChange={(e) =>
+                      cmd("setTimerSound", { off: e.target.checked })
+                    }
+                  />
+                  Mute the timer chime for the whole room
+                </label>
+              </div>
+              {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
+              <CofacSettings
+                enabled={s.cofacEnabled ?? true}
+                sensitivity={s.cofacSensitivity ?? "standard"}
+                cmd={cmd}
               />
-              Mute the timer chime for the whole room
-            </label>
-            {/* B1 — the agenda arc during the run: does it still breathe? */}
-            <HostArcStrip state={s} />
-            {/* D4 — who's in the room: live/quiet dots + join order. */}
-            <RoomRoster state={s} />
-            {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
-            <CofacSettings
-              enabled={s.cofacEnabled ?? true}
-              sensitivity={s.cofacSensitivity ?? "standard"}
-              cmd={cmd}
-            />
-            {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
-            <PhaseTimingPanel state={s} />
-            <RunsheetPrint state={s} slug={slug} />
-            {/* F3 — review/curate the participant take-away before ending. */}
-            <TakeawayReview state={s} apiBase={apiBase} code={code} cmd={cmd} />
-            <SessionControls cmd={cmd} />
-          </>
+            </SessionSection>
+
+            <SessionSection title="People">
+              {/* D4 — who's in the room: live/quiet dots + join order. */}
+              <RoomRoster state={s} />
+            </SessionSection>
+
+            <SessionSection title="Wrap up & export">
+              <HandoverPanel state={s} apiBase={apiBase} code={code} />
+              <RunsheetPrint state={s} slug={slug} />
+              {/* F3 — review/curate the participant take-away before ending. */}
+              <TakeawayReview state={s} apiBase={apiBase} code={code} cmd={cmd} />
+              <SessionControls cmd={cmd} />
+            </SessionSection>
+          </div>
         )}
       </div>
     </main>
@@ -976,6 +994,25 @@ function LobbyAuthor({
 
 // Top of the console: where you are (session · phase x/y · current label),
 // the live count + timer, and the timer controls — separated from navigation.
+// Groups the Session tab's many tools under a quiet section heading, so it reads
+// as organised sections instead of a flat pile of panels.
+function SessionSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
+        {title}
+      </h3>
+      <div className="flex flex-col gap-3">{children}</div>
+    </section>
+  );
+}
+
 function SessionHeader({
   state,
   cmd,
@@ -1202,7 +1239,11 @@ function PhaseStepper({
         >
           <ArrowLeft />
         </UiButton>
-        <div className="flex flex-1 gap-1 overflow-x-auto py-1">
+        {/* A slim segmented progress track instead of a scrolling wall of pills:
+            it scales to any phase count, each segment jumps to its phase (name in
+            the tooltip), and the current phase name already lives in the header —
+            so this shows PROGRESS, not a row of labels competing with it. */}
+        <div className="flex flex-1 items-center gap-1.5">
           {phases.map((p, i) => {
             const done = idx >= 0 && i < idx;
             const current = i === idx;
@@ -1210,31 +1251,63 @@ function PhaseStepper({
               <button
                 key={p.id}
                 onClick={() => go(p)}
-                title={p.label}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
-                  current
-                    ? "border-accent bg-accent/15 font-medium text-accent"
-                    : done
-                      ? "border-transparent bg-white/[0.03] text-muted hover:text-white/70"
-                      : "border-border text-muted hover:border-accent hover:text-white/80"
-                }`}
+                title={`${i + 1}. ${p.label}`}
+                aria-label={`Go to phase ${i + 1}: ${p.label}`}
+                aria-current={current ? "step" : undefined}
+                className="group relative flex h-4 flex-1 items-center"
               >
                 <span
-                  className={`grid size-4 place-items-center rounded-full text-[0.6rem] ${
-                    done
-                      ? "bg-accent/25 text-accent"
-                      : current
-                        ? "bg-accent text-bg"
-                        : "bg-white/10"
+                  className={`h-1.5 w-full rounded-full transition-colors ${
+                    current
+                      ? "bg-accent"
+                      : done
+                        ? "bg-accent/45"
+                        : "bg-white/12 group-hover:bg-white/25"
                   }`}
-                >
-                  {done ? "✓" : i + 1}
-                </span>
-                <span className="max-w-[9rem] truncate">{p.label}</span>
+                />
+                {current && (
+                  <span className="pointer-events-none absolute left-1/2 top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent ring-2 ring-bg" />
+                )}
               </button>
             );
           })}
         </div>
+        {/* Jump to any phase by name (the labels the pills used to show). */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <UiButton variant="ghost" size="sm" className="shrink-0 text-muted">
+              {idx >= 0 ? idx + 1 : "–"}/{phases.length}
+              <ChevronDown className="opacity-60" />
+            </UiButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto">
+            <DropdownMenuLabel>Jump to phase</DropdownMenuLabel>
+            {phases.map((p, i) => {
+              const done = idx >= 0 && i < idx;
+              const current = i === idx;
+              return (
+                <DropdownMenuItem
+                  key={p.id}
+                  onSelect={() => go(p)}
+                  className={current ? "text-accent" : ""}
+                >
+                  <span
+                    className={`grid size-4 shrink-0 place-items-center rounded-full text-[0.6rem] ${
+                      done
+                        ? "bg-accent/25 text-accent"
+                        : current
+                          ? "bg-accent text-bg"
+                          : "bg-white/10 text-muted"
+                    }`}
+                  >
+                    {done ? "✓" : i + 1}
+                  </span>
+                  {p.label}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {/* The one action that matters — a real filled primary, not an outline. */}
         <UiButton
           data-tour-id="advance"
