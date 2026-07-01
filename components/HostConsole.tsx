@@ -79,6 +79,7 @@ import { TEMPLATES } from "@/lib/templates";
 import { phaseNav } from "@/lib/sequence";
 import type {
   ContentType,
+  ContentItem,
   FacilitatorState,
   ModuleKind,
   ModeId,
@@ -1359,6 +1360,22 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   const [type, setType] = useState<ContentType>("note");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  // Optimistic list: the host's poll reads an eventually-consistent replica, so a
+  // just-added item can take seconds to appear (that's what made "Load starter
+  // library" look like it did nothing). Reflect the write response IMMEDIATELY;
+  // the poll reconciles by id, so there's no flicker or duplication.
+  const [optimistic, setOptimistic] = useState<ContentItem[]>([]);
+  const [loadingStarter, setLoadingStarter] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const starterItems = STARTER_LIBRARY[state.mode as ModeId] ?? [];
+  // Server items win by id; optimistic ones fill the gap until the poll catches up.
+  const allContent = (() => {
+    const byId = new Map<string, ContentItem>();
+    for (const c of optimistic) byId.set(c.id, c);
+    for (const c of state.allContent) byId.set(c.id, c);
+    return Array.from(byId.values()).sort((a, b) => a.addedAt - b.addedAt);
+  })();
 
   // Content is only seen by the room during a phase that DISPLAYS content — a
   // "Content display" phase, or a module configured to show reference material.
@@ -1372,23 +1389,50 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
 
   async function push(target: "now" | "queue" | "hold") {
     if (!title.trim() && !body.trim()) return;
-    await cmd("addContent", { type, title, body, target });
+    const res = await cmd("addContent", { type, title, body, target });
+    const d = await res.json().catch(() => ({}));
+    if (d?.item) setOptimistic((o) => [...o, d.item]);
     setTitle("");
     setBody("");
     setOpen(false);
   }
   async function loadStarter() {
-    for (const it of STARTER_LIBRARY[state.mode as ModeId] ?? [])
-      await cmd("addContent", { type: it.type, title: it.title, body: it.body, target: "hold" });
+    if (loadingStarter || starterItems.length === 0) return;
+    // Don't re-add what's already here (a second click, or a partial earlier load).
+    const have = new Set(allContent.map((c) => c.title));
+    const toAdd = starterItems.filter((it) => !have.has(it.title));
+    if (toAdd.length === 0) {
+      setNotice("Starter library is already loaded.");
+      return;
+    }
+    setLoadingStarter(true);
+    setNotice(null);
+    let added = 0;
+    for (const it of toAdd) {
+      const res = await cmd("addContent", {
+        type: it.type,
+        title: it.title,
+        body: it.body,
+        target: "hold",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (d?.item) {
+        setOptimistic((o) => [...o, d.item]);
+        added += 1;
+      }
+    }
+    setLoadingStarter(false);
+    setNotice(
+      `Loaded ${added} item${added === 1 ? "" : "s"} to your library — held, ready to show when you reach a content phase.`,
+    );
   }
 
   return (
     <Panel title="Room content">
       <p className="text-xs leading-relaxed text-muted">
-        Share reference material — a prompt, a case, a note — onto the room&apos;s
-        screens (participants&apos; phones and the projector). It only appears
-        during a phase that <em>displays</em> content; in other phases it stays
-        hidden until you show it.
+        Reference material for the room&apos;s screens — prompts, cases, notes. It
+        shows only during phases that <em>display</em> content; elsewhere it waits,
+        held, until you show it.
       </p>
 
       {/* Will what I push right now actually be seen? The crux of the confusion. */}
@@ -1408,12 +1452,21 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => setOpen((o) => !o)}>{open ? "Close" : "Add content"}</Button>
-        <Button variant="ghost" onClick={loadStarter}>
-          Load starter library
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => setOpen((o) => !o)}>
+          {open ? "Close" : "Add content"}
         </Button>
+        {starterItems.length > 0 && (
+          <Button
+            variant="ghost"
+            onClick={loadStarter}
+            disabled={loadingStarter}
+          >
+            {loadingStarter ? "Loading…" : "Load starter library"}
+          </Button>
+        )}
       </div>
+      {notice && <p className="text-xs text-accent">{notice}</p>}
       {open && (
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3">
           <div className="flex flex-wrap gap-2">
@@ -1454,13 +1507,10 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
         </div>
       )}
       <div className="flex flex-col gap-2">
-        {state.allContent.length === 0 ? (
+        {allContent.length === 0 ? (
           <Empty>No content yet.</Empty>
         ) : (
-          state.allContent
-            .slice()
-            .sort((a, b) => a.addedAt - b.addedAt)
-            .map((c) => (
+          allContent.map((c) => (
               <div
                 key={c.id}
                 className="flex items-start gap-3 rounded-lg border border-border bg-surface/50 px-3 py-2.5 transition-colors hover:border-white/20"
