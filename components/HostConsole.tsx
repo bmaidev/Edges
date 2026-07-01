@@ -62,6 +62,9 @@ import {
   Maximize2,
   ArrowRight,
   ArrowLeft,
+  Eye,
+  EyeOff,
+  Trash2,
 } from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -1363,40 +1366,82 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
             .slice()
             .sort((a, b) => a.addedAt - b.addedAt)
             .map((c) => (
-              <div key={c.id} className="rounded-lg border border-border bg-surface p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs uppercase tracking-wide text-muted">
-                    {c.type}
-                    {c.queued ? " · queued" : c.visible ? " · live" : " · held"}
-                  </span>
-                  <div className="flex gap-2 text-xs">
-                    <button
-                      className="text-accent underline"
-                      onClick={() =>
-                        cmd("updateContent", { id: c.id, visible: !c.visible, queued: false })
-                      }
-                    >
-                      {c.visible ? "hide" : "push"}
-                    </button>
-                    <InlineEdit
-                      value={c.body}
-                      onSave={(body) => cmd("updateContent", { id: c.id, body })}
-                    />
-                    <button
-                      className="text-[#ff8a8a] underline"
-                      onClick={() => cmd("deleteContent", { id: c.id })}
-                    >
-                      delete
-                    </button>
+              <div
+                key={c.id}
+                className="flex items-start gap-3 rounded-lg border border-border bg-surface/50 px-3 py-2.5 transition-colors hover:border-white/20"
+              >
+                {/* Status at a glance: green = live on screens, amber = queued for
+                    the next phase, dim = held (hidden). */}
+                <span
+                  className={`mt-1.5 size-2 shrink-0 rounded-full ${
+                    c.visible
+                      ? "bg-emerald-400"
+                      : c.queued
+                        ? "bg-amber-400"
+                        : "bg-white/25"
+                  }`}
+                  title={
+                    c.visible
+                      ? "Live on screens"
+                      : c.queued
+                        ? "Queued for next phase"
+                        : "Held — hidden until you show it"
+                  }
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 rounded bg-white/10 px-1.5 py-px text-[0.6rem] font-semibold uppercase tracking-[0.06em] text-muted">
+                      {c.type}
+                    </span>
+                    <span className="truncate text-sm font-medium">
+                      {c.title && c.title !== "(untitled)"
+                        ? c.title
+                        : c.body.slice(0, 60) || "Untitled"}
+                    </span>
+                    <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                      <UiButton
+                        variant="ghost"
+                        size="icon"
+                        className="size-7"
+                        title={
+                          c.visible ? "Hide from screens" : "Show on screens"
+                        }
+                        onClick={() =>
+                          cmd("updateContent", {
+                            id: c.id,
+                            visible: !c.visible,
+                            queued: false,
+                          })
+                        }
+                      >
+                        {c.visible ? <EyeOff /> : <Eye />}
+                      </UiButton>
+                      <InlineEdit
+                        value={c.body}
+                        onSave={(body) =>
+                          cmd("updateContent", { id: c.id, body })
+                        }
+                      />
+                      <UiButton
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-[#ff8a8a] hover:bg-[#ff6b6b]/10"
+                        title="Delete"
+                        onClick={() => cmd("deleteContent", { id: c.id })}
+                      >
+                        <Trash2 />
+                      </UiButton>
+                    </div>
                   </div>
+                  {c.title &&
+                    c.title !== "(untitled)" &&
+                    c.body && (
+                      <p className="mt-0.5 truncate text-xs text-muted">
+                        {c.body.slice(0, 160)}
+                        {c.body.length > 160 ? "…" : ""}
+                      </p>
+                    )}
                 </div>
-                {c.title && c.title !== "(untitled)" && (
-                  <p className="mt-1 text-sm font-medium">{c.title}</p>
-                )}
-                <p className="mt-1 whitespace-pre-wrap text-xs text-muted">
-                  {c.body.slice(0, 160)}
-                  {c.body.length > 160 ? "…" : ""}
-                </p>
               </div>
             ))
         )}
