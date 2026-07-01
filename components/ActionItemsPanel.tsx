@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Plus, X } from "lucide-react";
 import { Button, InlineEdit } from "@/components/ui";
+import { Button as UiButton } from "@/components/ui/button";
 import type { Cmd } from "@/components/HostConsole";
 import type { FacilitatorState, Participant } from "@/lib/types";
 
@@ -61,6 +63,9 @@ export function ActionItemsPanel({
   const [text, setText] = useState("");
   const [owner, setOwner] = useState("");
   const [due, setDue] = useState("");
+  // The capture form is collapsed by default — it's used occasionally, so it
+  // shouldn't sit open (a heavy multi-field block) on every phase.
+  const [adding, setAdding] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
   function add() {
@@ -75,104 +80,127 @@ export function ActionItemsPanel({
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-          Action items
-        </h2>
-        <div className="flex items-center gap-3 text-xs">
+    <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface/50 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-baseline gap-2.5">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+            Action items
+          </h2>
           {items.length > 0 && (
-            <span className="text-muted">
-              {items.filter((a) => a.status === "open").length} open · {items.length} total
+            <span className="text-xs text-muted">
+              {items.filter((a) => a.status === "open").length} open · {items.length}
             </span>
           )}
+        </div>
+        <div className="flex items-center gap-2">
           {items.length > 0 && (
             <button
               onClick={() =>
                 cmd("actionItem", { op: { kind: "promote", on: !state.actionItemsPromoted } })
               }
-              className={`underline ${state.actionItemsPromoted ? "text-accent" : "text-muted"}`}
+              className={`text-xs underline ${state.actionItemsPromoted ? "text-accent" : "text-muted"}`}
             >
               {state.actionItemsPromoted ? "✓ on the big screen" : "Show on big screen"}
             </button>
           )}
+          <UiButton
+            variant={adding ? "ghost" : "outline"}
+            size="sm"
+            onClick={() => setAdding((a) => !a)}
+          >
+            {adding ? (
+              <>
+                <X /> Close
+              </>
+            ) : (
+              <>
+                <Plus /> Add
+              </>
+            )}
+          </UiButton>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          placeholder="Capture a decision or action…"
-          className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-        />
-        <input
-          value={owner}
-          onChange={(e) => setOwner(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          placeholder="Owner"
-          className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none sm:w-28"
-        />
-        <input
-          type="date"
-          value={due}
-          onChange={(e) => setDue(e.target.value)}
-          className="rounded-lg border border-border bg-bg px-3 py-2 text-sm text-muted focus:border-accent focus:outline-none"
-        />
-        <Button onClick={add} disabled={!text.trim()}>
-          Add
-        </Button>
-      </div>
-      {/* F2 — quick due-date presets. */}
-      <div className="flex flex-wrap gap-1.5 text-xs">
-        <span className="text-muted">Due:</span>
-        {DUE_PRESETS.map((p) => (
-          <button
-            key={p.label}
-            onClick={() => setDue(p.date())}
-            className="rounded-full border border-border px-2 py-0.5 text-muted hover:border-accent"
-          >
-            {p.label}
-          </button>
-        ))}
-        {due && (
-          <button onClick={() => setDue("")} className="text-muted underline">
-            clear
-          </button>
-        )}
-      </div>
-
-      {/* F2 — owner tap-list: assign to someone in the room with a tap. */}
-      {(() => {
-        const handles = presentOwnerHandles(state.participants);
-        if (handles.length === 0) return null;
-        return (
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="text-muted">Owner:</span>
-            {handles.map((h) => (
+      {adding && (
+        <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add()}
+              placeholder="Capture a decision or action…"
+              className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+            />
+            <input
+              value={owner}
+              onChange={(e) => setOwner(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add()}
+              placeholder="Owner"
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none sm:w-28"
+            />
+            <input
+              type="date"
+              value={due}
+              onChange={(e) => setDue(e.target.value)}
+              className="rounded-lg border border-border bg-bg px-3 py-2 text-sm text-muted focus:border-accent focus:outline-none"
+            />
+            <Button onClick={add} disabled={!text.trim()}>
+              Add
+            </Button>
+          </div>
+          {/* F2 — quick due-date presets. */}
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            <span className="text-muted">Due:</span>
+            {DUE_PRESETS.map((p) => (
               <button
-                key={h}
-                onClick={() => setOwner((cur) => (cur === h ? "" : h))}
-                aria-pressed={owner === h}
-                className={`rounded-full border px-2 py-0.5 transition-colors ${
-                  owner === h
-                    ? "border-accent bg-accent/15 text-accent"
-                    : "border-border text-muted hover:border-accent"
-                }`}
+                key={p.label}
+                onClick={() => setDue(p.date())}
+                className="rounded-full border border-border px-2 py-0.5 text-muted hover:border-accent"
               >
-                {h}
+                {p.label}
               </button>
             ))}
+            {due && (
+              <button onClick={() => setDue("")} className="text-muted underline">
+                clear
+              </button>
+            )}
           </div>
-        );
-      })()}
+
+          {/* F2 — owner tap-list: assign to someone in the room with a tap. */}
+          {(() => {
+            const handles = presentOwnerHandles(state.participants);
+            if (handles.length === 0) return null;
+            return (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-muted">Owner:</span>
+                {handles.map((h) => (
+                  <button
+                    key={h}
+                    onClick={() => setOwner((cur) => (cur === h ? "" : h))}
+                    aria-pressed={owner === h}
+                    className={`rounded-full border px-2 py-0.5 transition-colors ${
+                      owner === h
+                        ? "border-accent bg-accent/15 text-accent"
+                        : "border-border text-muted hover:border-accent"
+                    }`}
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {items.length === 0 ? (
-        <p className="text-xs text-muted">
-          Nothing yet — capture commitments as they surface; they&apos;ll appear in
-          the handover report.
-        </p>
+        !adding && (
+          <p className="text-xs text-muted">
+            No commitments captured yet — they&apos;ll flow into the handover report.
+          </p>
+        )
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((a) => {

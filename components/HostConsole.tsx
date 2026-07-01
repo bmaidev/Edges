@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { usePresence } from "@/components/usePresence";
 import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip";
@@ -38,6 +44,40 @@ import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
 import { Button, InlineEdit, Modal } from "@/components/ui";
+// Design-system primitives (hybrid shadcn/Radix on the room theme). `UiButton` is
+// the compact, size-varianted button used for toolbars (distinct from the large
+// CTA `Button` above; the two coexist while the console migrates over).
+import { Button as UiButton } from "@/components/ui/button";
+import { Tip, TooltipProvider } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+  Coffee,
+  Wind,
+  Timer as TimerIcon,
+  StickyNote,
+  Pause,
+  Play,
+  ChevronDown,
+  Clock,
+  Maximize2,
+  ArrowRight,
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Trash2,
+  Pencil,
+  Check,
+  Plus,
+  X,
+  Library,
+} from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MODES, STARTER_LIBRARY } from "@/lib/modes";
@@ -45,6 +85,7 @@ import { TEMPLATES } from "@/lib/templates";
 import { phaseNav } from "@/lib/sequence";
 import type {
   ContentType,
+  ContentItem,
   FacilitatorState,
   ModuleKind,
   ModeId,
@@ -75,6 +116,22 @@ const RESULT_MODULES: ModuleKind[] = [
 
 const PHASE_NA = "—";
 const CONTENT_TYPES: ContentType[] = ["case", "lens", "prompt", "argument", "note"];
+// Per-type colour so the content list is scannable by kind at a glance. Tinted
+// backgrounds (not full-saturation) so they stay calm on any room theme.
+const TYPE_BADGE: Record<ContentType, string> = {
+  case: "bg-violet-400/15 text-violet-300",
+  lens: "bg-sky-400/15 text-sky-300",
+  prompt: "bg-emerald-400/15 text-emerald-300",
+  argument: "bg-amber-400/15 text-amber-300",
+  note: "bg-slate-400/20 text-slate-300",
+};
+const TYPE_HINT: Record<ContentType, string> = {
+  case: "A scenario or brief the room reasons about.",
+  lens: "A perspective participants can claim and think through.",
+  prompt: "A question or instruction shown to the room.",
+  argument: "A one-sided claim to steelman or challenge.",
+  note: "A plain reference note for the screens.",
+};
 
 // Command dispatcher → POST {apiBase}/host { command, code, ...args }.
 export type Cmd = (command: string, args?: Record<string, unknown>) => Promise<Response>;
@@ -271,17 +328,18 @@ export function HostConsole({
   // read-around sourced from patterns) or some already exist — otherwise the tab
   // is just noise, so hide it.
   const showPatterns = s.usesPatterns || (s.patterns?.length ?? 0) > 0;
-  const TABS: { id: Tab; label: string; show: boolean }[] = [
-    { id: "run", label: "Run", show: true },
-    { id: "preview", label: "What they see", show: true },
-    { id: "content", label: "Content", show: true },
-    { id: "patterns", label: "Patterns", show: showPatterns },
-    { id: "session", label: "Session", show: role !== "cohost" },
+  const TABS: { id: Tab; label: string; show: boolean; hint: string }[] = [
+    { id: "run", label: "Run", show: true, hint: "Drive the current phase — your run-sheet, controls and live responses" },
+    { id: "preview", label: "What they see", show: true, hint: "Live mirror of the participant and projector screens" },
+    { id: "content", label: "Content", show: true, hint: "Cases, lenses, prompts & notes you can push to the room" },
+    { id: "patterns", label: "Patterns", show: showPatterns, hint: "AI-surfaced patterns across the room's responses" },
+    { id: "session", label: "Session", show: role !== "cohost", hint: "Room settings, recovery, handover report & danger zone" },
   ];
   // Never strand the user on a tab that's now hidden.
   const activeTab: Tab = TABS.some((t) => t.id === tab && t.show) ? tab : "run";
 
   return (
+    <TooltipProvider delayDuration={250} skipDelayDuration={400}>
     <main className="mx-auto w-full max-w-2xl pb-24 lg:max-w-5xl">
       {coach}
       {confirm && (
@@ -341,22 +399,28 @@ export function HostConsole({
         {advanceHealthCaption(s.roomHealth) && (
           <p className="mx-2 mb-2 text-xs text-[#ffd27a]">{advanceHealthCaption(s.roomHealth)}</p>
         )}
-        <div className="flex items-center gap-1 overflow-x-auto px-2">
-          {TABS.filter((t) => t.show).map((t) => (
-            <button
-              key={t.id}
-              data-tour-id={`tab-${t.id}`}
-              onClick={() => setTab(t.id)}
-              className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${
-                activeTab === t.id
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-white/80"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-          <div className="ml-auto flex shrink-0 items-center gap-3 pl-2">
+        {/* Navigation (a segmented control) is kept visually distinct from the
+            status cluster + cockpit entry, so the row reads as "where am I" on the
+            left and "how's the room / go live" on the right. */}
+        <div className="flex items-center gap-3 px-3 pt-0.5">
+          <div className="inline-flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-surface/40 p-0.5">
+            {TABS.filter((t) => t.show).map((t) => (
+              <Tip key={t.id} content={t.hint} side="bottom">
+                <button
+                  data-tour-id={`tab-${t.id}`}
+                  onClick={() => setTab(t.id)}
+                  className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    activeTab === t.id
+                      ? "bg-accent text-bg shadow-sm"
+                      : "text-white/55 hover:text-white/85"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              </Tip>
+            ))}
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2.5 pl-1">
             {/* H2 — quiet pre-flight pill; appears only when something needs a look. */}
             {s.readiness &&
               s.readiness.checks.some(
@@ -372,12 +436,18 @@ export function HostConsole({
             {/* H1 — this device's honest connection state. */}
             <ConnectionChip conn={conn} />
             {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
-            <a
-              href={`/r/${slug}/facilitate`}
-              className="whitespace-nowrap rounded-lg border border-accent/40 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
-            >
-              ⛶ Facilitate
-            </a>
+            <Tip content="Open the full-screen cockpit — a distraction-free view for driving live" side="bottom">
+              <UiButton
+                asChild
+                variant="outline"
+                size="sm"
+                className="border-accent/45 text-accent hover:bg-accent/10"
+              >
+                <a href={`/r/${slug}/facilitate`}>
+                  <Maximize2 /> Facilitate
+                </a>
+              </UiButton>
+            </Tip>
           </div>
         </div>
       </div>
@@ -409,8 +479,7 @@ export function HostConsole({
 
       <div className="flex flex-col gap-6 p-4">
         {activeTab === "run" && (
-          <div className="lg:grid lg:grid-cols-[1fr_minmax(320px,380px)] lg:items-start lg:gap-6">
-            <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-5">
               {/* B3 — your private script for this phase + a peek at what's next. */}
               <RunSheetPanel
                 runsheet={s.runsheets?.[s.phaseId ?? ""]}
@@ -503,67 +572,78 @@ export function HostConsole({
                   tab to preview it.
                 </div>
               )}
-            </div>
-            {/* Desktop: a live preview rail so you drive AND watch the room at once. */}
-            <aside className="hidden lg:sticky lg:top-44 lg:block lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                What they see (live)
-              </p>
-              <PreviewPanel state={s} />
-            </aside>
           </div>
         )}
         {activeTab === "preview" && <PreviewPanel state={s} />}
         {activeTab === "content" && <InjectPanel state={s} cmd={cmd} />}
         {activeTab === "patterns" && <PatternPanel state={s} cmd={cmd} />}
         {activeTab === "session" && role !== "cohost" && (
-          <>
-            <RecoveryControls
-              state={s}
-              onReopen={(phaseId, label, count) =>
-                setConfirm({ kind: "reopen", phaseId, label, count })
-              }
-            />
-            <HandoverPanel state={s} apiBase={apiBase} code={code} />
-            {/* D2 — drive the big screen's high-contrast mode for the room. */}
-            <label className="flex w-fit items-center gap-2 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={s.projectorA11y === true}
-                onChange={(e) => cmd("setProjectorA11y", { on: e.target.checked })}
+          <div className="flex flex-col gap-8">
+            <SessionSection title="Pacing & recovery">
+              {/* B1 — the agenda arc during the run: does it still breathe? */}
+              <HostArcStrip state={s} />
+              {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
+              <PhaseTimingPanel state={s} />
+              {/* Re-open an earlier phase to run it again (clears its old answers). */}
+              <RecoveryControls
+                state={s}
+                onReopen={(phaseId, label, count) =>
+                  setConfirm({ kind: "reopen", phaseId, label, count })
+                }
               />
-              High-contrast big screen (colour-safe, for the whole room)
-            </label>
-            {/* C6 — silence the timer chime for the whole room (the amber tint
-                still carries the cue). The per-device cockpit mute is separate. */}
-            <label className="flex w-fit items-center gap-2 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={s.timerSoundOff === true}
-                onChange={(e) => cmd("setTimerSound", { off: e.target.checked })}
+            </SessionSection>
+
+            <SessionSection title="Room settings">
+              {/* D2 / C6 — big-screen + timer-chime toggles for the whole room. */}
+              <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface/50 p-4">
+                <label className="flex items-center gap-2.5 text-sm text-white/85">
+                  <input
+                    type="checkbox"
+                    className="accent-accent"
+                    checked={s.projectorA11y === true}
+                    onChange={(e) =>
+                      cmd("setProjectorA11y", { on: e.target.checked })
+                    }
+                  />
+                  High-contrast big screen (colour-safe, for the whole room)
+                </label>
+                <label className="flex items-center gap-2.5 text-sm text-white/85">
+                  <input
+                    type="checkbox"
+                    className="accent-accent"
+                    checked={s.timerSoundOff === true}
+                    onChange={(e) =>
+                      cmd("setTimerSound", { off: e.target.checked })
+                    }
+                  />
+                  Mute the timer chime for the whole room
+                </label>
+              </div>
+              {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
+              <CofacSettings
+                enabled={s.cofacEnabled ?? true}
+                sensitivity={s.cofacSensitivity ?? "standard"}
+                cmd={cmd}
               />
-              Mute the timer chime for the whole room
-            </label>
-            {/* B1 — the agenda arc during the run: does it still breathe? */}
-            <HostArcStrip state={s} />
-            {/* D4 — who's in the room: live/quiet dots + join order. */}
-            <RoomRoster state={s} />
-            {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
-            <CofacSettings
-              enabled={s.cofacEnabled ?? true}
-              sensitivity={s.cofacSensitivity ?? "standard"}
-              cmd={cmd}
-            />
-            {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
-            <PhaseTimingPanel state={s} />
-            <RunsheetPrint state={s} slug={slug} />
-            {/* F3 — review/curate the participant take-away before ending. */}
-            <TakeawayReview state={s} apiBase={apiBase} code={code} cmd={cmd} />
-            <SessionControls cmd={cmd} />
-          </>
+            </SessionSection>
+
+            <SessionSection title="People">
+              {/* D4 — who's in the room: live/quiet dots + join order. */}
+              <RoomRoster state={s} />
+            </SessionSection>
+
+            <SessionSection title="Wrap up & export">
+              <HandoverPanel state={s} apiBase={apiBase} code={code} />
+              <RunsheetPrint state={s} slug={slug} />
+              {/* F3 — review/curate the participant take-away before ending. */}
+              <TakeawayReview state={s} apiBase={apiBase} code={code} cmd={cmd} />
+              <SessionControls cmd={cmd} />
+            </SessionSection>
+          </div>
         )}
       </div>
     </main>
+    </TooltipProvider>
   );
 }
 
@@ -948,6 +1028,25 @@ function LobbyAuthor({
 
 // Top of the console: where you are (session · phase x/y · current label),
 // the live count + timer, and the timer controls — separated from navigation.
+// Groups the Session tab's many tools under a quiet section heading, so it reads
+// as organised sections instead of a flat pile of panels.
+function SessionSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
+        {title}
+      </h3>
+      <div className="flex flex-col gap-3">{children}</div>
+    </section>
+  );
+}
+
 function SessionHeader({
   state,
   cmd,
@@ -1001,62 +1100,106 @@ function SessionHeader({
           </p>
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">Timer:</span>
-        {preset && (
-          <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => timer(preset)}>
-            ▶ {Math.round(preset / 60)}:00
-          </button>
-        )}
-        <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => timer(60)}>
-          +1:00
-        </button>
-        <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => timer(300)}>
-          +5:00
-        </button>
-        <button className="rounded border border-border px-2 py-1 text-muted hover:border-accent" onClick={() => timer(null)}>
-          Clear
-        </button>
-      </div>
-      {/* E3 — calm break/hold controls. While ambient is on, the only control is
-          Resume (restores the exact prior phase + timer). */}
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">Calm screen:</span>
+      {/* Pacing toolbar — timer + calm-screen scenes, consolidated so the header
+          stays quiet. The six calm-screen scenes collapse into a single menu
+          (E3); nothing is removed, just tucked until reached for. */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface/50 p-0.5">
+          <span className="flex items-center gap-1.5 pl-2 pr-1 text-xs text-muted">
+            <Clock className="size-3.5" /> Timer
+          </span>
+          {preset && (
+            <Tip content={`Start this phase's planned ${Math.round(preset / 60)}-minute countdown on every screen`}>
+              <UiButton variant="ghost" size="sm" onClick={() => timer(preset)}>
+                <Play /> {Math.round(preset / 60)}:00
+              </UiButton>
+            </Tip>
+          )}
+          <Tip content="Add 1 minute — starts the shared countdown if it isn't running">
+            <UiButton variant="ghost" size="sm" onClick={() => timer(60)}>
+              +1:00
+            </UiButton>
+          </Tip>
+          <Tip content="Add 5 minutes to the shared countdown">
+            <UiButton variant="ghost" size="sm" onClick={() => timer(300)}>
+              +5:00
+            </UiButton>
+          </Tip>
+          <Tip content="Clear the countdown from every screen">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              className="text-muted"
+              onClick={() => timer(null)}
+            >
+              Clear
+            </UiButton>
+          </Tip>
+        </div>
         {state.moduleId === "ambient" ? (
-          <button
-            className="rounded border border-accent bg-accent/10 px-2 py-1 text-accent hover:border-accent"
+          <UiButton
+            variant="outline"
+            size="sm"
+            className="border-accent/50 text-accent hover:bg-accent/10"
             onClick={() => cmd("resumeAmbient")}
           >
-            ▶ Resume the session
-          </button>
+            <Play /> Resume the session
+          </UiButton>
         ) : (
-          <>
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "break", durationSec: 300 })}>
-              ☕ Break 5m
-            </button>
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "break", durationSec: 600 })}>
-              Break 10m
-            </button>
-            {/* E3 scene engine — guided breathe, a big countdown, a cue card. */}
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "breathe" })}>
-              🫧 Breathe
-            </button>
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "countdown", durationSec: 300 })}>
-              ⏱ Countdown 5m
-            </button>
-            <button
-              className="rounded border border-border px-2 py-1 hover:border-accent"
-              onClick={() => {
-                const note = window.prompt("Cue card text for the big screen:");
-                if (note?.trim()) cmd("setAmbient", { scene: "cuecard", note: note.trim() });
-              }}
-            >
-              ▭ Cue card
-            </button>
-            <button className="rounded border border-border px-2 py-1 text-muted hover:border-accent" onClick={() => cmd("setAmbient", { scene: "hold" })}>
-              Hold
-            </button>
-          </>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Tip content="Put a calm holding scene on the big screen — a break, a breathe, a countdown or a cue card">
+                <UiButton variant="outline" size="sm">
+                  <Coffee /> Calm screen
+                  <ChevronDown className="opacity-60" />
+                </UiButton>
+              </Tip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuLabel>Put on the big screen</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={() =>
+                  cmd("setAmbient", { scene: "break", durationSec: 300 })
+                }
+              >
+                <Coffee /> Break — 5 minutes
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  cmd("setAmbient", { scene: "break", durationSec: 600 })
+                }
+              >
+                <Coffee /> Break — 10 minutes
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => cmd("setAmbient", { scene: "breathe" })}
+              >
+                <Wind /> Breathe
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  cmd("setAmbient", { scene: "countdown", durationSec: 300 })
+                }
+              >
+                <TimerIcon /> Countdown — 5 minutes
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  const note = window.prompt("Cue card text for the big screen:");
+                  if (note?.trim())
+                    cmd("setAmbient", { scene: "cuecard", note: note.trim() });
+                }}
+              >
+                <StickyNote /> Cue card…
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => cmd("setAmbient", { scene: "hold" })}
+              >
+                <Pause /> Hold the room
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
       {/* C4 — a persistent reminder that something is on the big screen, with a
@@ -1128,47 +1271,277 @@ function PhaseStepper({
           {liveDriver?.driverName || "A co-host"} is driving — tap again to take over.
         </p>
       )}
-      <div className="flex items-center gap-2">
-        <button
-          disabled={!prev}
-          onClick={() => prev && go(prev)}
-          className="shrink-0 rounded-lg border border-border px-2 py-2 text-sm disabled:opacity-30"
-          aria-label="Previous phase (won't release queued content)"
-          title="Back — won't release queued content"
-        >
-          ←
-        </button>
-        <div className="flex flex-1 gap-1 overflow-x-auto py-1">
+      <div className="flex items-center gap-3">
+        <Tip content={prev ? `Back to ${prev.label} — keeps queued content held` : "No earlier phase"}>
+          <UiButton
+            variant="ghost"
+            size="icon"
+            disabled={!prev}
+            onClick={() => prev && go(prev)}
+            aria-label="Previous phase (won't release queued content)"
+            className="size-8 shrink-0 text-muted"
+          >
+            <ArrowLeft />
+          </UiButton>
+        </Tip>
+        {/* Connected-node progress — a designed stepper (the track fills up to the
+            current node) rather than a wall of pills. Each node jumps to its phase;
+            the name lives in the tooltip + the jump menu, so the bar stays quiet. */}
+        <div className="flex flex-1 items-center px-1">
           {phases.map((p, i) => {
-            const done = idx >= 0 && i < idx;
+            const done = i < idx;
             const current = i === idx;
             return (
-              <button
-                key={p.id}
-                onClick={() => go(p)}
-                title={p.label}
-                className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs transition-colors ${
-                  current
-                    ? "border-accent bg-accent/15 text-accent"
-                    : done
-                      ? "border-border bg-surface text-muted"
-                      : "border-border text-muted hover:border-accent"
-                }`}
-              >
-                <span className="opacity-60">{i + 1}</span>
-                <span className="max-w-[9rem] truncate">{p.label}</span>
-              </button>
+              <Fragment key={p.id}>
+                <Tip
+                  content={`${i + 1}. ${p.label}${current ? " · you're here" : done ? " · done" : " · upcoming"}`}
+                  side="bottom"
+                >
+                  <button
+                    onClick={() => go(p)}
+                    aria-label={`Go to phase ${i + 1}: ${p.label}`}
+                    aria-current={current ? "step" : undefined}
+                    className="group grid size-4 shrink-0 place-items-center"
+                  >
+                    <span
+                      className={`rounded-full transition-all duration-200 ${
+                        current
+                          ? "size-3 bg-accent shadow-[0_0_0_4px_rgb(var(--c-accent)/0.18)]"
+                          : done
+                            ? "size-2.5 bg-accent/80"
+                            : "size-2 bg-white/20 group-hover:bg-white/45"
+                      }`}
+                    />
+                  </button>
+                </Tip>
+                {i < phases.length - 1 && (
+                  <span
+                    className={`h-px flex-1 transition-colors ${
+                      i < idx ? "bg-accent/45" : "bg-white/12"
+                    }`}
+                  />
+                )}
+              </Fragment>
             );
           })}
         </div>
-        <button
+        {/* Jump to any phase by name. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Tip content="Jump straight to any phase by name" side="bottom">
+              <UiButton
+                variant="ghost"
+                size="sm"
+                className="shrink-0 gap-1 text-xs text-muted"
+              >
+                <span className="tabular-nums text-white/80">
+                  {idx >= 0 ? idx + 1 : "–"}
+                </span>
+                <span className="opacity-40">/</span>
+                <span className="tabular-nums opacity-70">{phases.length}</span>
+                <ChevronDown className="opacity-60" />
+              </UiButton>
+            </Tip>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto">
+            <DropdownMenuLabel>Jump to phase</DropdownMenuLabel>
+            {phases.map((p, i) => {
+              const done = i < idx;
+              const current = i === idx;
+              return (
+                <DropdownMenuItem
+                  key={p.id}
+                  onSelect={() => go(p)}
+                  className={current ? "text-accent" : ""}
+                >
+                  <span
+                    className={`grid size-4 shrink-0 place-items-center rounded-full text-[0.6rem] ${
+                      done
+                        ? "bg-accent/25 text-accent"
+                        : current
+                          ? "bg-accent text-bg"
+                          : "bg-white/10 text-muted"
+                    }`}
+                  >
+                    {done ? "✓" : i + 1}
+                  </span>
+                  {p.label}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {/* The forward action names its destination — you always know where the
+            next tap takes the room, without a competing row of labels. */}
+        <Tip
+          content={
+            next
+              ? `Move the whole room to "${next.label}" — releases any queued content`
+              : "Finish the session and open the handover report"
+          }
+          side="bottom"
+        >
+        <UiButton
           data-tour-id="advance"
+          variant="primary"
           disabled={!next}
           onClick={() => next && go(next)}
-          className="shrink-0 rounded-lg border border-accent bg-accent/10 px-3 py-2 text-sm font-medium text-accent disabled:opacity-30"
+          className="h-11 shrink-0 gap-2 pl-4 pr-3.5"
         >
-          Advance →
-        </button>
+          {next ? (
+            <span className="flex flex-col items-start leading-none">
+              <span className="text-[0.58rem] font-semibold uppercase tracking-[0.09em] text-bg/65">
+                Advance to
+              </span>
+              <span className="mt-1 max-w-[11rem] truncate text-sm font-semibold">
+                {next.label}
+              </span>
+            </span>
+          ) : (
+            <span className="text-sm font-semibold">Wrap up</span>
+          )}
+          <ArrowRight />
+        </UiButton>
+        </Tip>
+      </div>
+    </div>
+  );
+}
+
+// One content item: a clean, calm row with a real inline editor (title AND body,
+// not a body-only text link) and consistent icon actions. This is the whole card
+// treatment for the Content tab.
+function ContentRow({ item, cmd }: { item: ContentItem; cmd: Cmd }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(item.title);
+  const [body, setBody] = useState(item.body);
+
+  const status = item.visible ? "live" : item.queued ? "queued" : "held";
+  const dot =
+    status === "live"
+      ? "bg-emerald-400"
+      : status === "queued"
+        ? "bg-amber-400"
+        : "bg-white/25";
+  const statusLabel =
+    status === "live"
+      ? "Live on screens"
+      : status === "queued"
+        ? "Queued for the next phase"
+        : "Held — hidden until you show it";
+
+  function save() {
+    cmd("updateContent", { id: item.id, title: title.trim(), body: body.trim() });
+    setEditing(false);
+  }
+  function cancel() {
+    setTitle(item.title);
+    setBody(item.body);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="rounded-xl border border-accent/40 bg-surface/40 p-3.5">
+        <div className="mb-2.5 flex items-center gap-2">
+          <span
+            className={`rounded px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.08em] ${TYPE_BADGE[item.type]}`}
+          >
+            {item.type}
+          </span>
+          <span className="text-xs font-medium text-accent">Editing</span>
+        </div>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title"
+          autoFocus
+          className="mb-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-medium focus:border-accent focus:outline-none"
+        />
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={Math.min(12, body.split("\n").length + 2)}
+          placeholder="Body — what the room sees"
+          className="w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm leading-relaxed focus:border-accent focus:outline-none"
+        />
+        <div className="mt-2.5 flex justify-end gap-2">
+          <UiButton variant="ghost" size="sm" onClick={cancel}>
+            Cancel
+          </UiButton>
+          <UiButton variant="primary" size="sm" onClick={save}>
+            <Check /> Save
+          </UiButton>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group flex items-center gap-3 rounded-xl border border-border/70 bg-surface/40 px-3.5 py-3 transition-colors hover:border-white/20 hover:bg-surface/60">
+      <Tip content={statusLabel} side="right">
+        <span className={`size-2 shrink-0 rounded-full ${dot}`} />
+      </Tip>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Tip content={TYPE_HINT[item.type]}>
+            <span
+              className={`shrink-0 rounded px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.08em] ${TYPE_BADGE[item.type]}`}
+            >
+              {item.type}
+            </span>
+          </Tip>
+          <span className="truncate text-sm font-medium text-white/90">
+            {item.title && item.title !== "(untitled)" ? item.title : "Untitled"}
+          </span>
+        </div>
+        {item.body && (
+          <p className="mt-0.5 truncate text-xs text-muted">{item.body}</p>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+        <Tip
+          content={
+            item.visible
+              ? "Live on the room's screens — click to hide"
+              : "Show on every participant + projector screen now"
+          }
+        >
+          <UiButton
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() =>
+              cmd("updateContent", {
+                id: item.id,
+                visible: !item.visible,
+                queued: false,
+              })
+            }
+          >
+            {item.visible ? <EyeOff /> : <Eye />}
+          </UiButton>
+        </Tip>
+        <Tip content="Edit title & body">
+          <UiButton
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil />
+          </UiButton>
+        </Tip>
+        <Tip content="Delete this item permanently">
+          <UiButton
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted hover:bg-[#ff6b6b]/10 hover:text-[#ff9a9a]"
+            onClick={() => cmd("deleteContent", { id: item.id })}
+          >
+            <Trash2 />
+          </UiButton>
+        </Tip>
       </div>
     </div>
   );
@@ -1179,6 +1552,22 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   const [type, setType] = useState<ContentType>("note");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  // Optimistic list: the host's poll reads an eventually-consistent replica, so a
+  // just-added item can take seconds to appear (that's what made "Load starter
+  // library" look like it did nothing). Reflect the write response IMMEDIATELY;
+  // the poll reconciles by id, so there's no flicker or duplication.
+  const [optimistic, setOptimistic] = useState<ContentItem[]>([]);
+  const [loadingStarter, setLoadingStarter] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const starterItems = STARTER_LIBRARY[state.mode as ModeId] ?? [];
+  // Server items win by id; optimistic ones fill the gap until the poll catches up.
+  const allContent = (() => {
+    const byId = new Map<string, ContentItem>();
+    for (const c of optimistic) byId.set(c.id, c);
+    for (const c of state.allContent) byId.set(c.id, c);
+    return Array.from(byId.values()).sort((a, b) => a.addedAt - b.addedAt);
+  })();
 
   // Content is only seen by the room during a phase that DISPLAYS content — a
   // "Content display" phase, or a module configured to show reference material.
@@ -1192,23 +1581,50 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
 
   async function push(target: "now" | "queue" | "hold") {
     if (!title.trim() && !body.trim()) return;
-    await cmd("addContent", { type, title, body, target });
+    const res = await cmd("addContent", { type, title, body, target });
+    const d = await res.json().catch(() => ({}));
+    if (d?.item) setOptimistic((o) => [...o, d.item]);
     setTitle("");
     setBody("");
     setOpen(false);
   }
   async function loadStarter() {
-    for (const it of STARTER_LIBRARY[state.mode as ModeId] ?? [])
-      await cmd("addContent", { type: it.type, title: it.title, body: it.body, target: "hold" });
+    if (loadingStarter || starterItems.length === 0) return;
+    // Don't re-add what's already here (a second click, or a partial earlier load).
+    const have = new Set(allContent.map((c) => c.title));
+    const toAdd = starterItems.filter((it) => !have.has(it.title));
+    if (toAdd.length === 0) {
+      setNotice("Starter library is already loaded.");
+      return;
+    }
+    setLoadingStarter(true);
+    setNotice(null);
+    let added = 0;
+    for (const it of toAdd) {
+      const res = await cmd("addContent", {
+        type: it.type,
+        title: it.title,
+        body: it.body,
+        target: "hold",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (d?.item) {
+        setOptimistic((o) => [...o, d.item]);
+        added += 1;
+      }
+    }
+    setLoadingStarter(false);
+    setNotice(
+      `Loaded ${added} item${added === 1 ? "" : "s"} to your library — held, ready to show when you reach a content phase.`,
+    );
   }
 
   return (
     <Panel title="Room content">
       <p className="text-xs leading-relaxed text-muted">
-        Share reference material — a prompt, a case, a note — onto the room&apos;s
-        screens (participants&apos; phones and the projector). It only appears
-        during a phase that <em>displays</em> content; in other phases it stays
-        hidden until you show it.
+        Reference material for the room&apos;s screens — prompts, cases, notes. It
+        shows only during phases that <em>display</em> content; elsewhere it waits,
+        held, until you show it.
       </p>
 
       {/* Will what I push right now actually be seen? The crux of the confusion. */}
@@ -1228,25 +1644,54 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => setOpen((o) => !o)}>{open ? "Close" : "Add content"}</Button>
-        <Button variant="ghost" onClick={loadStarter}>
-          Load starter library
-        </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Tip content="Write a case, lens, prompt, argument or note to push to the room">
+          <UiButton
+            variant={open ? "ghost" : "primary"}
+            size="sm"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? (
+              <>
+                <X /> Close
+              </>
+            ) : (
+              <>
+                <Plus /> Add content
+              </>
+            )}
+          </UiButton>
+        </Tip>
+        {starterItems.length > 0 && (
+          <Tip content="Load this mode's ready-made cases & lenses — skips duplicates you already have">
+            <UiButton
+              variant="outline"
+              size="sm"
+              onClick={loadStarter}
+              disabled={loadingStarter}
+            >
+              <Library /> {loadingStarter ? "Loading…" : "Load starter library"}
+            </UiButton>
+          </Tip>
+        )}
       </div>
+      {notice && <p className="text-xs text-accent">{notice}</p>}
       {open && (
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3">
           <div className="flex flex-wrap gap-2">
             {CONTENT_TYPES.map((t) => (
-              <button
-                key={t}
-                onClick={() => setType(t)}
-                className={`rounded-lg border px-3 py-1 text-xs capitalize ${
-                  type === t ? "border-accent text-accent" : "border-border text-muted"
-                }`}
-              >
-                {t}
-              </button>
+              <Tip key={t} content={TYPE_HINT[t]}>
+                <button
+                  onClick={() => setType(t)}
+                  className={`rounded-lg border px-3 py-1 text-xs capitalize transition-colors ${
+                    type === t
+                      ? `border-transparent ${TYPE_BADGE[t]}`
+                      : "border-border text-muted hover:border-white/25"
+                  }`}
+                >
+                  {t}
+                </button>
+              </Tip>
             ))}
           </div>
           <input
@@ -1274,49 +1719,10 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
         </div>
       )}
       <div className="flex flex-col gap-2">
-        {state.allContent.length === 0 ? (
+        {allContent.length === 0 ? (
           <Empty>No content yet.</Empty>
         ) : (
-          state.allContent
-            .slice()
-            .sort((a, b) => a.addedAt - b.addedAt)
-            .map((c) => (
-              <div key={c.id} className="rounded-lg border border-border bg-surface p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs uppercase tracking-wide text-muted">
-                    {c.type}
-                    {c.queued ? " · queued" : c.visible ? " · live" : " · held"}
-                  </span>
-                  <div className="flex gap-2 text-xs">
-                    <button
-                      className="text-accent underline"
-                      onClick={() =>
-                        cmd("updateContent", { id: c.id, visible: !c.visible, queued: false })
-                      }
-                    >
-                      {c.visible ? "hide" : "push"}
-                    </button>
-                    <InlineEdit
-                      value={c.body}
-                      onSave={(body) => cmd("updateContent", { id: c.id, body })}
-                    />
-                    <button
-                      className="text-[#ff8a8a] underline"
-                      onClick={() => cmd("deleteContent", { id: c.id })}
-                    >
-                      delete
-                    </button>
-                  </div>
-                </div>
-                {c.title && c.title !== "(untitled)" && (
-                  <p className="mt-1 text-sm font-medium">{c.title}</p>
-                )}
-                <p className="mt-1 whitespace-pre-wrap text-xs text-muted">
-                  {c.body.slice(0, 160)}
-                  {c.body.length > 160 ? "…" : ""}
-                </p>
-              </div>
-            ))
+          allContent.map((c) => <ContentRow key={c.id} item={c} cmd={cmd} />)
         )}
       </div>
     </Panel>
