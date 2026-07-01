@@ -38,6 +38,28 @@ import { bootToken, clearToken } from "@/lib/magicLink";
 import { Countdown } from "@/components/Countdown";
 import { VoiceTextarea } from "@/components/VoiceTextarea";
 import { Button, InlineEdit, Modal } from "@/components/ui";
+// Design-system primitives (hybrid shadcn/Radix on the room theme). `UiButton` is
+// the compact, size-varianted button used for toolbars (distinct from the large
+// CTA `Button` above; the two coexist while the console migrates over).
+import { Button as UiButton } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+  Coffee,
+  Wind,
+  Timer as TimerIcon,
+  StickyNote,
+  Pause,
+  Play,
+  ChevronDown,
+  Clock,
+} from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MODES, STARTER_LIBRARY } from "@/lib/modes";
@@ -1001,62 +1023,96 @@ function SessionHeader({
           </p>
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">Timer:</span>
-        {preset && (
-          <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => timer(preset)}>
-            ▶ {Math.round(preset / 60)}:00
-          </button>
-        )}
-        <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => timer(60)}>
-          +1:00
-        </button>
-        <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => timer(300)}>
-          +5:00
-        </button>
-        <button className="rounded border border-border px-2 py-1 text-muted hover:border-accent" onClick={() => timer(null)}>
-          Clear
-        </button>
-      </div>
-      {/* E3 — calm break/hold controls. While ambient is on, the only control is
-          Resume (restores the exact prior phase + timer). */}
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">Calm screen:</span>
+      {/* Pacing toolbar — timer + calm-screen scenes, consolidated so the header
+          stays quiet. The six calm-screen scenes collapse into a single menu
+          (E3); nothing is removed, just tucked until reached for. */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface/50 p-0.5">
+          <span className="flex items-center gap-1.5 pl-2 pr-1 text-xs text-muted">
+            <Clock className="size-3.5" /> Timer
+          </span>
+          {preset && (
+            <UiButton variant="ghost" size="sm" onClick={() => timer(preset)}>
+              <Play /> {Math.round(preset / 60)}:00
+            </UiButton>
+          )}
+          <UiButton variant="ghost" size="sm" onClick={() => timer(60)}>
+            +1:00
+          </UiButton>
+          <UiButton variant="ghost" size="sm" onClick={() => timer(300)}>
+            +5:00
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            className="text-muted"
+            onClick={() => timer(null)}
+          >
+            Clear
+          </UiButton>
+        </div>
         {state.moduleId === "ambient" ? (
-          <button
-            className="rounded border border-accent bg-accent/10 px-2 py-1 text-accent hover:border-accent"
+          <UiButton
+            variant="outline"
+            size="sm"
+            className="border-accent/50 text-accent hover:bg-accent/10"
             onClick={() => cmd("resumeAmbient")}
           >
-            ▶ Resume the session
-          </button>
+            <Play /> Resume the session
+          </UiButton>
         ) : (
-          <>
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "break", durationSec: 300 })}>
-              ☕ Break 5m
-            </button>
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "break", durationSec: 600 })}>
-              Break 10m
-            </button>
-            {/* E3 scene engine — guided breathe, a big countdown, a cue card. */}
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "breathe" })}>
-              🫧 Breathe
-            </button>
-            <button className="rounded border border-border px-2 py-1 hover:border-accent" onClick={() => cmd("setAmbient", { scene: "countdown", durationSec: 300 })}>
-              ⏱ Countdown 5m
-            </button>
-            <button
-              className="rounded border border-border px-2 py-1 hover:border-accent"
-              onClick={() => {
-                const note = window.prompt("Cue card text for the big screen:");
-                if (note?.trim()) cmd("setAmbient", { scene: "cuecard", note: note.trim() });
-              }}
-            >
-              ▭ Cue card
-            </button>
-            <button className="rounded border border-border px-2 py-1 text-muted hover:border-accent" onClick={() => cmd("setAmbient", { scene: "hold" })}>
-              Hold
-            </button>
-          </>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <UiButton variant="outline" size="sm">
+                <Coffee /> Calm screen
+                <ChevronDown className="opacity-60" />
+              </UiButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuLabel>Put on the big screen</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={() =>
+                  cmd("setAmbient", { scene: "break", durationSec: 300 })
+                }
+              >
+                <Coffee /> Break — 5 minutes
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  cmd("setAmbient", { scene: "break", durationSec: 600 })
+                }
+              >
+                <Coffee /> Break — 10 minutes
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => cmd("setAmbient", { scene: "breathe" })}
+              >
+                <Wind /> Breathe
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  cmd("setAmbient", { scene: "countdown", durationSec: 300 })
+                }
+              >
+                <TimerIcon /> Countdown — 5 minutes
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  const note = window.prompt("Cue card text for the big screen:");
+                  if (note?.trim())
+                    cmd("setAmbient", { scene: "cuecard", note: note.trim() });
+                }}
+              >
+                <StickyNote /> Cue card…
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => cmd("setAmbient", { scene: "hold" })}
+              >
+                <Pause /> Hold the room
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
       {/* C4 — a persistent reminder that something is on the big screen, with a
