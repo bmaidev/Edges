@@ -427,9 +427,14 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   const [phases, setPhases] = useState<BuilderPhase[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
-  // When we've re-opened an existing build for editing, remember when it was last
-  // saved — drives the "editing" banner + the "Save changes" affordance.
-  const [editingSaved, setEditingSaved] = useState<{ savedAt: number } | null>(null);
+  // When we've re-opened an existing build for editing: `source` distinguishes a
+  // durable saved blueprint from the live session sequence (template/mode rooms);
+  // `savedAt` drives the "saved X ago" line (null for the live fallback). Drives
+  // the "editing" banner + the "Save changes" affordance.
+  const [editingSaved, setEditingSaved] = useState<{
+    savedAt: number | null;
+    source: "blueprint" | "live";
+  } | null>(null);
 
   // A2: inherit the magic-link token (from `#k=` or the tab's remembered one) so
   // the builder knows who you are with no passcode box. Facilitators can now
@@ -459,7 +464,8 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         );
         if (!res.ok) return;
         const d = (await res.json()) as {
-          blueprint: { name?: string; phases?: PhaseInstance[]; savedAt?: number } | null;
+          blueprint: { name?: string; phases?: PhaseInstance[]; savedAt?: number | null } | null;
+          source?: "blueprint" | "live" | null;
         };
         const bp = d.blueprint;
         if (!bp?.phases?.length) return;
@@ -475,7 +481,10 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         setName((prev) =>
           prev === "Custom session" && bp.name ? bp.name : prev,
         );
-        setEditingSaved({ savedAt: bp.savedAt ?? Date.now() });
+        setEditingSaved({
+          savedAt: bp.savedAt ?? null,
+          source: d.source === "live" ? "live" : "blueprint",
+        });
       } catch {
         /* never built / offline — stay on the blank create flow */
       }
@@ -900,8 +909,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent/30 bg-accent/[0.06] px-3 py-2 text-xs text-accent">
           <Pencil className="size-3.5 shrink-0" />
           <span>
-            Loaded the existing build ({phases.length} phase
-            {phases.length === 1 ? "" : "s"}), saved {relativeTime(editingSaved.savedAt)}.
+            {editingSaved.savedAt != null
+              ? `Loaded the saved build (${phases.length} phase${phases.length === 1 ? "" : "s"}), saved ${relativeTime(editingSaved.savedAt)}.`
+              : `Loaded this room's current sequence (${phases.length} phase${phases.length === 1 ? "" : "s"}) for editing.`}
           </span>
         </div>
       )}

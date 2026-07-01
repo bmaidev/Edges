@@ -447,6 +447,24 @@ export async function setMode(
   );
 }
 
+// The current effective build (name + full phase configs) for a room, however it
+// was launched — a custom setPhases sequence, a template, or a mode. Lets the
+// builder re-open ANY built room for editing, not just custom-launched ones
+// (which alone persist a durable blueprint). Returns null for a never-configured
+// room (no custom phases and no mode).
+export async function getLiveBuild(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<{ name: string; phases: import("./types").PhaseInstance[] } | null> {
+  const state = await getState(roomId);
+  const phases = resolvePhases(state);
+  if (!phases.length) return null;
+  const name =
+    state.sessionName ??
+    (state.mode ? getMode(state.mode)?.name : null) ??
+    "Custom session";
+  return { name, phases };
+}
+
 // Launch a custom (builder-composed) phase sequence.
 export async function setPhases(
   phases: import("./types").PhaseInstance[],
