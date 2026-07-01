@@ -11,6 +11,27 @@ export const TooltipProvider = TooltipPrimitive.Provider;
 export const Tooltip = TooltipPrimitive.Root;
 export const TooltipTrigger = TooltipPrimitive.Trigger;
 
+// Concise wrapper so any control gets an informative tooltip with one tag:
+//   <Tip content="What this does">{<button/>}</Tip>
+// Requires a <TooltipProvider> ancestor (wrap the surface once).
+export function Tip({
+  content,
+  side = "top",
+  children,
+}: {
+  content: React.ReactNode;
+  side?: "top" | "bottom" | "left" | "right";
+  children: React.ReactNode;
+}) {
+  if (!content) return <>{children}</>;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side}>{content}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>

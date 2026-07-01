@@ -48,6 +48,7 @@ import { Button, InlineEdit, Modal } from "@/components/ui";
 // the compact, size-varianted button used for toolbars (distinct from the large
 // CTA `Button` above; the two coexist while the console migrates over).
 import { Button as UiButton } from "@/components/ui/button";
+import { Tip, TooltipProvider } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -73,6 +74,9 @@ import {
   Trash2,
   Pencil,
   Check,
+  Plus,
+  X,
+  Library,
 } from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -112,6 +116,22 @@ const RESULT_MODULES: ModuleKind[] = [
 
 const PHASE_NA = "—";
 const CONTENT_TYPES: ContentType[] = ["case", "lens", "prompt", "argument", "note"];
+// Per-type colour so the content list is scannable by kind at a glance. Tinted
+// backgrounds (not full-saturation) so they stay calm on any room theme.
+const TYPE_BADGE: Record<ContentType, string> = {
+  case: "bg-violet-400/15 text-violet-300",
+  lens: "bg-sky-400/15 text-sky-300",
+  prompt: "bg-emerald-400/15 text-emerald-300",
+  argument: "bg-amber-400/15 text-amber-300",
+  note: "bg-slate-400/20 text-slate-300",
+};
+const TYPE_HINT: Record<ContentType, string> = {
+  case: "A scenario or brief the room reasons about.",
+  lens: "A perspective participants can claim and think through.",
+  prompt: "A question or instruction shown to the room.",
+  argument: "A one-sided claim to steelman or challenge.",
+  note: "A plain reference note for the screens.",
+};
 
 // Command dispatcher → POST {apiBase}/host { command, code, ...args }.
 export type Cmd = (command: string, args?: Record<string, unknown>) => Promise<Response>;
@@ -308,17 +328,18 @@ export function HostConsole({
   // read-around sourced from patterns) or some already exist — otherwise the tab
   // is just noise, so hide it.
   const showPatterns = s.usesPatterns || (s.patterns?.length ?? 0) > 0;
-  const TABS: { id: Tab; label: string; show: boolean }[] = [
-    { id: "run", label: "Run", show: true },
-    { id: "preview", label: "What they see", show: true },
-    { id: "content", label: "Content", show: true },
-    { id: "patterns", label: "Patterns", show: showPatterns },
-    { id: "session", label: "Session", show: role !== "cohost" },
+  const TABS: { id: Tab; label: string; show: boolean; hint: string }[] = [
+    { id: "run", label: "Run", show: true, hint: "Drive the current phase — your run-sheet, controls and live responses" },
+    { id: "preview", label: "What they see", show: true, hint: "Live mirror of the participant and projector screens" },
+    { id: "content", label: "Content", show: true, hint: "Cases, lenses, prompts & notes you can push to the room" },
+    { id: "patterns", label: "Patterns", show: showPatterns, hint: "AI-surfaced patterns across the room's responses" },
+    { id: "session", label: "Session", show: role !== "cohost", hint: "Room settings, recovery, handover report & danger zone" },
   ];
   // Never strand the user on a tab that's now hidden.
   const activeTab: Tab = TABS.some((t) => t.id === tab && t.show) ? tab : "run";
 
   return (
+    <TooltipProvider delayDuration={250} skipDelayDuration={400}>
     <main className="mx-auto w-full max-w-2xl pb-24 lg:max-w-5xl">
       {coach}
       {confirm && (
@@ -384,18 +405,19 @@ export function HostConsole({
         <div className="flex items-center gap-3 px-3 pt-0.5">
           <div className="inline-flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-surface/40 p-0.5">
             {TABS.filter((t) => t.show).map((t) => (
-              <button
-                key={t.id}
-                data-tour-id={`tab-${t.id}`}
-                onClick={() => setTab(t.id)}
-                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  activeTab === t.id
-                    ? "bg-accent text-bg shadow-sm"
-                    : "text-white/55 hover:text-white/85"
-                }`}
-              >
-                {t.label}
-              </button>
+              <Tip key={t.id} content={t.hint} side="bottom">
+                <button
+                  data-tour-id={`tab-${t.id}`}
+                  onClick={() => setTab(t.id)}
+                  className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    activeTab === t.id
+                      ? "bg-accent text-bg shadow-sm"
+                      : "text-white/55 hover:text-white/85"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              </Tip>
             ))}
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2.5 pl-1">
@@ -414,16 +436,18 @@ export function HostConsole({
             {/* H1 — this device's honest connection state. */}
             <ConnectionChip conn={conn} />
             {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
-            <UiButton
-              asChild
-              variant="outline"
-              size="sm"
-              className="border-accent/45 text-accent hover:bg-accent/10"
-            >
-              <a href={`/r/${slug}/facilitate`}>
-                <Maximize2 /> Facilitate
-              </a>
-            </UiButton>
+            <Tip content="Open the full-screen cockpit — a distraction-free view for driving live" side="bottom">
+              <UiButton
+                asChild
+                variant="outline"
+                size="sm"
+                className="border-accent/45 text-accent hover:bg-accent/10"
+              >
+                <a href={`/r/${slug}/facilitate`}>
+                  <Maximize2 /> Facilitate
+                </a>
+              </UiButton>
+            </Tip>
           </div>
         </div>
       </div>
@@ -619,6 +643,7 @@ export function HostConsole({
         )}
       </div>
     </main>
+    </TooltipProvider>
   );
 }
 
@@ -1084,24 +1109,32 @@ function SessionHeader({
             <Clock className="size-3.5" /> Timer
           </span>
           {preset && (
-            <UiButton variant="ghost" size="sm" onClick={() => timer(preset)}>
-              <Play /> {Math.round(preset / 60)}:00
-            </UiButton>
+            <Tip content={`Start this phase's planned ${Math.round(preset / 60)}-minute countdown on every screen`}>
+              <UiButton variant="ghost" size="sm" onClick={() => timer(preset)}>
+                <Play /> {Math.round(preset / 60)}:00
+              </UiButton>
+            </Tip>
           )}
-          <UiButton variant="ghost" size="sm" onClick={() => timer(60)}>
-            +1:00
-          </UiButton>
-          <UiButton variant="ghost" size="sm" onClick={() => timer(300)}>
-            +5:00
-          </UiButton>
-          <UiButton
-            variant="ghost"
-            size="sm"
-            className="text-muted"
-            onClick={() => timer(null)}
-          >
-            Clear
-          </UiButton>
+          <Tip content="Add 1 minute — starts the shared countdown if it isn't running">
+            <UiButton variant="ghost" size="sm" onClick={() => timer(60)}>
+              +1:00
+            </UiButton>
+          </Tip>
+          <Tip content="Add 5 minutes to the shared countdown">
+            <UiButton variant="ghost" size="sm" onClick={() => timer(300)}>
+              +5:00
+            </UiButton>
+          </Tip>
+          <Tip content="Clear the countdown from every screen">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              className="text-muted"
+              onClick={() => timer(null)}
+            >
+              Clear
+            </UiButton>
+          </Tip>
         </div>
         {state.moduleId === "ambient" ? (
           <UiButton
@@ -1115,10 +1148,12 @@ function SessionHeader({
         ) : (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <UiButton variant="outline" size="sm">
-                <Coffee /> Calm screen
-                <ChevronDown className="opacity-60" />
-              </UiButton>
+              <Tip content="Put a calm holding scene on the big screen — a break, a breathe, a countdown or a cue card">
+                <UiButton variant="outline" size="sm">
+                  <Coffee /> Calm screen
+                  <ChevronDown className="opacity-60" />
+                </UiButton>
+              </Tip>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuLabel>Put on the big screen</DropdownMenuLabel>
@@ -1237,17 +1272,18 @@ function PhaseStepper({
         </p>
       )}
       <div className="flex items-center gap-3">
-        <UiButton
-          variant="ghost"
-          size="icon"
-          disabled={!prev}
-          onClick={() => prev && go(prev)}
-          aria-label="Previous phase (won't release queued content)"
-          title={prev ? `Back to ${prev.label}` : "Back"}
-          className="size-8 shrink-0 text-muted"
-        >
-          <ArrowLeft />
-        </UiButton>
+        <Tip content={prev ? `Back to ${prev.label} — keeps queued content held` : "No earlier phase"}>
+          <UiButton
+            variant="ghost"
+            size="icon"
+            disabled={!prev}
+            onClick={() => prev && go(prev)}
+            aria-label="Previous phase (won't release queued content)"
+            className="size-8 shrink-0 text-muted"
+          >
+            <ArrowLeft />
+          </UiButton>
+        </Tip>
         {/* Connected-node progress — a designed stepper (the track fills up to the
             current node) rather than a wall of pills. Each node jumps to its phase;
             the name lives in the tooltip + the jump menu, so the bar stays quiet. */}
@@ -1257,23 +1293,27 @@ function PhaseStepper({
             const current = i === idx;
             return (
               <Fragment key={p.id}>
-                <button
-                  onClick={() => go(p)}
-                  title={`${i + 1}. ${p.label}`}
-                  aria-label={`Go to phase ${i + 1}: ${p.label}`}
-                  aria-current={current ? "step" : undefined}
-                  className="group grid size-4 shrink-0 place-items-center"
+                <Tip
+                  content={`${i + 1}. ${p.label}${current ? " · you're here" : done ? " · done" : " · upcoming"}`}
+                  side="bottom"
                 >
-                  <span
-                    className={`rounded-full transition-all duration-200 ${
-                      current
-                        ? "size-3 bg-accent shadow-[0_0_0_4px_rgb(var(--c-accent)/0.18)]"
-                        : done
-                          ? "size-2.5 bg-accent/80"
-                          : "size-2 bg-white/20 group-hover:bg-white/45"
-                    }`}
-                  />
-                </button>
+                  <button
+                    onClick={() => go(p)}
+                    aria-label={`Go to phase ${i + 1}: ${p.label}`}
+                    aria-current={current ? "step" : undefined}
+                    className="group grid size-4 shrink-0 place-items-center"
+                  >
+                    <span
+                      className={`rounded-full transition-all duration-200 ${
+                        current
+                          ? "size-3 bg-accent shadow-[0_0_0_4px_rgb(var(--c-accent)/0.18)]"
+                          : done
+                            ? "size-2.5 bg-accent/80"
+                            : "size-2 bg-white/20 group-hover:bg-white/45"
+                      }`}
+                    />
+                  </button>
+                </Tip>
                 {i < phases.length - 1 && (
                   <span
                     className={`h-px flex-1 transition-colors ${
@@ -1288,18 +1328,20 @@ function PhaseStepper({
         {/* Jump to any phase by name. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <UiButton
-              variant="ghost"
-              size="sm"
-              className="shrink-0 gap-1 text-xs text-muted"
-            >
-              <span className="tabular-nums text-white/80">
-                {idx >= 0 ? idx + 1 : "–"}
-              </span>
-              <span className="opacity-40">/</span>
-              <span className="tabular-nums opacity-70">{phases.length}</span>
-              <ChevronDown className="opacity-60" />
-            </UiButton>
+            <Tip content="Jump straight to any phase by name" side="bottom">
+              <UiButton
+                variant="ghost"
+                size="sm"
+                className="shrink-0 gap-1 text-xs text-muted"
+              >
+                <span className="tabular-nums text-white/80">
+                  {idx >= 0 ? idx + 1 : "–"}
+                </span>
+                <span className="opacity-40">/</span>
+                <span className="tabular-nums opacity-70">{phases.length}</span>
+                <ChevronDown className="opacity-60" />
+              </UiButton>
+            </Tip>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto">
             <DropdownMenuLabel>Jump to phase</DropdownMenuLabel>
@@ -1331,6 +1373,14 @@ function PhaseStepper({
         </DropdownMenu>
         {/* The forward action names its destination — you always know where the
             next tap takes the room, without a competing row of labels. */}
+        <Tip
+          content={
+            next
+              ? `Move the whole room to "${next.label}" — releases any queued content`
+              : "Finish the session and open the handover report"
+          }
+          side="bottom"
+        >
         <UiButton
           data-tour-id="advance"
           variant="primary"
@@ -1352,6 +1402,7 @@ function PhaseStepper({
           )}
           <ArrowRight />
         </UiButton>
+        </Tip>
       </div>
     </div>
   );
@@ -1393,7 +1444,9 @@ function ContentRow({ item, cmd }: { item: ContentItem; cmd: Cmd }) {
     return (
       <div className="rounded-xl border border-accent/40 bg-surface/40 p-3.5">
         <div className="mb-2.5 flex items-center gap-2">
-          <span className="rounded bg-white/[0.07] px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-muted">
+          <span
+            className={`rounded px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.08em] ${TYPE_BADGE[item.type]}`}
+          >
             {item.type}
           </span>
           <span className="text-xs font-medium text-accent">Editing</span>
@@ -1426,12 +1479,18 @@ function ContentRow({ item, cmd }: { item: ContentItem; cmd: Cmd }) {
 
   return (
     <div className="group flex items-center gap-3 rounded-xl border border-border/70 bg-surface/40 px-3.5 py-3 transition-colors hover:border-white/20 hover:bg-surface/60">
-      <span className={`size-2 shrink-0 rounded-full ${dot}`} title={statusLabel} />
+      <Tip content={statusLabel} side="right">
+        <span className={`size-2 shrink-0 rounded-full ${dot}`} />
+      </Tip>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="shrink-0 rounded bg-white/[0.07] px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-muted">
-            {item.type}
-          </span>
+          <Tip content={TYPE_HINT[item.type]}>
+            <span
+              className={`shrink-0 rounded px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.08em] ${TYPE_BADGE[item.type]}`}
+            >
+              {item.type}
+            </span>
+          </Tip>
           <span className="truncate text-sm font-medium text-white/90">
             {item.title && item.title !== "(untitled)" ? item.title : "Untitled"}
           </span>
@@ -1441,39 +1500,48 @@ function ContentRow({ item, cmd }: { item: ContentItem; cmd: Cmd }) {
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
-        <UiButton
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          title={item.visible ? "Hide from screens" : "Show on screens"}
-          onClick={() =>
-            cmd("updateContent", {
-              id: item.id,
-              visible: !item.visible,
-              queued: false,
-            })
+        <Tip
+          content={
+            item.visible
+              ? "Live on the room's screens — click to hide"
+              : "Show on every participant + projector screen now"
           }
         >
-          {item.visible ? <EyeOff /> : <Eye />}
-        </UiButton>
-        <UiButton
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          title="Edit"
-          onClick={() => setEditing(true)}
-        >
-          <Pencil />
-        </UiButton>
-        <UiButton
-          variant="ghost"
-          size="icon"
-          className="size-8 text-muted hover:bg-[#ff6b6b]/10 hover:text-[#ff9a9a]"
-          title="Delete"
-          onClick={() => cmd("deleteContent", { id: item.id })}
-        >
-          <Trash2 />
-        </UiButton>
+          <UiButton
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() =>
+              cmd("updateContent", {
+                id: item.id,
+                visible: !item.visible,
+                queued: false,
+              })
+            }
+          >
+            {item.visible ? <EyeOff /> : <Eye />}
+          </UiButton>
+        </Tip>
+        <Tip content="Edit title & body">
+          <UiButton
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil />
+          </UiButton>
+        </Tip>
+        <Tip content="Delete this item permanently">
+          <UiButton
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted hover:bg-[#ff6b6b]/10 hover:text-[#ff9a9a]"
+            onClick={() => cmd("deleteContent", { id: item.id })}
+          >
+            <Trash2 />
+          </UiButton>
+        </Tip>
       </div>
     </div>
   );
@@ -1577,17 +1645,34 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => setOpen((o) => !o)}>
-          {open ? "Close" : "Add content"}
-        </Button>
-        {starterItems.length > 0 && (
-          <Button
-            variant="ghost"
-            onClick={loadStarter}
-            disabled={loadingStarter}
+        <Tip content="Write a case, lens, prompt, argument or note to push to the room">
+          <UiButton
+            variant={open ? "ghost" : "primary"}
+            size="sm"
+            onClick={() => setOpen((o) => !o)}
           >
-            {loadingStarter ? "Loading…" : "Load starter library"}
-          </Button>
+            {open ? (
+              <>
+                <X /> Close
+              </>
+            ) : (
+              <>
+                <Plus /> Add content
+              </>
+            )}
+          </UiButton>
+        </Tip>
+        {starterItems.length > 0 && (
+          <Tip content="Load this mode's ready-made cases & lenses — skips duplicates you already have">
+            <UiButton
+              variant="outline"
+              size="sm"
+              onClick={loadStarter}
+              disabled={loadingStarter}
+            >
+              <Library /> {loadingStarter ? "Loading…" : "Load starter library"}
+            </UiButton>
+          </Tip>
         )}
       </div>
       {notice && <p className="text-xs text-accent">{notice}</p>}
@@ -1595,15 +1680,18 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3">
           <div className="flex flex-wrap gap-2">
             {CONTENT_TYPES.map((t) => (
-              <button
-                key={t}
-                onClick={() => setType(t)}
-                className={`rounded-lg border px-3 py-1 text-xs capitalize ${
-                  type === t ? "border-accent text-accent" : "border-border text-muted"
-                }`}
-              >
-                {t}
-              </button>
+              <Tip key={t} content={TYPE_HINT[t]}>
+                <button
+                  onClick={() => setType(t)}
+                  className={`rounded-lg border px-3 py-1 text-xs capitalize transition-colors ${
+                    type === t
+                      ? `border-transparent ${TYPE_BADGE[t]}`
+                      : "border-border text-muted hover:border-white/25"
+                  }`}
+                >
+                  {t}
+                </button>
+              </Tip>
             ))}
           </div>
           <input
