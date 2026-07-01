@@ -126,38 +126,42 @@ guards on every applied response:
   can return stale state — without this guard, a screen could jump backwards or
   flap between phases. With it, screens only ever move forward.
 
-### R1 — the realtime tier (push + conditional polling)
+### R1 — the realtime tier (push as a pure accelerator)
 
-The hard requirement is *hundreds of people per room across hundreds of
-simultaneous rooms with no disconnects and perfect syncs*. A naive 2s poll that
-recomputes a full snapshot per request does not get there: at ~90k clients it is
-~270k Redis ops/s of identical work, which rate-limits the store and reads as
-disconnects. The realtime tier fixes this **without giving up the correctness the
-monotonic guard provides**, by making "did anything change?" cost one cheap read
-and pushing that answer instead of polling for it.
+The goal is *hundreds of people per room across hundreds of simultaneous rooms
+with no disconnects and perfect syncs*. The realtime tier adds push **on top of
+the original reliable polling**, governed by one rule: **push may only make
+updates faster, never make polling slower or trust a cache over a fresh read.**
+This keeps the worst case equal to plain full-body polling (which self-heals
+every beat), while a healthy socket delivers sub-second updates.
 
 - **The per-room version counter.** A single Redis `INCR` (`room:<id>:ver`) is
   bumped on *every participant-visible write* — and only those: liveness
   heartbeats are deliberately excluded so 300 phones a beat don't churn it. The
   bump is wired centrally in the storage backend by key-suffix allow-list
-  (`BUMP_SUFFIXES` in `store.ts`), so no write path can forget it. The counter is
-  the one source of truth for "has this room moved", read in a single GET.
+  (`BUMP_SUFFIXES` in `store.ts`), so no write path can forget it. It is the push
+  payload and the (cheap) SSE signature — *not* a poll-skipping cache key.
 - **Push (Pusher Channels).** After a bump, the server fans a tiny `{ver}` tick
   out to the room's channel (throttled to ≤1/s/room so a vote burst coalesces).
-  Clients re-poll on the tick, so updates land sub-second with no per-client
-  drum-beat. Gated on `PUSHER_*`: with no credentials it is a no-op and the
-  system falls back to polling (see [`lib/realtime.ts`](lib/realtime.ts)).
-- **Conditional polling (304).** The participant `/state` route ETags its
-  response with `p:<ver>:<roomTag>`. A client echoes it as `If-None-Match`; an
-  unchanged room answers **304 with no body, skipping the five-key snapshot read
-  and `computeView` entirely**. With push active, the participant poll drops to a
-  slow backstop (~8s) whose steady state is a single tiny version read.
+  A tick triggers one extra immediate refetch — it never replaces or slows the
+  steady poll. One shared connection per page (`getPusherClient` singleton in
+  `usePolledState`), so a component remount can't churn the socket. Gated on
+  `PUSHER_APP_*`: with no credentials it is a no-op and the system is pure
+  polling (see [`lib/realtime.ts`](lib/realtime.ts)).
+- **Polling stays fast and full-bodied.** Every client (participant, projector,
+  host) keeps polling `/state` every ~2s for the *complete* role-scoped body,
+  with the monotonic `rev` anti-flash guard. There is **no conditional `304`**:
+  an eventually-consistent KV replica read can lag, and a cheap `ver`-keyed ETag
+  (strongly consistent) could otherwise certify — and lock in — a stale body. A
+  full read every beat always wins and self-heals. (The cross-client read
+  reduction for true 90k scale is deferred to a *strongly-consistent per-room
+  snapshot* written atomically with the bump — not a counter-ETag over
+  eventually-consistent reads, which is why the earlier `304` attempt was pulled.)
 - **Push is an accelerator, never the source of truth.** Correctness lives in the
-  counter (always written before the response returns) and the monotonic `rev`
-  guard. A dropped, duplicated, or out-of-order tick is harmless: a client
-  re-fetches on *any* tick (a no-op collapses to a 304), and the backstop poll
-  heals a tick that never arrives. Nothing is ever missed — the system is exactly
-  as correct with push entirely disabled.
+  full poll + the monotonic `rev` guard. A dropped, duplicated, or out-of-order
+  tick is harmless: it only ever causes (or skips) one extra refetch, and the 2s
+  poll heals anything the socket misses. The system is exactly as correct, and no
+  slower than the original, with push entirely disabled.
 
 The legacy SSE accelerator (`/api/r/[room]/stream`) still exists for polling-only
 deployments and is now backed by the same counter (its signature is one read, not
