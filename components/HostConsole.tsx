@@ -60,6 +60,8 @@ import {
   ChevronDown,
   Clock,
   Maximize2,
+  ArrowRight,
+  ArrowLeft,
 } from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -1195,15 +1197,17 @@ function PhaseStepper({
         </p>
       )}
       <div className="flex items-center gap-2">
-        <button
+        <UiButton
+          variant="ghost"
+          size="icon"
           disabled={!prev}
           onClick={() => prev && go(prev)}
-          className="shrink-0 rounded-lg border border-border px-2 py-2 text-sm disabled:opacity-30"
           aria-label="Previous phase (won't release queued content)"
           title="Back — won't release queued content"
+          className="shrink-0"
         >
-          ←
-        </button>
+          <ArrowLeft />
+        </UiButton>
         <div className="flex flex-1 gap-1 overflow-x-auto py-1">
           {phases.map((p, i) => {
             const done = idx >= 0 && i < idx;
@@ -1213,28 +1217,40 @@ function PhaseStepper({
                 key={p.id}
                 onClick={() => go(p)}
                 title={p.label}
-                className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs transition-colors ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
                   current
-                    ? "border-accent bg-accent/15 text-accent"
+                    ? "border-accent bg-accent/15 font-medium text-accent"
                     : done
-                      ? "border-border bg-surface text-muted"
-                      : "border-border text-muted hover:border-accent"
+                      ? "border-transparent bg-white/[0.03] text-muted hover:text-white/70"
+                      : "border-border text-muted hover:border-accent hover:text-white/80"
                 }`}
               >
-                <span className="opacity-60">{i + 1}</span>
+                <span
+                  className={`grid size-4 place-items-center rounded-full text-[0.6rem] ${
+                    done
+                      ? "bg-accent/25 text-accent"
+                      : current
+                        ? "bg-accent text-bg"
+                        : "bg-white/10"
+                  }`}
+                >
+                  {done ? "✓" : i + 1}
+                </span>
                 <span className="max-w-[9rem] truncate">{p.label}</span>
               </button>
             );
           })}
         </div>
-        <button
+        {/* The one action that matters — a real filled primary, not an outline. */}
+        <UiButton
           data-tour-id="advance"
+          variant="primary"
           disabled={!next}
           onClick={() => next && go(next)}
-          className="shrink-0 rounded-lg border border-accent bg-accent/10 px-3 py-2 text-sm font-medium text-accent disabled:opacity-30"
+          className="shrink-0"
         >
-          Advance →
-        </button>
+          Advance <ArrowRight />
+        </UiButton>
       </div>
     </div>
   );
