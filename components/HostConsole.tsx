@@ -59,6 +59,7 @@ import {
   Play,
   ChevronDown,
   Clock,
+  Maximize2,
 } from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -363,22 +364,27 @@ export function HostConsole({
         {advanceHealthCaption(s.roomHealth) && (
           <p className="mx-2 mb-2 text-xs text-[#ffd27a]">{advanceHealthCaption(s.roomHealth)}</p>
         )}
-        <div className="flex items-center gap-1 overflow-x-auto px-2">
-          {TABS.filter((t) => t.show).map((t) => (
-            <button
-              key={t.id}
-              data-tour-id={`tab-${t.id}`}
-              onClick={() => setTab(t.id)}
-              className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${
-                activeTab === t.id
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-white/80"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-          <div className="ml-auto flex shrink-0 items-center gap-3 pl-2">
+        {/* Navigation (a segmented control) is kept visually distinct from the
+            status cluster + cockpit entry, so the row reads as "where am I" on the
+            left and "how's the room / go live" on the right. */}
+        <div className="flex items-center gap-3 px-3 pt-0.5">
+          <div className="inline-flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-surface/40 p-0.5">
+            {TABS.filter((t) => t.show).map((t) => (
+              <button
+                key={t.id}
+                data-tour-id={`tab-${t.id}`}
+                onClick={() => setTab(t.id)}
+                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeTab === t.id
+                    ? "bg-accent text-bg shadow-sm"
+                    : "text-white/55 hover:text-white/85"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2.5 pl-1">
             {/* H2 — quiet pre-flight pill; appears only when something needs a look. */}
             {s.readiness &&
               s.readiness.checks.some(
@@ -394,12 +400,16 @@ export function HostConsole({
             {/* H1 — this device's honest connection state. */}
             <ConnectionChip conn={conn} />
             {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
-            <a
-              href={`/r/${slug}/facilitate`}
-              className="whitespace-nowrap rounded-lg border border-accent/40 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+            <UiButton
+              asChild
+              variant="outline"
+              size="sm"
+              className="border-accent/45 text-accent hover:bg-accent/10"
             >
-              ⛶ Facilitate
-            </a>
+              <a href={`/r/${slug}/facilitate`}>
+                <Maximize2 /> Facilitate
+              </a>
+            </UiButton>
           </div>
         </div>
       </div>
