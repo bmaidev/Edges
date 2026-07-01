@@ -7,7 +7,6 @@ import type { RunSheet } from "@/lib/types";
 // Doc in another tab). Plus a one-line peek at what's next.
 export function RunSheetPanel({
   runsheet,
-  nextPeek,
   timing,
 }: {
   runsheet?: RunSheet | null;
@@ -21,44 +20,52 @@ export function RunSheetPanel({
     runsheet && (runsheet.script || points.length > 0 || runsheet.contingency),
   );
   const chip = timingChip(timing);
-  if (!has && !nextPeek && !chip) return null;
+
+  // No private script for this phase → don't show a prominent accent card for
+  // nothing. Surface just a quiet pacing line if there's a plan; otherwise render
+  // nothing. (The next phase is named on the Advance button, so there's no peek
+  // here anymore.)
+  if (!has) {
+    return chip ? (
+      <p className={`text-xs ${chip.over ? "text-[#ff8a8a]" : "text-muted"}`}>
+        <span className="text-[#ffd27a]">⏱</span> {chip.text}
+      </p>
+    ) : null;
+  }
+
   return (
-    <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
+    <section className="rounded-xl border border-accent/30 bg-accent/[0.06] p-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-accent">
           🎙 Your run-sheet
         </p>
         {chip && (
-          <span className={`text-xs ${chip.over ? "text-[#ff8a8a]" : "text-muted"}`}>{chip.text}</span>
+          <span className={`text-xs ${chip.over ? "text-[#ff8a8a]" : "text-muted"}`}>
+            {chip.text}
+          </span>
         )}
       </div>
-      {has ? (
-        <div className="mt-2 flex flex-col gap-2 text-sm">
-          {runsheet?.script && (
-            <p className="leading-relaxed text-white/90">{runsheet.script}</p>
-          )}
-          {points.length > 0 && (
-            <ul className="list-inside list-disc text-muted">
-              {points.map((t, i) => (
-                <li key={i}>{t}</li>
-              ))}
-            </ul>
-          )}
-          {runsheet?.contingency && (
-            <p className="text-xs text-muted">
-              <span className="text-[#ffd27a]">If it goes quiet:</span>{" "}
-              {runsheet.contingency}
-            </p>
-          )}
-        </div>
-      ) : (
-        <p className="mt-1 text-sm text-muted">No notes for this phase.</p>
-      )}
-      {nextPeek && (
-        <p className="mt-3 border-t border-border pt-2 text-xs text-muted">
-          Next → <span className="text-white/80">{nextPeek}</span>
-        </p>
-      )}
+      <div className="mt-2.5 flex flex-col gap-2.5 text-sm">
+        {runsheet?.script && (
+          <p className="leading-relaxed text-white/90">{runsheet.script}</p>
+        )}
+        {points.length > 0 && (
+          <ul className="flex list-none flex-col gap-1.5 text-muted">
+            {points.map((t, i) => (
+              <li key={i} className="flex gap-2.5">
+                <span className="mt-[0.42rem] size-1 shrink-0 rounded-full bg-accent/70" />
+                <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {runsheet?.contingency && (
+          <p className="text-xs text-muted">
+            <span className="text-[#ffd27a]">If it goes quiet:</span>{" "}
+            {runsheet.contingency}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

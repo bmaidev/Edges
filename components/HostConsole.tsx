@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { usePresence } from "@/components/usePresence";
 import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip";
@@ -1227,63 +1233,75 @@ function PhaseStepper({
           {liveDriver?.driverName || "A co-host"} is driving — tap again to take over.
         </p>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <UiButton
           variant="ghost"
           size="icon"
           disabled={!prev}
           onClick={() => prev && go(prev)}
           aria-label="Previous phase (won't release queued content)"
-          title="Back — won't release queued content"
-          className="shrink-0"
+          title={prev ? `Back to ${prev.label}` : "Back"}
+          className="size-8 shrink-0 text-muted"
         >
           <ArrowLeft />
         </UiButton>
-        {/* A slim segmented progress track instead of a scrolling wall of pills:
-            it scales to any phase count, each segment jumps to its phase (name in
-            the tooltip), and the current phase name already lives in the header —
-            so this shows PROGRESS, not a row of labels competing with it. */}
-        <div className="flex flex-1 items-center gap-1.5">
+        {/* Connected-node progress — a designed stepper (the track fills up to the
+            current node) rather than a wall of pills. Each node jumps to its phase;
+            the name lives in the tooltip + the jump menu, so the bar stays quiet. */}
+        <div className="flex flex-1 items-center px-1">
           {phases.map((p, i) => {
-            const done = idx >= 0 && i < idx;
+            const done = i < idx;
             const current = i === idx;
             return (
-              <button
-                key={p.id}
-                onClick={() => go(p)}
-                title={`${i + 1}. ${p.label}`}
-                aria-label={`Go to phase ${i + 1}: ${p.label}`}
-                aria-current={current ? "step" : undefined}
-                className="group relative flex h-4 flex-1 items-center"
-              >
-                <span
-                  className={`h-1.5 w-full rounded-full transition-colors ${
-                    current
-                      ? "bg-accent"
-                      : done
-                        ? "bg-accent/45"
-                        : "bg-white/12 group-hover:bg-white/25"
-                  }`}
-                />
-                {current && (
-                  <span className="pointer-events-none absolute left-1/2 top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent ring-2 ring-bg" />
+              <Fragment key={p.id}>
+                <button
+                  onClick={() => go(p)}
+                  title={`${i + 1}. ${p.label}`}
+                  aria-label={`Go to phase ${i + 1}: ${p.label}`}
+                  aria-current={current ? "step" : undefined}
+                  className="group grid size-4 shrink-0 place-items-center"
+                >
+                  <span
+                    className={`rounded-full transition-all duration-200 ${
+                      current
+                        ? "size-3 bg-accent shadow-[0_0_0_4px_rgb(var(--c-accent)/0.18)]"
+                        : done
+                          ? "size-2.5 bg-accent/80"
+                          : "size-2 bg-white/20 group-hover:bg-white/45"
+                    }`}
+                  />
+                </button>
+                {i < phases.length - 1 && (
+                  <span
+                    className={`h-px flex-1 transition-colors ${
+                      i < idx ? "bg-accent/45" : "bg-white/12"
+                    }`}
+                  />
                 )}
-              </button>
+              </Fragment>
             );
           })}
         </div>
-        {/* Jump to any phase by name (the labels the pills used to show). */}
+        {/* Jump to any phase by name. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <UiButton variant="ghost" size="sm" className="shrink-0 text-muted">
-              {idx >= 0 ? idx + 1 : "–"}/{phases.length}
+            <UiButton
+              variant="ghost"
+              size="sm"
+              className="shrink-0 gap-1 text-xs text-muted"
+            >
+              <span className="tabular-nums text-white/80">
+                {idx >= 0 ? idx + 1 : "–"}
+              </span>
+              <span className="opacity-40">/</span>
+              <span className="tabular-nums opacity-70">{phases.length}</span>
               <ChevronDown className="opacity-60" />
             </UiButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto">
             <DropdownMenuLabel>Jump to phase</DropdownMenuLabel>
             {phases.map((p, i) => {
-              const done = idx >= 0 && i < idx;
+              const done = i < idx;
               const current = i === idx;
               return (
                 <DropdownMenuItem
@@ -1308,15 +1326,28 @@ function PhaseStepper({
             })}
           </DropdownMenuContent>
         </DropdownMenu>
-        {/* The one action that matters — a real filled primary, not an outline. */}
+        {/* The forward action names its destination — you always know where the
+            next tap takes the room, without a competing row of labels. */}
         <UiButton
           data-tour-id="advance"
           variant="primary"
           disabled={!next}
           onClick={() => next && go(next)}
-          className="shrink-0"
+          className="h-11 shrink-0 gap-2 pl-4 pr-3.5"
         >
-          Advance <ArrowRight />
+          {next ? (
+            <span className="flex flex-col items-start leading-none">
+              <span className="text-[0.58rem] font-semibold uppercase tracking-[0.09em] text-bg/65">
+                Advance to
+              </span>
+              <span className="mt-1 max-w-[11rem] truncate text-sm font-semibold">
+                {next.label}
+              </span>
+            </span>
+          ) : (
+            <span className="text-sm font-semibold">Wrap up</span>
+          )}
+          <ArrowRight />
         </UiButton>
       </div>
     </div>
