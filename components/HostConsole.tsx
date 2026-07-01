@@ -446,8 +446,7 @@ export function HostConsole({
 
       <div className="flex flex-col gap-6 p-4">
         {activeTab === "run" && (
-          <div className="lg:grid lg:grid-cols-[1fr_minmax(320px,380px)] lg:items-start lg:gap-6">
-            <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-5">
               {/* B3 — your private script for this phase + a peek at what's next. */}
               <RunSheetPanel
                 runsheet={s.runsheets?.[s.phaseId ?? ""]}
@@ -540,14 +539,6 @@ export function HostConsole({
                   tab to preview it.
                 </div>
               )}
-            </div>
-            {/* Desktop: a live preview rail so you drive AND watch the room at once. */}
-            <aside className="hidden lg:sticky lg:top-44 lg:block lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                What they see (live)
-              </p>
-              <PreviewPanel state={s} />
-            </aside>
           </div>
         )}
         {activeTab === "preview" && <PreviewPanel state={s} />}
