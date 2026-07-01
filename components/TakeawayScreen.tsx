@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Copy, Mail, Printer, CalendarPlus, Sparkles } from "lucide-react";
+import { Button as UiButton } from "@/components/ui/button";
 import { buildIcs } from "@/lib/ics";
 import type { TakeawayPayload } from "@/lib/types";
 
@@ -41,16 +43,28 @@ export function TakeawayScreen({
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-5 p-6">
-      <header>
+      <header className="relative overflow-hidden">
+        {/* A soft bloom so the recap reads as a designed keepsake, not a plain doc. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-12 -top-16 h-48 w-48 rounded-full bg-accent/15 blur-3xl"
+        />
         {t.branding?.logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={t.branding.logoUrl} alt="" className="mb-3 max-h-10 object-contain" />
+          <img src={t.branding.logoUrl} alt="" className="relative mb-3 max-h-10 object-contain" />
         )}
-        <h1 className="font-display text-2xl font-semibold leading-tight">{title}</h1>
-        <p className="mt-1 text-sm text-muted">
-          Your recap · {t.participantCount} {t.participantCount === 1 ? "person" : "people"} ·{" "}
-          {t.submissionCount} {t.submissionCount === 1 ? "contribution" : "contributions"}
-        </p>
+        <span className="relative mb-2.5 inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-accent">
+          <Sparkles className="size-3" /> Your recap
+        </span>
+        <h1 className="font-display relative text-2xl font-semibold leading-tight">{title}</h1>
+        <div className="relative mt-2.5 flex flex-wrap gap-1.5">
+          <StatPill>
+            {t.participantCount} {t.participantCount === 1 ? "person" : "people"}
+          </StatPill>
+          <StatPill>
+            {t.submissionCount} {t.submissionCount === 1 ? "contribution" : "contributions"}
+          </StatPill>
+        </div>
       </header>
 
       {r?.summary && <p className="leading-relaxed text-white/90">{r.summary}</p>}
@@ -108,32 +122,24 @@ export function TakeawayScreen({
 
       {shareUrl && (
         <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-          <button
-            onClick={copy}
-            className="rounded-lg border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10"
-          >
-            {copied ? "Link copied ✓" : "Copy link"}
-          </button>
-          <a
-            href={`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`Your session recap: ${shareUrl}`)}`}
-            className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:border-accent"
-          >
-            Email it to yourself
-          </a>
-          {/* F3 — keep a copy: the browser print dialog saves it to PDF. */}
-          <button
-            onClick={() => window.print()}
-            className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:border-accent"
-          >
-            Save / print
-          </button>
-          {ics && (
-            <button
-              onClick={addToCalendar}
-              className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:border-accent"
+          <UiButton variant={copied ? "secondary" : "primary"} size="sm" onClick={copy}>
+            {copied ? <><Check /> Link copied</> : <><Copy /> Copy link</>}
+          </UiButton>
+          <UiButton asChild variant="secondary" size="sm">
+            <a
+              href={`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`Your session recap: ${shareUrl}`)}`}
             >
-              Add actions to calendar
-            </button>
+              <Mail /> Email it to yourself
+            </a>
+          </UiButton>
+          {/* F3 — keep a copy: the browser print dialog saves it to PDF. */}
+          <UiButton variant="secondary" size="sm" onClick={() => window.print()}>
+            <Printer /> Save / print
+          </UiButton>
+          {ics && (
+            <UiButton variant="secondary" size="sm" onClick={addToCalendar}>
+              <CalendarPlus /> Add actions to calendar
+            </UiButton>
           )}
         </div>
       )}
@@ -143,6 +149,14 @@ export function TakeawayScreen({
         It&apos;s available for 24 hours, then it&apos;s gone for good.
       </p>
     </div>
+  );
+}
+
+function StatPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full border border-border bg-surface/60 px-2.5 py-0.5 text-xs text-muted">
+      {children}
+    </span>
   );
 }
 
