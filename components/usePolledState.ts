@@ -83,9 +83,11 @@ export function usePolledState<
 ) {
   const [state, setState] = useState<T | null>(null);
   const [error, setError] = useState(false);
-  // H1 — wall-clock of the last successfully-applied state. A silent stall (a
-  // captive portal returning 200s that never advance rev) shows no `error`, so
-  // the connection hook also watches the age of this timestamp.
+  // H1 — wall-clock of the last SUCCESSFUL poll round-trip (whether or not its rev
+  // was applied). Feeds the connection indicator's staleness check: a genuine
+  // network stall stops updating this and trips "reconnecting", but a run of
+  // stale-but-successful reads (KV replica lag after a write) keeps it fresh so the
+  // banner stays green. Only a fetch error/timeout flips `error`.
   const [lastAppliedAt, setLastAppliedAt] = useState<number | null>(null);
   const optsRef = useRef(opts);
   optsRef.current = opts;
@@ -141,6 +143,14 @@ export function usePolledState<
         if (!res.ok) throw new Error("bad status");
         const data = (await res.json()) as T;
         if (!active) return;
+        // Liveness = a successful round-trip, NOT an applied rev. KV read replicas
+        // are eventually consistent, so after a write the next several polls can
+        // return a LOWER rev and get dropped below — but the link is perfectly
+        // healthy. Mark alive here (before any drop) so a run of stale-but-200
+        // reads can't trip a FALSE "reconnecting" banner. Only a real fetch
+        // error/timeout (the catch) flips error true.
+        setError(false);
+        setLastAppliedAt(Date.now());
         // A4 — the room was renamed; the state route hands back the new address.
         // Follow it once (replace, so Back doesn't loop onto the dead slug).
         const redirect = (data as { redirect?: unknown }).redirect;
@@ -159,8 +169,6 @@ export function usePolledState<
         appliedRef.current = mySeq;
         if (rev !== null) lastRevRef.current = Math.max(lastRevRef.current, rev);
         setState(data);
-        setError(false);
-        setLastAppliedAt(Date.now());
       } catch {
         if (active) setError(true);
       }
