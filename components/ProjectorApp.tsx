@@ -213,7 +213,11 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
           ) : Renderer && state.view ? (
             <ErrorBoundary
               label={`projector:${state.moduleId ?? "?"}`}
-              resetKey={`${state.phaseId}:${state.rev}`}
+              // Reset ONLY on a real phase change — NOT on state.rev. rev bumps on
+              // every write and can oscillate under eventually-consistent KV read
+              // replicas, remounting the renderer on each write/lagging read (the
+              // "flashing"). phaseId is the only meaningful boundary (matches Host).
+              resetKey={`${state.phaseId ?? ""}:${state.moduleId ?? ""}`}
             >
               <Renderer
                 view={state.view.data}
