@@ -1,6 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui";
+import { Printer } from "lucide-react";
+import { Button as UiButton } from "@/components/ui/button";
 import { DEFAULT_MINUTES } from "@/lib/arc";
 import type { FacilitatorState, ModuleKind } from "@/lib/types";
 
@@ -43,8 +44,8 @@ export function RunsheetPrint({
   }
 
   return (
-    <Button variant="ghost" onClick={print}>
-      🖨 Print run-sheet
-    </Button>
+    <UiButton variant="secondary" onClick={print} className="w-full justify-center">
+      <Printer /> Print run-sheet
+    </UiButton>
   );
 }

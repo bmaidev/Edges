@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Modal } from "@/components/ui";
+import { Eye } from "lucide-react";
+import { Modal } from "@/components/ui";
+import { Button as UiButton } from "@/components/ui/button";
 import type { Cmd } from "@/components/HostConsole";
 import type { FacilitatorState } from "@/lib/types";
 
@@ -64,9 +66,9 @@ export function TakeawayReview({
 
   return (
     <>
-      <Button variant="ghost" onClick={load}>
-        Review what the room keeps
-      </Button>
+      <UiButton variant="secondary" onClick={load} className="w-full justify-center">
+        <Eye /> Review what the room keeps
+      </UiButton>
       {open && (
         <Modal title="The take-away — review & curate" onClose={() => setOpen(false)}>
           {busy && !preview ? (
@@ -125,7 +127,7 @@ export function TakeawayReview({
               </p>
 
               <div className="mt-1 flex gap-2">
-                <Button
+                <UiButton
                   variant="danger"
                   onClick={() => {
                     cmd("end", { excludeActionItems: Array.from(excluded) });
@@ -133,10 +135,10 @@ export function TakeawayReview({
                   }}
                 >
                   Publish &amp; end session
-                </Button>
-                <Button variant="ghost" onClick={() => setOpen(false)}>
+                </UiButton>
+                <UiButton variant="ghost" onClick={() => setOpen(false)}>
                   Keep going
-                </Button>
+                </UiButton>
               </div>
             </div>
           )}
