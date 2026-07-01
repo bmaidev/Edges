@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Modal } from "@/components/ui";
+import { FileText, Pencil } from "lucide-react";
+import { Modal } from "@/components/ui";
+import { Button as UiButton } from "@/components/ui/button";
 import { ReportDocument } from "@/lib/report/ReportDocument";
 import { ReportCurator } from "@/components/ReportCurator";
 import { reportToMarkdown } from "@/lib/report/markdown";
@@ -97,13 +99,14 @@ export function HandoverPanel({
         decisions and next steps. Individual responses aren&apos;t included.
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={build} disabled={busy}>
+        <UiButton variant="primary" onClick={build} disabled={busy}>
+          <FileText />
           {busy ? "Building…" : archive ? "Rebuild report" : "Build handover report"}
-        </Button>
+        </UiButton>
         {archive && (
-          <Button variant="ghost" onClick={() => setOpen(true)}>
+          <UiButton variant="secondary" onClick={() => setOpen(true)}>
             View / export
-          </Button>
+          </UiButton>
         )}
       </div>
       {err && <p className="text-sm text-[#ff8a8a]">{err}</p>}
@@ -119,20 +122,22 @@ export function HandoverPanel({
       {open && archive && (
         <Modal title="Handover report" onClose={() => setOpen(false)}>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => window.print()}>Print / Save as PDF</Button>
-            <Button variant="ghost" onClick={copyMarkdown}>
+            <UiButton variant="primary" size="sm" onClick={() => window.print()}>
+              Print / Save as PDF
+            </UiButton>
+            <UiButton variant="secondary" size="sm" onClick={copyMarkdown}>
               {copied ? "Copied ✓" : "Copy as Markdown"}
-            </Button>
+            </UiButton>
             {archive.reportToken && (
-              <Button variant="ghost" onClick={copyLink}>
+              <UiButton variant="secondary" size="sm" onClick={copyLink}>
                 {linkCopied ? "Link copied ✓" : "Copy shareable link"}
-              </Button>
+              </UiButton>
             )}
             {/* F1 — toggle inline curation (glance, fix, send). */}
             {archive.report && (
-              <Button variant="ghost" onClick={() => setCurating((v) => !v)}>
-                {curating ? "Done curating" : "✎ Curate"}
-              </Button>
+              <UiButton variant="ghost" size="sm" onClick={() => setCurating((v) => !v)}>
+                <Pencil /> {curating ? "Done curating" : "Curate"}
+              </UiButton>
             )}
           </div>
           {/* F2 — send-after export of the captured action-item register. */}

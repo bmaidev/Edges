@@ -1,8 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
-import { Button } from "@/components/ui";
+import {
+  Pencil,
+  Sparkles,
+  Search,
+  Scissors,
+  Star,
+  Download,
+  Upload,
+  Share2,
+  Copy,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Eye,
+  Play,
+  Rocket,
+} from "lucide-react";
+import { Button as UiButton } from "@/components/ui/button";
 import { bootToken } from "@/lib/magicLink";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
 import { PaletteChip, PlacedPhaseCard, SourceField } from "@/components/ModuleCard";
@@ -17,7 +34,18 @@ import { RehearsalTheatre } from "@/components/RehearsalTheatre";
 import { ShareImportPanel } from "@/components/ShareImportPanel";
 import { acceptsTimerEdit, phaseMinutes, phaseStage } from "@/lib/arc";
 import { MODULE_CATEGORIES } from "@/lib/modules/categories";
-import type { ModuleKind } from "@/lib/types";
+import type { ModuleKind, PhaseInstance } from "@/lib/types";
+
+// Compact "time since" for the editing banner (client-only, so Date.now is fine).
+function relativeTime(ts: number): string {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
 
 // B1 — arc-stage dot colours (shared with AgendaArc's palette).
 const STAGE_DOT: Record<string, string> = {
@@ -399,6 +427,14 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   const [phases, setPhases] = useState<BuilderPhase[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
+  // When we've re-opened an existing build for editing: `source` distinguishes a
+  // durable saved blueprint from the live session sequence (template/mode rooms);
+  // `savedAt` drives the "saved X ago" line (null for the live fallback). Drives
+  // the "editing" banner + the "Save changes" affordance.
+  const [editingSaved, setEditingSaved] = useState<{
+    savedAt: number | null;
+    source: "blueprint" | "live";
+  } | null>(null);
 
   // A2: inherit the magic-link token (from `#k=` or the tab's remembered one) so
   // the builder knows who you are with no passcode box. Facilitators can now
@@ -410,6 +446,52 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       setHasToken(true);
     }
   }, [slug]);
+
+  // Re-open an EXISTING build for editing. The room's design is persisted (durable
+  // blueprint, or the live session sequence) but the builder used to always start
+  // blank — so a facilitator could build a room and never edit it again. Once we
+  // have a valid code, fetch it and seed the editor. Debounced so a passcode typed
+  // character-by-character doesn't fire on every partial (invalid) value, and only
+  // latched once the code actually resolves (a 403 from a half-typed code lets a
+  // later, complete code retry). Never clobbers work already in progress.
+  const blueprintLoaded = useRef(false);
+  useEffect(() => {
+    if (blueprintLoaded.current || !code.trim()) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `${apiBase}/blueprint?code=${encodeURIComponent(code)}`,
+        );
+        if (!res.ok) return; // wrong/partial code — retry when it changes
+        const d = (await res.json()) as {
+          blueprint: { name?: string; phases?: PhaseInstance[]; savedAt?: number | null } | null;
+          source?: "blueprint" | "live" | null;
+        };
+        blueprintLoaded.current = true; // valid code answered — don't re-fetch
+        const bp = d.blueprint;
+        if (!bp?.phases?.length) return; // room genuinely has no build yet
+        setPhases((prev) =>
+          prev.length > 0
+            ? prev
+            : bp.phases!.map((p) => ({
+                id: p.id,
+                moduleId: p.moduleId,
+                config: { ...p.config },
+              })),
+        );
+        setName((prev) =>
+          prev === "Custom session" && bp.name ? bp.name : prev,
+        );
+        setEditingSaved({
+          savedAt: bp.savedAt ?? null,
+          source: d.source === "live" ? "live" : "blueprint",
+        });
+      } catch {
+        /* offline — stay on the blank create flow */
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [code, apiBase]);
   // Setup-phase AI assist
   const [goal, setGoal] = useState("");
   const [minutes, setMinutes] = useState("");
@@ -791,9 +873,13 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   if (launched) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 p-8 text-center">
-        <h1 className="text-xl font-semibold">Session launched</h1>
+        <h1 className="text-xl font-semibold">
+          {editingSaved ? "Changes saved" : "Session launched"}
+        </h1>
         <p className="text-sm text-muted">
-          Your custom sequence is live in room {slug}.
+          {editingSaved
+            ? `Your updated sequence is live in room ${slug}.`
+            : `Your custom sequence is live in room ${slug}.`}
         </p>
         <a className="text-accent underline" href={`/r/${slug}/host`}>
           Open host console →
@@ -817,8 +903,20 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       )}
       <h1 className="font-display text-2xl font-semibold tracking-tight">Session builder · {slug}</h1>
       <p className="mt-1 text-sm text-muted">
-        Start from a template or compose your own sequence, edit each phase, then launch.
+        {editingSaved
+          ? "Editing this room's saved build — change any phase, then save. Re-launching updates the live room."
+          : "Start from a template or compose your own sequence, edit each phase, then launch."}
       </p>
+      {editingSaved && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent/30 bg-accent/[0.06] px-3 py-2 text-xs text-accent">
+          <Pencil className="size-3.5 shrink-0" />
+          <span>
+            {editingSaved.savedAt != null
+              ? `Loaded the saved build (${phases.length} phase${phases.length === 1 ? "" : "s"}), saved ${relativeTime(editingSaved.savedAt)}.`
+              : `Loaded this room's current sequence (${phases.length} phase${phases.length === 1 ? "" : "s"}) for editing.`}
+          </span>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-col gap-3">
         <input
@@ -842,7 +940,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         )}
       </div>
 
-      <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
+      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
         Design with AI
       </h2>
       <div className="mt-2 flex flex-col gap-2 rounded-xl border border-dashed border-accent/50 bg-accent/5 p-3">
@@ -867,16 +965,20 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           <span>sizes the agenda — fewer, deeper phases for the time you have.</span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={suggest} disabled={aiBusy !== null || !goal.trim() || !code.trim()}>
-            {aiBusy === "suggest" ? "Designing…" : "✨ Suggest a session"}
-          </Button>
-          <Button
-            variant="ghost"
+          <UiButton
+            variant="primary"
+            onClick={suggest}
+            disabled={aiBusy !== null || !goal.trim() || !code.trim()}
+          >
+            <Sparkles /> {aiBusy === "suggest" ? "Designing…" : "Suggest a session"}
+          </UiButton>
+          <UiButton
+            variant="secondary"
             onClick={runCritique}
             disabled={aiBusy !== null || phases.length === 0 || !code.trim()}
           >
-            {aiBusy === "critique" ? "Reviewing…" : "🔍 Critique this design"}
-          </Button>
+            <Search /> {aiBusy === "critique" ? "Reviewing…" : "Critique this design"}
+          </UiButton>
           {!code.trim() && (
             <span className="text-xs text-muted">Enter your passcode above to enable AI design.</span>
           )}
@@ -899,10 +1001,10 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                       )
                     }
                     disabled={aiBusy !== null || !code.trim()}
-                    className="rounded-full border border-accent bg-accent/10 px-2.5 py-1 text-xs text-accent hover:bg-accent/20 disabled:opacity-30"
+                    className="inline-flex items-center gap-1 rounded-full border border-accent bg-accent/10 px-2.5 py-1 text-xs text-accent hover:bg-accent/20 disabled:opacity-30"
                     title={`Currently ~${Math.round(totalMinutes(phases))} min`}
                   >
-                    ✂ Trim to {Number(minutes)}m
+                    <Scissors className="size-3" /> Trim to {Number(minutes)}m
                   </button>
                 )}
               {[
@@ -928,13 +1030,15 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                 placeholder="…or describe a change (e.g. “adapt for 50 people”)"
                 className="min-w-0 flex-1 rounded border border-border bg-bg px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
               />
-              <button
+              <UiButton
+                variant="primary"
+                size="sm"
                 onClick={() => transform(refineText)}
                 disabled={aiBusy !== null || !refineText.trim() || !code.trim()}
-                className="shrink-0 rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent disabled:opacity-30"
+                className="shrink-0"
               >
                 {aiBusy === "revise" ? "Transforming…" : "Transform"}
-              </button>
+              </UiButton>
             </div>
             {tally && (
               <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -974,19 +1078,21 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
               )}
             </div>
             {critique.issues.length > 0 && (
-              <Button
+              <UiButton
+                variant="primary"
+                size="sm"
                 onClick={applyFixes}
                 disabled={aiBusy !== null}
-                className="mt-1 !px-3 !py-1 !text-xs"
+                className="mt-1 self-start"
               >
-                {aiBusy === "revise" ? "Revising…" : "✨ Apply AI fixes"}
-              </Button>
+                <Sparkles /> {aiBusy === "revise" ? "Revising…" : "Apply AI fixes"}
+              </UiButton>
             )}
           </div>
         )}
       </div>
 
-      <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
+      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
         Start from a template
       </h2>
       <div className="mt-2 flex flex-wrap gap-2">
@@ -1004,28 +1110,27 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
 
       {/* B4 — the shared library of designs you've saved + share via JSON. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button
+        <UiButton
+          variant="secondary"
+          size="sm"
           onClick={saveAsTemplate}
           disabled={phases.length === 0}
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs hover:border-accent disabled:opacity-30"
         >
-          ★ Save as template
-        </button>
-        <button
+          <Star /> Save as template
+        </UiButton>
+        <UiButton
+          variant="secondary"
+          size="sm"
           onClick={exportDesign}
           disabled={phases.length === 0}
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs hover:border-accent disabled:opacity-30"
         >
-          Export JSON
-        </button>
-        <button
-          onClick={importDesign}
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs hover:border-accent"
-        >
-          Import JSON
-        </button>
+          <Download /> Export JSON
+        </UiButton>
+        <UiButton variant="secondary" size="sm" onClick={importDesign}>
+          <Upload /> Import JSON
+        </UiButton>
       </div>
-      <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
+      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
         Your templates
       </h2>
       <div className="mt-2 flex flex-col gap-1.5">
@@ -1040,34 +1145,40 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
               {d.scope === "room" && <span className="text-muted/60"> · this room</span>}
             </button>
             {/* B4 — share / duplicate / delete a saved design. */}
-            <button
+            <UiButton
+              variant="ghost"
+              size="icon"
+              className="size-7"
               onClick={() => shareDesign(d.id, d.name)}
-              className="text-muted underline hover:text-accent"
               title="Copy a shareable code"
             >
-              share
-            </button>
-            <button
+              <Share2 className="!size-3.5" />
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              size="icon"
+              className="size-7"
               onClick={() => duplicateDesign(d.id)}
-              className="text-muted underline hover:text-accent"
               title="Duplicate (admin only)"
             >
-              duplicate
-            </button>
-            <button
+              <Copy className="!size-3.5" />
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              size="icon"
+              className="size-7 text-[#ff8a8a] hover:bg-[#ff6b6b]/10 hover:text-[#ff9a9a]"
               onClick={() => removeDesign(d.id)}
-              className="text-[#ff8a8a] underline"
               title="Delete (admin only)"
             >
-              delete
-            </button>
+              <Trash2 className="!size-3.5" />
+            </UiButton>
           </div>
         ))}
       </div>
       {/* B4 — import a design someone shared with you. */}
       <ShareImportPanel apiBase={apiBase} code={code} onImported={(nm) => { setMsg(`Imported “${nm}”.`); loadDesigns(); }} />
 
-      <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
+      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
         Add a module
       </h2>
       <div className="mt-2 flex flex-col gap-3">
@@ -1085,7 +1196,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         ))}
       </div>
 
-      <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-muted">
+      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
         Sequence ({phases.length})
       </h2>
       {phases.length === 0 ? (
@@ -1145,9 +1256,35 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                         ~{mins.minutes}m
                       </span>
                     )}
-                    <button className="text-muted disabled:opacity-20" disabled={i === 0} onClick={() => move(i, -1)}>▲</button>
-                    <button className="text-muted disabled:opacity-20" disabled={i === phases.length - 1} onClick={() => move(i, 1)}>▼</button>
-                    <button className="text-[#ff8a8a] underline" onClick={() => remove(i)}>remove</button>
+                    <UiButton
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      disabled={i === 0}
+                      onClick={() => move(i, -1)}
+                      title="Move up"
+                    >
+                      <ChevronUp className="!size-4" />
+                    </UiButton>
+                    <UiButton
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      disabled={i === phases.length - 1}
+                      onClick={() => move(i, 1)}
+                      title="Move down"
+                    >
+                      <ChevronDown className="!size-4" />
+                    </UiButton>
+                    <UiButton
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-[#ff8a8a] hover:bg-[#ff6b6b]/10 hover:text-[#ff9a9a]"
+                      onClick={() => remove(i)}
+                      title="Remove phase"
+                    >
+                      <Trash2 className="!size-3.5" />
+                    </UiButton>
                   </div>
                 </div>
                 <PlacedPhaseCard moduleId={p.moduleId} />
@@ -1273,16 +1410,20 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                   <div className="flex items-center gap-4">
                     <button
                       onClick={() => toggleAdvanced(i)}
-                      className="text-xs text-muted underline decoration-dotted hover:text-white/80"
+                      className="inline-flex items-center gap-1 text-xs text-muted hover:text-white/80"
                     >
-                      {p.advanced ? "▾ Hide JSON — back to form" : "▸ Advanced (JSON)"}
+                      <ChevronDown
+                        className={`size-3.5 transition-transform ${p.advanced ? "" : "-rotate-90"}`}
+                      />
+                      {p.advanced ? "Hide JSON — back to form" : "Advanced (JSON)"}
                     </button>
                     {/* B2 — audition this phase on the participant phone + projector. */}
                     <button
                       onClick={() => togglePreview(i)}
-                      className="text-xs text-accent underline decoration-dotted hover:text-white/80"
+                      className="inline-flex items-center gap-1 text-xs text-accent hover:text-white/80"
                     >
-                      {p.previewOpen ? "▾ Hide preview" : "👁 Preview the room"}
+                      <Eye className="size-3.5" />
+                      {p.previewOpen ? "Hide preview" : "Preview the room"}
                     </button>
                   </div>
                   {!valid.ok && <span className="text-xs text-[#ff8a8a]">{valid.msg}</span>}
@@ -1305,26 +1446,30 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <Button
+        <UiButton
+          variant="primary"
+          size="lg"
           onClick={launch}
           disabled={
             phases.length === 0 ||
             phases.some((p) => !validateConfig(p.moduleId, p.config).ok)
           }
         >
-          Launch into room
-        </Button>
+          {editingSaved ? <Pencil /> : <Rocket />}
+          {editingSaved ? "Save changes" : "Launch into room"}
+        </UiButton>
         {/* B5 — walk the whole arc with a synthetic room before going live. */}
-        <button
+        <UiButton
+          variant="secondary"
+          size="lg"
           onClick={() => setRehearsing(true)}
           disabled={
             phases.length === 0 ||
             phases.some((p) => !validateConfig(p.moduleId, p.config).ok)
           }
-          className="rounded-lg border border-border bg-surface px-4 py-2 text-sm hover:border-accent disabled:opacity-30"
         >
-          ▶ Rehearse (dry-run)
-        </button>
+          <Play /> Rehearse (dry-run)
+        </UiButton>
       </div>
       {msg && (
         <p className="mt-3 rounded-lg border border-[#5a2a2a] bg-[#5a2a2a]/30 px-3 py-2 text-sm text-[#ffd7d7]">

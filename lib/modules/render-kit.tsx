@@ -7,7 +7,7 @@
 // action dispatcher.
 
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui";
+import { Button as UiButton } from "@/components/ui/button";
 import { useColourSafe } from "@/components/A11yProvider";
 import type { Role } from "./types";
 
@@ -116,9 +116,15 @@ export function StickyAction({
 }) {
   return (
     <div className="safe-bottom sticky bottom-0 z-10 mt-auto border-t border-border bg-bg/95 px-6 pt-4 shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.55)] backdrop-blur">
-      <Button className="w-full" onClick={onClick} disabled={disabled}>
+      <UiButton
+        variant="primary"
+        size="lg"
+        className="w-full"
+        onClick={onClick}
+        disabled={disabled}
+      >
         {label}
-      </Button>
+      </UiButton>
     </div>
   );
 }

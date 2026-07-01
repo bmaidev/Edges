@@ -16,7 +16,9 @@ import { useResilientAct } from "@/components/useOfflineQueue";
 import { AttributionChip } from "@/components/AttributionChip";
 import { A11yProvider, useA11y } from "@/components/A11yProvider";
 import { TakeawayScreen } from "@/components/TakeawayScreen";
-import { Button, Screen } from "@/components/ui";
+import { Screen } from "@/components/ui";
+import { Button as UiButton } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { STRINGS } from "@/lib/strings";
@@ -184,37 +186,72 @@ function JoinScreen({
 
   return (
     <Screen>
-      <div className="flex flex-1 flex-col gap-6 p-6 pt-12 animate-fadeInUp">
-        <div className="flex flex-col items-start gap-3">
-          {branding?.logoUrl && (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={branding.logoUrl} alt="" className="max-h-12 max-w-[60%] object-contain" />
-          )}
-          <div>
-            <h1 className="font-display text-4xl font-semibold tracking-tight">{title}</h1>
-            <p className="mt-1 text-muted">{subtitle}</p>
+      <div className="relative flex flex-1 flex-col overflow-hidden px-6 py-8 animate-fadeInUp">
+        {/* Atmosphere: a soft themeable bloom behind the header so the join screen
+            reads as a designed space, not a flat form on a flat background. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-16 -top-24 h-72 w-72 rounded-full bg-accent/20 blur-3xl"
+        />
+
+        {/* The main block is vertically centred, so on a tall phone or a desktop
+            column the invitation sits in the optical middle instead of floating at
+            the top with a void beneath it. */}
+        <div className="relative flex flex-1 flex-col justify-center gap-7">
+          <div className="flex flex-col items-start gap-4">
+            {branding?.logoUrl && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={branding.logoUrl} alt="" className="max-h-14 max-w-[60%] object-contain" />
+            )}
+            <div>
+              <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/60 px-3 py-1 text-xs font-medium text-muted backdrop-blur-sm">
+                <span className="relative flex size-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/70" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
+                </span>
+                Live session
+              </span>
+              <h1 className="font-display text-[2.6rem] font-semibold leading-[1.05] tracking-tight">
+                {title}
+              </h1>
+              <p className="mt-2 text-lg text-muted">{subtitle}</p>
+            </div>
+          </div>
+
+          <p className="text-sm leading-relaxed text-white/80">{STRINGS.joinBody}</p>
+
+          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface/50 p-4 backdrop-blur-sm">
+            <label htmlFor="handle" className="text-sm font-medium text-white/85">
+              Choose a handle <span className="text-muted">(or stay anonymous)</span>
+            </label>
+            <input
+              id="handle"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              onFocus={(e) => e.target.value === "Anonymous" && e.target.select()}
+              onKeyDown={(e) => e.key === "Enter" && !busy && join()}
+              maxLength={40}
+              className="rounded-xl border border-border bg-bg px-4 py-3 text-base transition-shadow focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+            />
+            <UiButton
+              variant="primary"
+              size="lg"
+              onClick={join}
+              disabled={busy}
+              className="mt-1 w-full"
+            >
+              {busy ? "Joining…" : (
+                <>
+                  Join the room <ArrowRight />
+                </>
+              )}
+            </UiButton>
           </div>
         </div>
-        <p className="text-sm leading-relaxed text-white/90">{STRINGS.joinBody}</p>
-        <div className="flex flex-col gap-2">
-          <label htmlFor="handle" className="text-sm text-muted">
-            Choose a handle (or stay anonymous)
-          </label>
-          <input
-            id="handle"
-            value={handle}
-            onChange={(e) => setHandle(e.target.value)}
-            onFocus={(e) => e.target.value === "Anonymous" && e.target.select()}
-            maxLength={40}
-            className="rounded-xl border border-border bg-surface px-4 py-3 text-base focus:border-accent focus:outline-none"
-          />
-        </div>
-        <Button onClick={join} disabled={busy}>
-          {busy ? "Joining…" : "Join the room"}
-        </Button>
-        <div className="mt-auto border-t border-border pt-5">
-          <p className="text-xs leading-relaxed text-muted">{STRINGS.privacyLine}</p>
-        </div>
+
+        <p className="relative mt-8 border-t border-border/70 pt-5 text-xs leading-relaxed text-muted">
+          {STRINGS.privacyLine}
+        </p>
       </div>
     </Screen>
   );
@@ -345,16 +382,20 @@ function PhaseScreen({
     return (
       <Screen>
         <ConnectionStrip conn={conn} pending={pending} />
-        <div className="flex flex-1 flex-col items-center justify-center gap-8 p-8 text-center animate-riseIn">
+        <div className="relative flex flex-1 flex-col items-center justify-center gap-8 overflow-hidden p-8 text-center animate-riseIn">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/10 blur-3xl"
+          />
           <div className="relative h-16 w-16">
             <div className="absolute inset-0 rounded-full bg-accent/30 blur-xl animate-pulseSoft" />
             <div className="relative h-16 w-16 rounded-full bg-accent animate-pulseSoft" />
           </div>
-          <p className="font-display max-w-xs text-2xl leading-relaxed text-white/90">
+          <p className="font-display relative max-w-xs text-2xl leading-relaxed text-white/90">
             {message}
           </p>
           {preSession && state.branding?.tagline && (
-            <p className="max-w-xs text-sm text-muted">{state.branding.tagline}</p>
+            <p className="relative max-w-xs text-sm text-muted">{state.branding.tagline}</p>
           )}
         </div>
       </Screen>

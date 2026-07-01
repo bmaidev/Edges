@@ -77,6 +77,8 @@ import {
   Plus,
   X,
   Library,
+  Archive,
+  Power,
 } from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -595,29 +597,17 @@ export function HostConsole({
 
             <SessionSection title="Room settings">
               {/* D2 / C6 — big-screen + timer-chime toggles for the whole room. */}
-              <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface/50 p-4">
-                <label className="flex items-center gap-2.5 text-sm text-white/85">
-                  <input
-                    type="checkbox"
-                    className="accent-accent"
-                    checked={s.projectorA11y === true}
-                    onChange={(e) =>
-                      cmd("setProjectorA11y", { on: e.target.checked })
-                    }
-                  />
-                  High-contrast big screen (colour-safe, for the whole room)
-                </label>
-                <label className="flex items-center gap-2.5 text-sm text-white/85">
-                  <input
-                    type="checkbox"
-                    className="accent-accent"
-                    checked={s.timerSoundOff === true}
-                    onChange={(e) =>
-                      cmd("setTimerSound", { off: e.target.checked })
-                    }
-                  />
-                  Mute the timer chime for the whole room
-                </label>
+              <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface/50 p-4">
+                <SettingToggle
+                  label="High-contrast big screen (colour-safe, for the whole room)"
+                  checked={s.projectorA11y === true}
+                  onChange={(on) => cmd("setProjectorA11y", { on })}
+                />
+                <SettingToggle
+                  label="Mute the timer chime for the whole room"
+                  checked={s.timerSoundOff === true}
+                  onChange={(off) => cmd("setTimerSound", { off })}
+                />
               </div>
               {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
               <CofacSettings
@@ -1039,11 +1029,50 @@ function SessionSection({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
-        {title}
-      </h3>
+      <div className="flex items-center gap-3">
+        <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
+          {title}
+        </h3>
+        <div className="h-px flex-1 bg-border/60" />
+      </div>
       <div className="flex flex-col gap-3">{children}</div>
     </section>
+  );
+}
+
+// A themed on/off switch — replaces raw native checkboxes for room-wide settings
+// so the toggles read as designed controls (and get a proper hit target + a11y
+// role). Driven by the same checked/onChange as before.
+function SettingToggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-center justify-between gap-3 text-left text-sm text-white/85"
+    >
+      <span>{label}</span>
+      <span
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+          checked ? "bg-accent" : "bg-white/15"
+        }`}
+      >
+        <span
+          className={`inline-block size-4 rounded-full bg-white shadow transition-transform duration-150 ${
+            checked ? "translate-x-4" : "translate-x-0.5"
+          }`}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -2037,16 +2066,23 @@ function SessionControls({ cmd }: { cmd: Cmd }) {
         <span className="text-accent">Run</span> tab — it clears that phase&apos;s
         answers without touching the rest.
       </p>
-      <Button variant="ghost" onClick={() => setConfirming("archive")}>
-        Archive (save report + wipe)
-      </Button>
-      <Button
-        variant="danger"
-        data-tour-id="end-session"
-        onClick={() => setConfirming("end")}
-      >
-        End session
-      </Button>
+      <div className="flex flex-col gap-2 rounded-xl border border-[#ff6b6b]/25 bg-[#ff6b6b]/[0.04] p-3">
+        <UiButton
+          variant="secondary"
+          onClick={() => setConfirming("archive")}
+          className="w-full justify-center"
+        >
+          <Archive /> Archive (save report + wipe)
+        </UiButton>
+        <UiButton
+          variant="danger"
+          data-tour-id="end-session"
+          onClick={() => setConfirming("end")}
+          className="w-full justify-center"
+        >
+          <Power /> End session
+        </UiButton>
+      </div>
       {confirming && (
         <Modal
           title={confirming === "end" ? "End session?" : "Archive session?"}
@@ -2074,7 +2110,7 @@ function SessionControls({ cmd }: { cmd: Cmd }) {
             </label>
           )}
           <div className="mt-4 flex gap-2">
-            <Button
+            <UiButton
               variant={confirming === "end" ? "danger" : "primary"}
               onClick={() => {
                 cmd(confirming, confirming === "end" ? { alsoArchive } : undefined);
@@ -2082,10 +2118,10 @@ function SessionControls({ cmd }: { cmd: Cmd }) {
               }}
             >
               {confirming === "end" ? "End and wipe" : "Archive and wipe"}
-            </Button>
-            <Button variant="ghost" onClick={() => setConfirming(null)}>
+            </UiButton>
+            <UiButton variant="ghost" onClick={() => setConfirming(null)}>
               Cancel
-            </Button>
+            </UiButton>
           </div>
         </Modal>
       )}
