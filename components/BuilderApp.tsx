@@ -447,28 +447,29 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
     }
   }, [slug]);
 
-  // Re-open an EXISTING build for editing. The room's design is persisted durably
-  // as room.blueprint (name + phases) on every launch, but the builder used to
-  // always start blank — so a facilitator could build a room and never edit it
-  // again. As soon as we have auth, fetch that blueprint and seed the editor from
-  // it. Guarded so it runs once and never clobbers work already in progress
-  // (only seeds while the editor is still empty).
-  const blueprintTried = useRef(false);
+  // Re-open an EXISTING build for editing. The room's design is persisted (durable
+  // blueprint, or the live session sequence) but the builder used to always start
+  // blank — so a facilitator could build a room and never edit it again. Once we
+  // have a valid code, fetch it and seed the editor. Debounced so a passcode typed
+  // character-by-character doesn't fire on every partial (invalid) value, and only
+  // latched once the code actually resolves (a 403 from a half-typed code lets a
+  // later, complete code retry). Never clobbers work already in progress.
+  const blueprintLoaded = useRef(false);
   useEffect(() => {
-    if (blueprintTried.current || !code) return;
-    blueprintTried.current = true;
-    (async () => {
+    if (blueprintLoaded.current || !code.trim()) return;
+    const t = setTimeout(async () => {
       try {
         const res = await fetch(
           `${apiBase}/blueprint?code=${encodeURIComponent(code)}`,
         );
-        if (!res.ok) return;
+        if (!res.ok) return; // wrong/partial code — retry when it changes
         const d = (await res.json()) as {
           blueprint: { name?: string; phases?: PhaseInstance[]; savedAt?: number | null } | null;
           source?: "blueprint" | "live" | null;
         };
+        blueprintLoaded.current = true; // valid code answered — don't re-fetch
         const bp = d.blueprint;
-        if (!bp?.phases?.length) return;
+        if (!bp?.phases?.length) return; // room genuinely has no build yet
         setPhases((prev) =>
           prev.length > 0
             ? prev
@@ -486,9 +487,10 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           source: d.source === "live" ? "live" : "blueprint",
         });
       } catch {
-        /* never built / offline — stay on the blank create flow */
+        /* offline — stay on the blank create flow */
       }
-    })();
+    }, 500);
+    return () => clearTimeout(t);
   }, [code, apiBase]);
   // Setup-phase AI assist
   const [goal, setGoal] = useState("");
