@@ -34,6 +34,13 @@ const PUSHER_CLUSTER = process.env.NEXT_PUBLIC_PUSHER_APP_CLUSTER || "";
 const PUSH_CONFIGURED = Boolean(PUSHER_KEY && PUSHER_CLUSTER);
 
 const CHANGE_EVENT = "changed";
+// R2 — the server also pushes the fresh AUTHORITATIVE role-scoped state on these
+// events (must match lib/realtime.ts). We apply that payload DIRECTLY rather than
+// re-reading the eventually-consistent store, so a phase change lands instantly
+// and correctly even when read replicas are lagging. Kept as literals here so the
+// server-only realtime module never gets pulled into the client bundle.
+const STATE_EVENT_PARTICIPANT = "state-p";
+const STATE_EVENT_PROJECTOR = "state-proj";
 
 // One shared Pusher connection per page (module-level, decoupled from any
 // component's lifecycle). Creating a client per hook mount — and disconnecting it
@@ -92,6 +99,12 @@ export function usePolledState<
   const optsRef = useRef(opts);
   optsRef.current = opts;
   const pollRef = useRef<() => Promise<void> | void>(() => {});
+  // R2 — current applied state (for merging a pushed authoritative state, which is
+  // token-blind, over the last full poll so per-token/branding fields survive), and
+  // a ref to the push-apply function so the Pusher effect can call it.
+  const stateRef = useRef<T | null>(null);
+  stateRef.current = state;
+  const applyPushRef = useRef<(pushed: Partial<T>) => void>(() => {});
 
   // Monotonic request sequencing — drop responses older than the newest applied.
   const seqRef = useRef(0);
@@ -204,13 +217,23 @@ export function usePolledState<
     // Subscribe this room's channel on the SHARED connection. On cleanup we only
     // unbind + unsubscribe the channel — never disconnect the socket — so a
     // remount re-subscribes on the same live WebSocket instead of churning it.
+    // R2 — the fresh state arrives on the event for THIS role; apply it directly.
+    const stateEvent =
+      optsRef.current.role === "projector"
+        ? STATE_EVENT_PROJECTOR
+        : STATE_EVENT_PARTICIPANT;
+    const onState = (payload: unknown) =>
+      applyPushRef.current(payload as Partial<T>);
+
     getPusherClient()
       .then((client) => {
         if (cancelled) return;
         const channel = client.subscribe(`room-${roomId}`);
         channel.bind(CHANGE_EVENT, onChange);
+        channel.bind(stateEvent, onState);
         teardown = () => {
           channel.unbind(CHANGE_EVENT, onChange);
+          channel.unbind(stateEvent, onState);
           client.unsubscribe(`room-${roomId}`);
         };
       })
@@ -276,6 +299,16 @@ export function usePolledState<
     setError(false);
     setLastAppliedAt(Date.now());
   }, []);
+
+  // R2 — apply a state PUSHED over Pusher (the authoritative just-written view).
+  // It is token-blind (server built it with token=null), so merge it OVER the last
+  // full poll to keep per-token/branding fields; the next 2s poll refreshes those.
+  // Reuses `apply`, so the monotonic rev guard makes a later lagging poll a no-op
+  // and this delivers the change with zero dependency on a consistent read.
+  applyPushRef.current = (pushed: Partial<T>) => {
+    const base = (stateRef.current ?? {}) as T;
+    apply({ ...base, ...pushed } as T);
+  };
 
   return { state, error, lastAppliedAt, refresh, refreshUntil, apply };
 }

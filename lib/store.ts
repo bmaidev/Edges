@@ -20,7 +20,7 @@ import {
   stripRunsheet,
 } from "./modules/runsheet";
 import { resolveAttribution } from "./modules/attribution";
-import { publishRoomChange } from "./realtime";
+import { publishRoomChange, publishRoomState } from "./realtime";
 import { HEARTBEAT_THROTTLE_MS, isDriverLive, liveRoster } from "./presence";
 import { computeCofac } from "./cofac";
 import {
@@ -345,7 +345,39 @@ async function writeState(
   const rev = Math.max(Date.now(), (prev?.rev ?? 0) + 1);
   const withRev = { ...next, rev };
   await backend.set(roomKeys(roomId).state, withRev);
+  // R2 — writeState is the single chokepoint for every state change (phase
+  // advance, timer, spotlight, mode, end...). Deliver the fresh authoritative
+  // participant + projector views to live screens NOW, so they apply the change
+  // directly instead of re-reading the eventually-consistent store (whose read
+  // replicas lag writes by seconds — the root of the "advance then desync"). The
+  // views are built from `withRev` (the just-written state, passed as the
+  // override) so they carry the change even though sibling collections may still
+  // lag. Fire-and-forget: the 2s poll remains the backstop, and the facilitator's
+  // own action response already gives it read-your-writes. Awaited (not fire-and-
+  // forget) so the push actually lands before the serverless function can freeze
+  // after the response — deliverFreshState swallows its own errors, so it can
+  // never delay or break the write beyond the bounded Pusher round-trip.
+  await deliverFreshState(roomId, withRev);
   return withRev;
+}
+
+// R2 — compute the fresh participant + projector views (from the just-written
+// state) and push them. Hoisted so writeState (above) can call it before
+// getPublicState is defined below. Best-effort; never throws into the write path.
+async function deliverFreshState(
+  roomId: string,
+  state: SessionState,
+): Promise<void> {
+  try {
+    const [participantView, projectorView] = await Promise.all([
+      getPublicState(null, roomId, "participant", state),
+      getPublicState(null, roomId, "projector", state),
+    ]);
+    await publishRoomState(roomId, participantView, projectorView);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "error";
+    console.error(`[realtime] deliverFreshState failed for ${roomId}: ${msg}`);
+  }
 }
 
 // Convert a built-in mode's phases into the in-state PhaseInstance[] form.

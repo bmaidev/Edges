@@ -31,6 +31,14 @@ const CLUSTER = process.env.PUSHER_APP_CLUSTER || "";
 // /api/r/[room]/realtime-auth route — a small, self-contained change.
 const CHANNEL_PREFIX = "room-";
 export const CHANGE_EVENT = "changed";
+// R2 — the server delivers the fresh AUTHORITATIVE role-scoped state on these
+// events (not just "changed"), so live clients apply it directly and never depend
+// on re-reading the eventually-consistent store for the thing that just changed.
+export const STATE_EVENT_PARTICIPANT = "state-p";
+export const STATE_EVENT_PROJECTOR = "state-proj";
+// Pusher's hard per-message limit is 10KB. Stay under it; an oversized view falls
+// back to the "changed" tick (client re-fetches) rather than being dropped.
+const MAX_STATE_BYTES = 9000;
 
 export function realtimeEnabled(): boolean {
   return Boolean(APP_ID && KEY && SECRET && CLUSTER);
@@ -111,6 +119,35 @@ export async function publishRoomChange(
     // Content-free: never log room data, only that a publish failed.
     console.error(`[realtime] publish failed for ${roomId}: ${msg}`);
   }
+}
+
+// R2 — deliver the fresh authoritative participant + projector views to live
+// screens. Each is the SAME content that role already sees on its own poll, so
+// this exposes nothing new (facilitator-private data is never pushed). A view
+// over the 10KB Pusher limit is skipped, not truncated — those clients simply
+// heal via the "changed" tick + their poll. Best-effort; never throws into the
+// write path. Payloads carry `t` (a wall-clock stamp) purely for client debug.
+export async function publishRoomState(
+  roomId: string,
+  participantView: unknown,
+  projectorView: unknown,
+): Promise<void> {
+  const server = getServer();
+  if (!server) return;
+  const one = async (event: string, view: unknown) => {
+    try {
+      const json = JSON.stringify(view);
+      if (json.length > MAX_STATE_BYTES) return; // too big → heal via poll
+      await server.trigger(roomChannel(roomId), event, view as object);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "error";
+      console.error(`[realtime] state publish failed for ${roomId}: ${msg}`);
+    }
+  };
+  await Promise.all([
+    one(STATE_EVENT_PARTICIPANT, participantView),
+    one(STATE_EVENT_PROJECTOR, projectorView),
+  ]);
 }
 
 // The client needs the publishable key + cluster to open a connection. Mirrored
