@@ -18,6 +18,13 @@
 
 import { z } from "zod";
 import type { Participant } from "@/lib/types";
+import {
+  appendExtras,
+  chunk,
+  cohortTokens,
+  freezeCohort,
+  readCohort,
+} from "../groups";
 import type {
   ModuleContext,
   ModuleServerDef,
@@ -105,24 +112,40 @@ interface Group {
 // Trios from participants by index: group k = participants[3k .. 3k+2]. A
 // leftover pair forms a duo. A lone leftover person is folded into the
 // previous group (so nobody is stranded solo) when possible.
-function formGroups(participants: Participant[]): Group[] {
-  const groups: Group[] = [];
-  for (let i = 0; i < participants.length; i += 3) {
-    groups.push({
-      groupId: groups.length,
-      members: participants.slice(i, i + 3),
-    });
-  }
+function formGroups(
+  participants: Participant[],
+  votes: Record<string, unknown>,
+): Group[] {
+  const byToken = new Map(
+    participants.map((participant) => [participant.token, participant]),
+  );
+  const frozen = readCohort(votes);
+  const { cohort, extras } = cohortTokens(
+    votes,
+    participants.map((participant) => participant.token),
+  );
+  // Active legacy phases without a frozen cohort retain their original join
+  // order; newly entered phases always take the stable frozen path.
+  const base = frozen
+    ? cohort
+    : participants.map((participant) => participant.token);
+  let tokenGroups = chunk(base, 3);
   // If the final group is a single leftover and there's a prior group, merge
   // it back so we never run a "group" of one.
-  if (groups.length >= 2) {
-    const last = groups[groups.length - 1];
-    if (last.members.length === 1) {
-      groups[groups.length - 2].members.push(...last.members);
-      groups.pop();
+  if (tokenGroups.length >= 2) {
+    const last = tokenGroups[tokenGroups.length - 1];
+    if (last.length === 1) {
+      tokenGroups[tokenGroups.length - 2].push(...last);
+      tokenGroups.pop();
     }
   }
-  return groups;
+  tokenGroups = appendExtras(tokenGroups, extras);
+  return tokenGroups.map((tokens, groupId) => ({
+    groupId,
+    members: tokens
+      .map((token) => byToken.get(token))
+      .filter((member): member is Participant => Boolean(member)),
+  }));
 }
 
 function findMyGroup(
@@ -137,7 +160,9 @@ function findMyGroup(
 
 function readRound(votes: Record<string, unknown>): number {
   const r = votes["__round__"];
-  return typeof r === "number" && Number.isFinite(r) && r >= 0 ? Math.floor(r) : 0;
+  return typeof r === "number" && Number.isFinite(r) && r >= 0
+    ? Math.floor(r)
+    : 0;
 }
 
 function readSilent(votes: Record<string, unknown>): boolean {
@@ -162,11 +187,19 @@ export const consultModule: ModuleServerDef<ConsultConfig> = {
     phaseSeconds: { present: 120, advise: 240 },
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,
     projectable: true,
+  },
+  async onEnter(ctx) {
+    await freezeCohort(
+      ctx.store,
+      ctx.phase.id,
+      ctx.participants.map((participant) => participant.token),
+    );
   },
   async computeView(ctx) {
     const format = (ctx.config.format as ConsultFormat) ?? "troika";
@@ -179,7 +212,7 @@ export const consultModule: ModuleServerDef<ConsultConfig> = {
     const round = readRound(votes);
     const silent = readSilent(votes);
 
-    const groups = formGroups(ctx.participants);
+    const groups = formGroups(ctx.participants, votes);
 
     // ---- participant: just my group, my role, this round ----
     if (ctx.role === "participant") {
@@ -206,9 +239,7 @@ export const consultModule: ModuleServerDef<ConsultConfig> = {
       const tag = `${group.groupId}:${round}`;
       const myAdviceSubmitted = ctx.submissions.some(
         (s) =>
-          s.phaseId === ctx.phase.id &&
-          s.tag === tag &&
-          s.token === me.token,
+          s.phaseId === ctx.phase.id && s.tag === tag && s.token === me.token,
       );
       const view: ConsultParticipantView = {
         format,
@@ -258,13 +289,30 @@ export const consultModule: ModuleServerDef<ConsultConfig> = {
     // Facilitator-only round/phase controls.
     if (action.type === "nextRound") {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
-      const res = await ctx.store.withLock(`round:${ctx.phase.id}`, async () => {
-        const votes = await ctx.store.readVotes(ctx.phase.id);
-        // Advancing the round resets the silent flag — each round starts open.
-        await ctx.store.castVote(ctx.phase.id, "__round__", readRound(votes) + 1);
-        await ctx.store.castVote(ctx.phase.id, "__silent__", false);
-      });
-      return res.ok ? { ok: true } : { ok: false, reason: "Advancing — one moment." };
+      const res = await ctx.store.withLock(
+        `round:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          const groups = formGroups(ctx.participants, votes);
+          const rounds = Math.max(
+            0,
+            ...groups.map((group) => group.members.length),
+          );
+          if (readRound(votes) >= Math.max(0, rounds - 1)) return false;
+          // Advancing the round resets the silent flag — each round starts open.
+          await ctx.store.castVote(
+            ctx.phase.id,
+            "__round__",
+            readRound(votes) + 1,
+          );
+          await ctx.store.castVote(ctx.phase.id, "__silent__", false);
+          return true;
+        },
+      );
+      if (!res.ok) return { ok: false, reason: "Advancing — one moment." };
+      return res.value
+        ? { ok: true }
+        : { ok: false, reason: "Every person has had a client round." };
     }
 
     if (action.type === "setSilent") {
@@ -283,8 +331,13 @@ export const consultModule: ModuleServerDef<ConsultConfig> = {
       if (!me) return { ok: false, reason: "no participant" };
 
       const votes = await ctx.store.readVotes(ctx.phase.id);
+      if (!readSilent(votes))
+        return {
+          ok: false,
+          reason: "advice opens in the listen-only round",
+        };
       const round = readRound(votes);
-      const groups = formGroups(ctx.participants);
+      const groups = formGroups(ctx.participants, votes);
       const group = findMyGroup(groups, me.token);
       if (!group) return { ok: false, reason: "no group" };
 
@@ -295,11 +348,22 @@ export const consultModule: ModuleServerDef<ConsultConfig> = {
       if (client && client.token === me.token)
         return { ok: false, reason: "client cannot advise" };
 
+      const tag = `${group.groupId}:${round}`;
+      if (
+        ctx.submissions.some(
+          (submission) =>
+            submission.phaseId === ctx.phase.id &&
+            submission.tag === tag &&
+            submission.token === me.token,
+        )
+      )
+        return { ok: false, reason: "already submitted" };
+
       await ctx.store.addSubmission(
         me.handle,
         text,
         ctx.phase.id,
-        `${group.groupId}:${round}`,
+        tag,
         action.token,
       );
       return { ok: true };

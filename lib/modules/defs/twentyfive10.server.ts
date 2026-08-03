@@ -188,7 +188,8 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
     passes: 5,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,
@@ -209,12 +210,12 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
       if (phase === "write") {
         const myIdeaSubmitted = Boolean(
           me?.token &&
-            ctx.submissions.some(
-              (s) =>
-                s.phaseId === ctx.phase.id &&
-                s.tag === "idea" &&
-                s.token === me.token,
-            ),
+          ctx.submissions.some(
+            (s) =>
+              s.phaseId === ctx.phase.id &&
+              s.tag === "idea" &&
+              s.token === me.token,
+          ),
         );
         const view: Twentyfive10ParticipantView = {
           phase,
@@ -241,7 +242,9 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
         passes,
         prompt,
         maxScore,
-        assignedCard: assigned ? { id: assigned.id, text: assigned.text } : null,
+        assignedCard: assigned
+          ? { id: assigned.id, text: assigned.text }
+          : null,
         myScoreForIt,
       };
       return view;
@@ -255,7 +258,9 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
     for (const v of Object.values(votes)) {
       // Skip the round counter / non-map entries.
       if (!v || typeof v !== "object" || Array.isArray(v)) continue;
-      for (const [cardId, raw] of Object.entries(v as Record<string, unknown>)) {
+      for (const [cardId, raw] of Object.entries(
+        v as Record<string, unknown>,
+      )) {
         const n = Number(raw);
         if (!Number.isFinite(n) || n <= 0) continue;
         if (!(cardId in totals)) continue;
@@ -291,15 +296,28 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
     // Facilitator-only: advance the round (0 -> write done, 1.. -> next pass).
     if (action.type === "nextRound") {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
-      const votes = await ctx.store.readVotes(ctx.phase.id);
-      const next = readRound(votes) + 1;
-      // D4 — scoring opens: freeze the voter set so card assignment is stable for
-      // the rest of the activity (writing is closed, so the roster won't grow with
-      // people who'll get cards). Latecomers from here on get the fallback card.
-      if (next === 1)
-        await ctx.store.castVote(ctx.phase.id, COHORT_KEY, sortedTokens(ctx));
-      await ctx.store.castVote(ctx.phase.id, "__round__", next);
-      return { ok: true };
+      const result = await ctx.store.withLock(
+        `round:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          const current = readRound(votes);
+          if (current >= getPasses(ctx)) return false;
+          const next = current + 1;
+          // Scoring opens: freeze the voter set so assignment remains stable.
+          if (next === 1)
+            await ctx.store.castVote(
+              ctx.phase.id,
+              COHORT_KEY,
+              sortedTokens(ctx),
+            );
+          await ctx.store.castVote(ctx.phase.id, "__round__", next);
+          return true;
+        },
+      );
+      if (!result.ok) return { ok: false, reason: "Advancing — one moment." };
+      return result.value
+        ? { ok: true }
+        : { ok: false, reason: "All scoring passes are complete." };
     }
 
     // WRITE phase: submit my one idea (replaces any previous one I wrote).
@@ -318,9 +336,7 @@ export const twentyfive10Module: ModuleServerDef<Twentyfive10Config> = {
         token &&
         ctx.submissions.some(
           (s) =>
-            s.phaseId === ctx.phase.id &&
-            s.tag === "idea" &&
-            s.token === token,
+            s.phaseId === ctx.phase.id && s.tag === "idea" && s.token === token,
         )
       ) {
         return { ok: false, reason: "already submitted" };

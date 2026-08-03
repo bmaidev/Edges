@@ -22,7 +22,10 @@ import {
 import { Button as UiButton } from "@/components/ui/button";
 import { bootToken } from "@/lib/magicLink";
 import { authFetch } from "@/lib/client-auth";
-import { SERVER_MODULES } from "@/lib/modules/registry.server";
+import {
+  SERVER_MODULES,
+  effectiveGatherSource,
+} from "@/lib/modules/registry.server";
 import {
   PaletteChip,
   PlacedPhaseCard,
@@ -39,6 +42,7 @@ import { RehearsalTheatre } from "@/components/RehearsalTheatre";
 import { ShareImportPanel } from "@/components/ShareImportPanel";
 import { acceptsTimerEdit, phaseMinutes, phaseStage } from "@/lib/arc";
 import { MODULE_CATEGORIES } from "@/lib/modules/categories";
+import { MODULE_EXPERIENCE, configFieldGuide } from "@/lib/modules/experience";
 import type { ModuleKind, PhaseInstance } from "@/lib/types";
 
 // Compact "time since" for the editing banner (client-only, so Date.now is fine).
@@ -115,64 +119,139 @@ type FieldKind =
   | "enum"
   | "stringList"
   | "enumList"
+  | "stringTuple"
+  | "objectList"
   | "source"
   | "unsupported";
 
 interface FieldInfo {
   key: string;
+  path: string[];
   kind: FieldKind;
   optional: boolean;
   enums?: string[];
+  tupleLength?: number;
+  itemFields?: FieldInfo[];
 }
 
-function describeField(key: string, zt: any): FieldInfo {
+function objectShape(schema: any): Record<string, any> {
+  const shape = schema?.shape ?? schema?._def?.shape;
+  return (typeof shape === "function" ? shape() : shape) ?? {};
+}
+
+function describeField(path: string[], zt: any): FieldInfo {
+  const key = path[path.length - 1];
   const optional = isOptional(zt);
   // sourcePhaseId is a plain string in the schema, but semantically a link to
   // an earlier phase — render it as a dropdown.
-  if (key === "sourcePhaseId") return { key, kind: "source", optional };
+  if (key === "sourcePhaseId") return { key, path, kind: "source", optional };
   try {
     const inner = unwrap(zt);
     if (inner instanceof z.ZodEnum)
-      return { key, kind: "enum", optional, enums: enumValues(inner) ?? [] };
+      return {
+        key,
+        path,
+        kind: "enum",
+        optional,
+        enums: enumValues(inner) ?? [],
+      };
     if (inner instanceof z.ZodBoolean)
-      return { key, kind: "boolean", optional };
-    if (inner instanceof z.ZodNumber) return { key, kind: "number", optional };
+      return { key, path, kind: "boolean", optional };
+    if (inner instanceof z.ZodNumber)
+      return { key, path, kind: "number", optional };
     if (inner instanceof z.ZodString)
-      return { key, kind: LONG_TEXT.test(key) ? "textarea" : "text", optional };
+      return {
+        key,
+        path,
+        kind: LONG_TEXT.test(key) ? "textarea" : "text",
+        optional,
+      };
+    if (inner instanceof z.ZodTuple) {
+      const items = inner._def?.items ?? [];
+      if (
+        items.length > 0 &&
+        items.every((item: any) => unwrap(item) instanceof z.ZodString)
+      )
+        return {
+          key,
+          path,
+          kind: "stringTuple",
+          optional,
+          tupleLength: items.length,
+        };
+    }
     if (inner instanceof z.ZodArray) {
+      const arrayType = inner._def?.type;
       const el = unwrap(
-        inner._def?.type ?? inner._def?.element ?? inner.element,
+        inner.element ??
+          inner._def?.element ??
+          (typeof arrayType === "object" ? arrayType : undefined),
       );
       if (el instanceof z.ZodString)
-        return { key, kind: "stringList", optional };
+        return { key, path, kind: "stringList", optional };
       if (el instanceof z.ZodEnum)
-        return { key, kind: "enumList", optional, enums: enumValues(el) ?? [] };
+        return {
+          key,
+          path,
+          kind: "enumList",
+          optional,
+          enums: enumValues(el) ?? [],
+        };
+      if (el instanceof z.ZodObject) {
+        const shape = objectShape(el);
+        return {
+          key,
+          path,
+          kind: "objectList",
+          optional,
+          itemFields: collectFields(shape),
+        };
+      }
     }
   } catch {
     /* fall through to unsupported */
   }
-  return { key, kind: "unsupported", optional };
+  return { key, path, kind: "unsupported", optional };
+}
+
+function collectFields(
+  shape: Record<string, any>,
+  prefix: string[] = [],
+): FieldInfo[] {
+  const fields: FieldInfo[] = [];
+  for (const [key, zt] of Object.entries(shape)) {
+    const path = [...prefix, key];
+    const inner = unwrap(zt);
+    if (inner instanceof z.ZodObject) {
+      const nested = objectShape(inner);
+      fields.push(...collectFields(nested, path));
+    } else {
+      fields.push(describeField(path, zt));
+    }
+  }
+  return fields;
 }
 
 function schemaFields(moduleId: ModuleKind): FieldInfo[] | null {
   try {
-    const schema = SERVER_MODULES[moduleId].schema as any;
-    const shape = schema.shape ?? schema._def?.shape?.();
+    const schema = unwrap(SERVER_MODULES[moduleId].schema as any);
+    const shape = objectShape(schema);
     if (!shape) return null;
-    return Object.entries(shape).map(([k, zt]) => describeField(k, zt as any));
+    return collectFields(shape);
   } catch {
     return null;
   }
 }
 
-// camelCase / snake → "Sentence case", with a few nicer labels.
-function humanize(key: string): string {
-  if (key === "sourcePhaseId") return "Takes input from";
-  const spaced = key
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]/g, " ")
-    .trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+// Small test seam for the generated form. It keeps a Zod upgrade from silently
+// pushing ordinary module settings back into the expert-only JSON editor.
+export function builderFieldInventory(
+  moduleId: ModuleKind,
+): { path: string; kind: FieldKind }[] {
+  return (schemaFields(moduleId) ?? []).map((field) => ({
+    path: field.path.join("."),
+    kind: field.kind,
+  }));
 }
 
 // Delegates to the shared pre-flight validator (kept as a thin local alias so the
@@ -192,21 +271,347 @@ const inputCls =
 function FieldRow({
   label,
   optional,
+  help,
+  context,
   children,
 }: {
   label: string;
   optional: boolean;
+  help: string;
+  context?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
+      {context && (
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted/80">
+          {context}
+        </span>
+      )}
       <span className="text-xs font-medium text-white/80">
         {label}
-        {!optional && <span className="text-accent"> *</span>}
+        {optional ? (
+          <span className="ml-1 font-normal text-muted">optional</span>
+        ) : (
+          <span className="text-accent"> *</span>
+        )}
       </span>
       {children}
-    </label>
+      <span className="text-[11px] leading-relaxed text-muted">{help}</span>
+    </div>
   );
+}
+
+type EarlierPhase = {
+  id: string;
+  moduleId: ModuleKind;
+  config: Record<string, unknown>;
+};
+
+function valueAt(
+  root: Record<string, unknown>,
+  path: readonly string[],
+): unknown {
+  let value: unknown = root;
+  for (const key of path) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      return undefined;
+    value = (value as Record<string, unknown>)[key];
+  }
+  return value;
+}
+
+function setValueAt(
+  root: Record<string, unknown>,
+  path: readonly string[],
+  value: unknown,
+): Record<string, unknown> {
+  const next = { ...root };
+  let target = next;
+  let source: Record<string, unknown> = root;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    const sourceChild = source[key];
+    const child =
+      sourceChild &&
+      typeof sourceChild === "object" &&
+      !Array.isArray(sourceChild)
+        ? { ...(sourceChild as Record<string, unknown>) }
+        : {};
+    target[key] = child;
+    target = child;
+    source =
+      sourceChild &&
+      typeof sourceChild === "object" &&
+      !Array.isArray(sourceChild)
+        ? (sourceChild as Record<string, unknown>)
+        : {};
+  }
+  const leaf = path[path.length - 1];
+  if (value === undefined || value === "") delete target[leaf];
+  else target[leaf] = value;
+  return next;
+}
+
+function blankItem(fields: FieldInfo[]): Record<string, unknown> {
+  let item: Record<string, unknown> = {};
+  for (const field of fields.filter((f) => !f.optional)) {
+    let value: unknown;
+    if (field.key === "id")
+      value = `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    else if (field.kind === "enum") value = field.enums?.[0] ?? "";
+    else if (field.kind === "number") value = 1;
+    else if (field.kind === "boolean") value = false;
+    else if (field.kind === "stringList" || field.kind === "enumList")
+      value = [];
+    else if (field.kind === "stringTuple")
+      value = Array.from({ length: field.tupleLength ?? 2 }, () => "");
+    else value = "";
+    item = setValueAt(item, field.path, value);
+  }
+  return item;
+}
+
+function FieldControl({
+  field,
+  moduleId,
+  value,
+  onValue,
+  earlierPhases,
+  guidePath = field.path,
+}: {
+  field: FieldInfo;
+  moduleId: ModuleKind;
+  value: unknown;
+  onValue: (value: unknown) => void;
+  earlierPhases: EarlierPhase[];
+  guidePath?: string[];
+}) {
+  const guide = configFieldGuide(moduleId, guidePath);
+  const context =
+    guidePath.length > 1
+      ? configFieldGuide(moduleId, [guidePath[0]]).label
+      : undefined;
+  const row = (children: React.ReactNode, label = guide.label) => (
+    <FieldRow
+      label={label}
+      optional={field.optional}
+      help={guide.help}
+      context={context}
+    >
+      {children}
+    </FieldRow>
+  );
+
+  switch (field.kind) {
+    case "textarea":
+      return row(
+        <textarea
+          value={(value as string) ?? ""}
+          onChange={(e) => onValue(e.target.value)}
+          rows={3}
+          placeholder={guide.placeholder}
+          className={inputCls}
+        />,
+      );
+    case "text":
+      return row(
+        <input
+          value={(value as string) ?? ""}
+          onChange={(e) => onValue(e.target.value)}
+          placeholder={guide.placeholder}
+          className={inputCls}
+        />,
+      );
+    case "number":
+      return row(
+        <input
+          type="number"
+          min={guide.min}
+          max={guide.max}
+          step={guide.step}
+          value={value === undefined || value === null ? "" : (value as number)}
+          onChange={(e) =>
+            onValue(e.target.value === "" ? undefined : Number(e.target.value))
+          }
+          className={inputCls}
+        />,
+      );
+    case "boolean":
+      return row(
+        <label className="flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2 text-sm text-white/80">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => onValue(e.target.checked)}
+            className="h-4 w-4 accent-[var(--c-accent)]"
+          />
+          {Boolean(value) ? "On" : "Off"}
+        </label>,
+      );
+    case "enum":
+      return row(
+        <select
+          value={(value as string) ?? ""}
+          onChange={(e) => onValue(e.target.value || undefined)}
+          className={inputCls}
+        >
+          {field.optional && (
+            <option value="">Use the recommended default</option>
+          )}
+          {(field.enums ?? []).map((option) => (
+            <option key={option} value={option}>
+              {guide.optionLabels?.[option] ?? option}
+            </option>
+          ))}
+        </select>,
+      );
+    case "enumList": {
+      const selected = Array.isArray(value) ? (value as string[]) : [];
+      return row(
+        <div className="flex flex-wrap gap-2">
+          {(field.enums ?? []).map((option) => {
+            const on = selected.includes(option);
+            return (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={on}
+                onClick={() =>
+                  onValue(
+                    on
+                      ? selected.filter((item) => item !== option)
+                      : [...selected, option],
+                  )
+                }
+                className={`rounded-lg border px-2.5 py-1 text-xs ${
+                  on
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border bg-surface text-white/70"
+                }`}
+              >
+                {guide.optionLabels?.[option] ?? option}
+              </button>
+            );
+          })}
+        </div>,
+      );
+    }
+    case "stringList": {
+      const items = Array.isArray(value) ? (value as string[]) : [];
+      return row(
+        <textarea
+          value={items.join("\n")}
+          onChange={(e) =>
+            onValue(
+              e.target.value
+                .split("\n")
+                .map((item) => item.trim())
+                .filter(Boolean),
+            )
+          }
+          rows={Math.max(3, Math.min(8, items.length + 1))}
+          placeholder="One per line"
+          className={inputCls}
+        />,
+      );
+    }
+    case "stringTuple": {
+      const items = Array.isArray(value) ? (value as string[]) : [];
+      const count = field.tupleLength ?? 2;
+      return row(
+        <div className="grid gap-2 sm:grid-cols-2">
+          {Array.from({ length: count }, (_, index) => (
+            <input
+              key={index}
+              value={items[index] ?? ""}
+              onChange={(e) => {
+                const next = Array.from(
+                  { length: count },
+                  (_, itemIndex) => items[itemIndex] ?? "",
+                );
+                next[index] = e.target.value;
+                onValue(next);
+              }}
+              placeholder={guide.tupleLabels?.[index] ?? `Value ${index + 1}`}
+              className={inputCls}
+            />
+          ))}
+        </div>,
+      );
+    }
+    case "source":
+      return row(
+        <SourceField
+          value={(value as string) ?? ""}
+          optional={field.optional}
+          earlierPhases={earlierPhases}
+          onChange={onValue}
+        />,
+      );
+    case "objectList": {
+      const items = Array.isArray(value)
+        ? (value as Record<string, unknown>[])
+        : [];
+      return row(
+        <div className="flex flex-col gap-2">
+          {items.map((item, index) => (
+            <div
+              key={`${field.key}-${index}`}
+              className="rounded-lg border border-border bg-bg/60 p-3"
+            >
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-white/80">
+                  {guide.label.replace(/s$/, "")} {index + 1}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onValue(items.filter((_, i) => i !== index))}
+                  className="text-xs text-[#ff8a8a] hover:text-white"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="flex flex-col gap-3">
+                {(field.itemFields ?? [])
+                  .filter((itemField) => itemField.kind !== "unsupported")
+                  .map((itemField) => (
+                    <FieldControl
+                      key={itemField.path.join(".")}
+                      field={itemField}
+                      moduleId={moduleId}
+                      value={valueAt(item, itemField.path)}
+                      onValue={(nextValue) => {
+                        const nextItems = items.slice();
+                        nextItems[index] = setValueAt(
+                          item,
+                          itemField.path,
+                          nextValue,
+                        );
+                        onValue(nextItems);
+                      }}
+                      earlierPhases={earlierPhases}
+                      guidePath={[field.key, ...itemField.path]}
+                    />
+                  ))}
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() =>
+              onValue([...items, blankItem(field.itemFields ?? [])])
+            }
+            className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-accent hover:border-accent"
+          >
+            + Add {guide.label.replace(/s$/, "").toLowerCase()}
+          </button>
+        </div>,
+      );
+    }
+    default:
+      return null;
+  }
 }
 
 function AutoForm({
@@ -220,11 +625,7 @@ function AutoForm({
   onChange: (next: Record<string, unknown>) => void;
   // B6 — carries each earlier phase's config so the source field can quote its
   // real prompt ("Reads what the room wrote in '…'").
-  earlierPhases: {
-    id: string;
-    moduleId: ModuleKind;
-    config: Record<string, unknown>;
-  }[];
+  earlierPhases: EarlierPhase[];
 }) {
   const fields = schemaFields(moduleId);
   if (!fields) {
@@ -236,172 +637,66 @@ function AutoForm({
     );
   }
 
-  function set(key: string, value: unknown) {
-    const next = { ...config };
-    if (value === undefined || value === "") delete next[key];
-    else next[key] = value;
-    onChange(next);
-  }
-
   const unsupported = fields
     .filter((f) => f.kind === "unsupported")
-    .map((f) => f.key);
+    .map((f) => f.path.join("."));
+  // The timing row already has a purpose-built minutes control beside the phase
+  // title. Repeating timerSeconds here would make two settings fight each other.
+  const editable = fields.filter(
+    (field) => field.kind !== "unsupported" && field.key !== "timerSeconds",
+  );
+  const core = editable.filter(
+    (field) => configFieldGuide(moduleId, field.path).level !== "advanced",
+  );
+  const advanced = editable.filter(
+    (field) => configFieldGuide(moduleId, field.path).level === "advanced",
+  );
+  const experience = MODULE_EXPERIENCE[moduleId];
+
+  const controls = (items: FieldInfo[]) =>
+    items.map((field) => (
+      <FieldControl
+        key={field.path.join(".")}
+        field={field}
+        moduleId={moduleId}
+        value={valueAt(config, field.path)}
+        onValue={(value) => onChange(setValueAt(config, field.path, value))}
+        earlierPhases={earlierPhases}
+      />
+    ));
 
   return (
     <div className="flex flex-col gap-3">
-      {fields
-        .filter((f) => f.kind !== "unsupported")
-        .map((f) => {
-          const label = humanize(f.key);
-          const val = config[f.key];
-          switch (f.kind) {
-            case "textarea":
-              return (
-                <FieldRow key={f.key} label={label} optional={f.optional}>
-                  <textarea
-                    value={(val as string) ?? ""}
-                    onChange={(e) => set(f.key, e.target.value)}
-                    rows={3}
-                    className={inputCls}
-                  />
-                </FieldRow>
-              );
-            case "text":
-              return (
-                <FieldRow key={f.key} label={label} optional={f.optional}>
-                  <input
-                    value={(val as string) ?? ""}
-                    onChange={(e) => set(f.key, e.target.value)}
-                    className={inputCls}
-                  />
-                </FieldRow>
-              );
-            case "number":
-              return (
-                <FieldRow key={f.key} label={label} optional={f.optional}>
-                  <input
-                    type="number"
-                    value={
-                      val === undefined || val === null ? "" : (val as number)
-                    }
-                    onChange={(e) =>
-                      set(
-                        f.key,
-                        e.target.value === ""
-                          ? undefined
-                          : Number(e.target.value),
-                      )
-                    }
-                    className={inputCls}
-                  />
-                </FieldRow>
-              );
-            case "boolean":
-              return (
-                <label
-                  key={f.key}
-                  className="flex items-center gap-2 text-sm text-white/80"
-                >
-                  <input
-                    type="checkbox"
-                    checked={Boolean(val)}
-                    onChange={(e) => set(f.key, e.target.checked)}
-                    className="h-4 w-4 accent-[var(--c-accent)]"
-                  />
-                  {label}
-                </label>
-              );
-            case "enum":
-              return (
-                <FieldRow key={f.key} label={label} optional={f.optional}>
-                  <select
-                    value={(val as string) ?? ""}
-                    onChange={(e) => set(f.key, e.target.value || undefined)}
-                    className={inputCls}
-                  >
-                    {f.optional && <option value="">— none —</option>}
-                    {(f.enums ?? []).map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                  </select>
-                </FieldRow>
-              );
-            case "enumList": {
-              const arr = Array.isArray(val) ? (val as string[]) : [];
-              return (
-                <FieldRow key={f.key} label={label} optional={f.optional}>
-                  <div className="flex flex-wrap gap-2">
-                    {(f.enums ?? []).map((o) => {
-                      const on = arr.includes(o);
-                      return (
-                        <button
-                          key={o}
-                          type="button"
-                          onClick={() =>
-                            set(
-                              f.key,
-                              on ? arr.filter((x) => x !== o) : [...arr, o],
-                            )
-                          }
-                          className={`rounded-lg border px-2.5 py-1 text-xs ${
-                            on
-                              ? "border-accent bg-accent/10 text-accent"
-                              : "border-border bg-surface text-white/70"
-                          }`}
-                        >
-                          {o}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FieldRow>
-              );
-            }
-            case "stringList": {
-              const arr = Array.isArray(val) ? (val as string[]) : [];
-              return (
-                <FieldRow
-                  key={f.key}
-                  label={`${label} (one per line)`}
-                  optional={f.optional}
-                >
-                  <textarea
-                    value={arr.join("\n")}
-                    onChange={(e) =>
-                      set(
-                        f.key,
-                        e.target.value
-                          .split("\n")
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                      )
-                    }
-                    rows={3}
-                    className={inputCls}
-                  />
-                </FieldRow>
-              );
-            }
-            case "source":
-              return (
-                <FieldRow key={f.key} label={label} optional={f.optional}>
-                  <SourceField
-                    value={(val as string) ?? ""}
-                    optional={f.optional}
-                    earlierPhases={earlierPhases}
-                    onChange={(v) => set(f.key, v)}
-                  />
-                </FieldRow>
-              );
-            default:
-              return null;
-          }
-        })}
+      <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 text-xs leading-relaxed">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-semibold text-white/85">
+            What this method needs
+          </span>
+          <span className="rounded-full bg-bg/70 px-2 py-0.5 capitalize text-muted">
+            {experience.complexity}
+          </span>
+        </div>
+        <p className="mt-1 text-white/75">{experience.input}</p>
+        <p className="mt-2 text-muted">
+          <span className="font-medium text-white/70">Watch for:</span>{" "}
+          {experience.watchFor}
+        </p>
+      </div>
+      {controls(core)}
+      {advanced.length > 0 && (
+        <details className="rounded-lg border border-border bg-bg/30">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-white/75">
+            Fine-tune this method ({advanced.length})
+          </summary>
+          <div className="flex flex-col gap-3 border-t border-border p-3">
+            {controls(advanced)}
+          </div>
+        </details>
+      )}
       {unsupported.length > 0 && (
         <p className="text-[11px] text-muted">
-          Edit in Advanced (JSON): {unsupported.join(", ")}
+          Specialist settings available in Advanced JSON:{" "}
+          {unsupported.join(", ")}
         </p>
       )}
     </div>
@@ -1608,8 +1903,7 @@ export function BuilderApp({
 
                     {/* C2 — per-gather-phase room signals (passthrough config, read by
                     the store/host route). Only meaningful where the phase gathers. */}
-                    {SERVER_MODULES[p.moduleId]?.capabilities.gatherSource !==
-                      "none" && (
+                    {effectiveGatherSource(p.moduleId, p.config) !== "none" && (
                       <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-border bg-bg/40 p-2.5 text-xs">
                         <label className="flex items-center gap-2">
                           <input

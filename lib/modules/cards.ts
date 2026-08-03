@@ -7,6 +7,7 @@
 // client-safe).
 
 import type { ModuleKind } from "@/lib/types";
+import { canFeedForward } from "./experience";
 
 export interface PlainCard {
   whatItIs: string; // one plain sentence: what this method is
@@ -239,19 +240,38 @@ export function getCard(id: ModuleKind): PlainCard {
   return MODULE_CARDS[id];
 }
 
-// B6 — the modules whose output is room-authored TEXT a later phase can read via
-// sourcePhaseId (the "feeds into" chain: brainstorm → cluster → vote). Kept as a
-// readonly array (downlevelIteration is off) — this is the canonical producer set
-// the builder ranks/explains by.
+// Modules whose normal or configured output includes room-authored text that a
+// later sourcePhaseId can consume. This must describe the real module fleet—not
+// only generic Capture—so an expert can intentionally chain a World Café,
+// consulting round, Open Space agenda, or commitments into later synthesis.
 export const PRODUCES_ROOM_TEXT: readonly ModuleKind[] = [
   "capture",
   "prework",
   "qna",
   "brainwrite",
+  "redistribute",
+  "fishbowl",
+  "openspace",
+  "consult",
+  "worldcafe",
+  "stations",
+  "onetwofour",
+  "twentyfive10",
+  "minspecs",
+  "emptychair",
+  "promptrelay",
+  "builder",
+  "actions",
 ];
 
-export function producesRoomText(id: ModuleKind): boolean {
-  return PRODUCES_ROOM_TEXT.includes(id);
+export function producesRoomText(
+  id: ModuleKind,
+  config?: Record<string, unknown> | number,
+): boolean {
+  return canFeedForward(
+    id,
+    config && typeof config === "object" ? config : undefined,
+  );
 }
 
 // The prompt (or label) a producer phase posed — for the "Reads what the room

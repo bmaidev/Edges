@@ -1,6 +1,7 @@
 "use client";
 
 import { getCard, producesRoomText, promptOf } from "@/lib/modules/cards";
+import { MODULE_EXPERIENCE } from "@/lib/modules/experience";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
 import type { ModuleKind } from "@/lib/types";
 
@@ -18,14 +19,22 @@ export function PaletteChip({
   onAdd: () => void;
 }) {
   const card = getCard(moduleId);
+  const experience = MODULE_EXPERIENCE[moduleId];
   return (
     <button
       onClick={onAdd}
       title={`${card.whatItIs}\n\nBest for: ${card.bestFor}\nThe room: ${card.roomDoes}`}
       className="flex max-w-[15rem] flex-col items-start gap-0.5 rounded-lg border border-border bg-surface px-3 py-2 text-left hover:border-accent"
     >
-      <span className="text-xs font-medium">+ {nameOf(moduleId)}</span>
-      <span className="text-[10px] leading-snug text-muted">{card.bestFor}</span>
+      <span className="flex w-full items-center justify-between gap-2 text-xs font-medium">
+        <span>+ {nameOf(moduleId)}</span>
+        <span className="rounded-full bg-bg/70 px-1.5 py-0.5 text-[9px] font-normal capitalize text-muted">
+          {experience.complexity}
+        </span>
+      </span>
+      <span className="text-[10px] leading-snug text-muted">
+        {card.bestFor}
+      </span>
     </button>
   );
 }
@@ -35,11 +44,13 @@ export function PaletteChip({
 // method reference, so the docs can never drift from the real cards.
 export function ModuleCardBody({ moduleId }: { moduleId: ModuleKind }) {
   const card = getCard(moduleId);
+  const experience = MODULE_EXPERIENCE[moduleId];
   return (
-    <div className="mt-1 grid gap-1 text-xs sm:grid-cols-3">
+    <div className="mt-1 grid gap-1 text-xs sm:grid-cols-2 lg:grid-cols-4">
       <Cell label="What it is" body={card.whatItIs} />
       <Cell label="Best for" body={card.bestFor} />
       <Cell label="The room does" body={card.roomDoes} />
+      <Cell label="Leaves you with" body={experience.output} />
     </div>
   );
 }
@@ -68,29 +79,46 @@ export function SourceField({
 }: {
   value: string;
   optional: boolean;
-  earlierPhases: { id: string; moduleId: ModuleKind; config: Record<string, unknown> }[];
+  earlierPhases: {
+    id: string;
+    moduleId: ModuleKind;
+    config: Record<string, unknown>;
+  }[];
   onChange: (v: string | undefined) => void;
 }) {
-  const producers = earlierPhases.filter((p) => producesRoomText(p.moduleId));
+  const producers = earlierPhases.filter((p) =>
+    producesRoomText(p.moduleId, p.config),
+  );
   const selected = earlierPhases.find((p) => p.id === value) ?? null;
+  const selectedProduces = selected
+    ? producesRoomText(selected.moduleId, selected.config)
+    : false;
 
   let hint: string;
-  if (selected) {
+  if (selected && selectedProduces) {
     const q = promptOf(selected.config);
-    hint = q ? `Reads what the room wrote in “${q}”.` : "Reads that phase's contributions.";
+    hint = q
+      ? `Reads what the room wrote in “${q}”.`
+      : "Reads that phase's contributions.";
+  } else if (selected) {
+    hint =
+      "That phase does not produce reusable text. Choose an earlier writing activity.";
   } else if (optional) {
-    hint = "Reads everything the room has written so far — or pick one phase to focus.";
+    hint =
+      "Reads everything the room has written so far — or pick one phase to focus.";
   } else if (producers.length === 0) {
-    hint = "Add a capture or pre-work phase before this one to feed it.";
+    hint =
+      "Add a capture, pre-work, or another writing activity before this one.";
   } else {
     hint = "Pick which earlier phase this reads from.";
   }
 
-  // Producers first (they actually feed this), then any other earlier phase.
-  const ranked = [
-    ...producers,
-    ...earlierPhases.filter((p) => !producesRoomText(p.moduleId)),
-  ];
+  // Only offer phases that actually create submissions. Preserve a legacy
+  // invalid selection just long enough for the author to see and replace it.
+  const ranked =
+    selected && !selectedProduces
+      ? [selected, ...producers.filter((phase) => phase.id !== selected.id)]
+      : producers;
 
   return (
     <div className="flex flex-col gap-1">
@@ -105,7 +133,9 @@ export function SourceField({
         {ranked.map((p) => (
           <option key={p.id} value={p.id}>
             {p.id} · {nameOf(p.moduleId)}
-            {producesRoomText(p.moduleId) ? " ✓" : ""}
+            {producesRoomText(p.moduleId, p.config)
+              ? " ✓"
+              : " ⚠ no reusable text"}
           </option>
         ))}
       </select>

@@ -1,7 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as actionPOST } from "@/app/api/r/[room]/action/route";
-import { addParticipant, claimAction, listSubmissions, replaceState } from "@/lib/store";
+import {
+  addParticipant,
+  claimAction,
+  listSubmissions,
+  replaceState,
+} from "@/lib/store";
 import { createRoomWithSlug, freshPasscodes } from "@/lib/rooms";
 
 // H1 offline queue — the load-bearing guarantee is server-side idempotency: a
@@ -18,7 +23,13 @@ async function seedCapture(slug: string) {
     {
       mode: null,
       sessionName: "T",
-      phases: [{ id: "p1", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } }],
+      phases: [
+        {
+          id: "p1",
+          moduleId: "capture",
+          config: { label: "Ideas", prompt: "Go", multiSubmit: true },
+        },
+      ],
       phaseId: "p1",
       timerEndsAt: null,
       timerRemainingMs: null,
@@ -33,7 +44,13 @@ async function seedCapture(slug: string) {
 function submitReq(slug: string, text: string, dedupeId?: string) {
   return new NextRequest(`http://x/api/r/${slug}/action`, {
     method: "POST",
-    body: JSON.stringify({ type: "submit", payload: { text }, token: "a", handle: "A", dedupeId }),
+    body: JSON.stringify({
+      type: "submit",
+      payload: { text },
+      token: "a",
+      handle: "A",
+      dedupeId,
+    }),
   });
 }
 

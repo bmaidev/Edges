@@ -92,7 +92,8 @@ export const openspaceModule: ModuleServerDef<OpenSpaceConfig> = {
     spaces: ["Table A", "Table B"],
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
@@ -101,7 +102,8 @@ export const openspaceModule: ModuleServerDef<OpenSpaceConfig> = {
   async computeView(ctx: ModuleContext): Promise<OpenSpaceView> {
     const c = ctx.config as unknown as OpenSpaceConfig;
     const slots = c.slots ?? 3;
-    const spaces = Array.isArray(c.spaces) && c.spaces.length ? c.spaces : ["Room 1"];
+    const spaces =
+      Array.isArray(c.spaces) && c.spaces.length ? c.spaces : ["Room 1"];
 
     // Topics are submissions for this phase tagged "topic".
     const topicSubs = ctx.submissions.filter(
@@ -121,7 +123,8 @@ export const openspaceModule: ModuleServerDef<OpenSpaceConfig> = {
           signupCounts[id] = (signupCounts[id] ?? 0) + 1;
     }
 
-    const grid = ((votes[GRID_KEY] as Record<string, OpenSpaceCell>) ?? {}) || {};
+    const grid =
+      ((votes[GRID_KEY] as Record<string, OpenSpaceCell>) ?? {}) || {};
 
     const mySignups: string[] =
       ctx.me && Array.isArray(votes[ctx.me.token])
@@ -167,13 +170,16 @@ export const openspaceModule: ModuleServerDef<OpenSpaceConfig> = {
       if (!topicId) return { ok: false, reason: "missing topic" };
       // The topic must exist in this phase.
       const exists = ctx.submissions.some(
-        (s) => s.phaseId === ctx.phase.id && s.tag === TOPIC_TAG && s.id === topicId,
+        (s) =>
+          s.phaseId === ctx.phase.id && s.tag === TOPIC_TAG && s.id === topicId,
       );
       if (!exists) return { ok: false, reason: "bad topic" };
 
       const votes = await ctx.store.readVotes(ctx.phase.id);
       const mine = (
-        Array.isArray(votes[action.token]) ? (votes[action.token] as string[]) : []
+        Array.isArray(votes[action.token])
+          ? (votes[action.token] as string[])
+          : []
       )
         .filter((x): x is string => typeof x === "string")
         .slice();
@@ -194,31 +200,41 @@ export const openspaceModule: ModuleServerDef<OpenSpaceConfig> = {
       const topicId = String(action.payload?.topicId ?? "");
       if (!topicId) return { ok: false, reason: "missing topic" };
       const exists = ctx.submissions.some(
-        (s) => s.phaseId === ctx.phase.id && s.tag === TOPIC_TAG && s.id === topicId,
+        (s) =>
+          s.phaseId === ctx.phase.id && s.tag === TOPIC_TAG && s.id === topicId,
       );
       if (!exists) return { ok: false, reason: "bad topic" };
 
-      const votes = await ctx.store.readVotes(ctx.phase.id);
-      const grid = (
-        (votes[GRID_KEY] as Record<string, OpenSpaceCell>) ?? {}
-      ) || {};
+      const slot = Math.trunc(Number(action.payload?.slot));
+      const space = String(action.payload?.space ?? "");
+      const slots = c.slots ?? 3;
+      const spaces = Array.isArray(c.spaces) ? c.spaces : [];
+      if (
+        action.type === "place" &&
+        (!Number.isFinite(slot) || slot < 0 || slot >= slots)
+      )
+        return { ok: false, reason: "bad slot" };
+      if (action.type === "place" && !spaces.includes(space))
+        return { ok: false, reason: "bad space" };
 
-      if (action.type === "unplace") {
-        delete grid[topicId];
-      } else {
-        const slot = Math.trunc(Number(action.payload?.slot));
-        const space = String(action.payload?.space ?? "");
-        const slots = c.slots ?? 3;
-        const spaces = Array.isArray(c.spaces) ? c.spaces : [];
-        if (!Number.isFinite(slot) || slot < 0 || slot >= slots)
-          return { ok: false, reason: "bad slot" };
-        if (!spaces.includes(space)) return { ok: false, reason: "bad space" };
-        grid[topicId] = { slot, space };
-      }
-      // The grid is stored under the sentinel key so it never collides with a
-      // participant's signup list.
-      await ctx.store.castVote(ctx.phase.id, GRID_KEY, grid);
-      return { ok: true };
+      const result = await ctx.store.withLock(
+        `openspace:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          const grid = {
+            ...(((votes[GRID_KEY] as Record<string, OpenSpaceCell>) ?? {}) ||
+              {}),
+          };
+          if (action.type === "unplace") delete grid[topicId];
+          else grid[topicId] = { slot, space };
+          // The grid is stored under the sentinel key so it never collides with
+          // a participant's signup list.
+          await ctx.store.castVote(ctx.phase.id, GRID_KEY, grid);
+        },
+      );
+      return result.ok
+        ? { ok: true }
+        : { ok: false, reason: "Updating the agenda — one moment." };
     }
 
     return { ok: false, reason: "unknown action" };

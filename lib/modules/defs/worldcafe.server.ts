@@ -94,12 +94,22 @@ function readRound(votes: Record<string, unknown>): number {
 }
 
 // Resolve the configured (or derived) table count for the current room size.
-function tableCount(ctx: ModuleContext): number {
+function tableCount(
+  ctx: ModuleContext,
+  votes: Record<string, unknown>,
+): number {
+  // Derive from the frozen entry cohort, not the changing live roster. Crossing
+  // a ceil(n/4) boundary when somebody joins late must never create a new table
+  // and reshuffle everyone already seated.
+  const { cohort } = cohortTokens(
+    votes,
+    ctx.participants.map((participant) => participant.token),
+  );
+  const seated = Math.max(1, cohort.length);
   const configured = ctx.config.tables as number | undefined;
   if (typeof configured === "number" && configured > 0)
-    return Math.floor(configured);
-  const n = ctx.participants.length;
-  return Math.max(1, Math.ceil(n / 4));
+    return Math.min(seated, Math.floor(configured));
+  return Math.max(1, Math.ceil(seated / 4));
 }
 
 // D4 — the round's tables, computed from the FROZEN cohort (so hosts + seated
@@ -111,7 +121,7 @@ function buildTables(
   votes: Record<string, unknown>,
   round: number,
 ): { host: string | null; members: string[] }[] {
-  const numTables = tableCount(ctx);
+  const numTables = tableCount(ctx, votes);
   const { cohort, extras } = cohortTokens(
     votes,
     ctx.participants.map((p) => p.token),
@@ -137,7 +147,9 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
     captureNotes: true,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
+    gatherWhen: (config) => config.captureNotes !== false,
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,
@@ -145,16 +157,20 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
   },
   async onEnter(ctx) {
     // Snapshot the roster so hosts + table membership can't reshuffle on a join.
-    await freezeCohort(ctx.store, ctx.phase.id, ctx.participants.map((p) => p.token));
+    await freezeCohort(
+      ctx.store,
+      ctx.phase.id,
+      ctx.participants.map((p) => p.token),
+    );
   },
   async computeView(ctx) {
     const prompt = (ctx.config.prompt as string) ?? "";
-    const captureNotes = Boolean(ctx.config.captureNotes);
+    const captureNotes = ctx.config.captureNotes !== false;
 
     const votes = await ctx.store.readVotes(ctx.phase.id);
     const round = readRound(votes);
 
-    const numTables = tableCount(ctx);
+    const numTables = tableCount(ctx, votes);
     const tables = buildTables(ctx, votes, round);
 
     // token → handle lookup for mapping the deterministic table membership.
@@ -187,9 +203,7 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
       const tag = `t${myIdx}:r${round}`;
       const myNoteSubmitted = ctx.submissions.some(
         (s) =>
-          s.phaseId === ctx.phase.id &&
-          s.tag === tag &&
-          s.token === me.token,
+          s.phaseId === ctx.phase.id && s.tag === tag && s.token === me.token,
       );
       const view: WorldCafeParticipantView = {
         round,
@@ -225,11 +239,24 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
     // Facilitator-only round control.
     if (action.type === "nextRound") {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
-      const res = await ctx.store.withLock(`round:${ctx.phase.id}`, async () => {
-        const votes = await ctx.store.readVotes(ctx.phase.id);
-        await ctx.store.castVote(ctx.phase.id, "__round__", readRound(votes) + 1);
-      });
-      return res.ok ? { ok: true } : { ok: false, reason: "Advancing — one moment." };
+      const res = await ctx.store.withLock(
+        `round:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          const rounds = tableCount(ctx, votes);
+          if (readRound(votes) >= Math.max(0, rounds - 1)) return false;
+          await ctx.store.castVote(
+            ctx.phase.id,
+            "__round__",
+            readRound(votes) + 1,
+          );
+          return true;
+        },
+      );
+      if (!res.ok) return { ok: false, reason: "Advancing — one moment." };
+      return res.value
+        ? { ok: true }
+        : { ok: false, reason: "Every table has been visited." };
     }
 
     // Participant note: the table's shared insight for this round.
@@ -247,12 +274,22 @@ export const worldcafeModule: ModuleServerDef<WorldCafeConfig> = {
       const tables = buildTables(ctx, votes, round);
       const myIdx = tables.findIndex((t) => t.members.includes(me.token));
       if (myIdx === -1) return { ok: false, reason: "no table" };
+      const tag = `t${myIdx}:r${round}`;
+      if (
+        ctx.submissions.some(
+          (submission) =>
+            submission.phaseId === ctx.phase.id &&
+            submission.tag === tag &&
+            submission.token === me.token,
+        )
+      )
+        return { ok: false, reason: "already submitted" };
 
       await ctx.store.addSubmission(
         me.handle,
         text,
         ctx.phase.id,
-        `t${myIdx}:r${round}`,
+        tag,
         action.token,
       );
       return { ok: true };

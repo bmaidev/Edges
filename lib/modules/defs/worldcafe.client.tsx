@@ -68,7 +68,8 @@ const WorldCafeParticipant: Renderer = ({ view, act, token, phaseId }) => {
         {v.isHost ? (
           <div className="flex flex-col gap-2 rounded-xl border border-accent/50 bg-accent/10 p-5">
             <p className="text-lg font-medium leading-relaxed text-accent">
-              You&apos;re hosting {tableLabel} — stay put and welcome travellers.
+              You&apos;re hosting {tableLabel} — stay put and welcome
+              travellers.
             </p>
             <p className="text-sm leading-relaxed text-muted">
               Keep your table&apos;s thread alive: catch new arrivals up on what
@@ -117,7 +118,7 @@ const WorldCafeParticipant: Renderer = ({ view, act, token, phaseId }) => {
                 Capture this table&apos;s shared insight
               </p>
               <VoiceTextarea
-            draftKey={`edges_draft:${token}:${phaseId}`}
+                draftKey={`edges_draft:${token}:${phaseId}`}
                 value={text}
                 onChange={setText}
                 placeholder="What surfaced at this table…"
@@ -146,12 +147,16 @@ const WorldCafeProjector: Renderer = ({ view }) => {
   return (
     <div className="flex flex-1 flex-col gap-6 p-12">
       <div className="flex items-baseline justify-between gap-6">
-        <h2 className="text-3xl font-semibold">World Café — round {v.round + 1}</h2>
+        <h2 className="text-3xl font-semibold">
+          World Café — round {v.round + 1}
+        </h2>
         <span className="rounded-full border border-border bg-surface px-4 py-1 text-xl text-muted">
           {v.tableCount} {v.tableCount === 1 ? "table" : "tables"}
         </span>
       </div>
-      {v.prompt && <p className="text-2xl leading-snug text-white/90">{v.prompt}</p>}
+      {v.prompt && (
+        <p className="text-2xl leading-snug text-white/90">{v.prompt}</p>
+      )}
       {v.tables.length === 0 ? (
         <p className="text-2xl text-muted">Waiting for the room to fill…</p>
       ) : (
@@ -209,7 +214,14 @@ const WorldCafeFacilitator: Renderer = ({ view, act }) => {
         </p>
       )}
 
-      <Button onClick={() => act({ type: "nextRound" })}>Next round →</Button>
+      <Button
+        onClick={() => act({ type: "nextRound" })}
+        disabled={v.round >= Math.max(0, v.tableCount - 1)}
+      >
+        {v.round >= Math.max(0, v.tableCount - 1)
+          ? "All tables visited"
+          : "Next round →"}
+      </Button>
 
       <div className="flex flex-col gap-3">
         <p className="text-sm uppercase tracking-wide text-muted">Tables</p>

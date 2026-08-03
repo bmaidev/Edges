@@ -57,7 +57,6 @@ export interface FishbowlView {
 interface FishbowlConfig {
   label: string;
   innerSeats: number;
-  mode?: "open" | "closed";
   allowQuestions?: boolean;
 }
 
@@ -83,20 +82,20 @@ export const fishbowlModule: ModuleServerDef<FishbowlConfig> = {
     .object({
       label: z.string(),
       innerSeats: z.number().int().min(2),
-      mode: z.enum(["open", "closed"]).optional(),
       allowQuestions: z.boolean().optional(),
     })
     .passthrough(),
   defaultConfig: {
     label: "Fishbowl",
     innerSeats: 4,
-    mode: "open",
     allowQuestions: true,
   },
   // Participants need the live circle; the projector mirrors it. Observers'
   // identities are never leaked to other participants (handled in computeView).
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
+    gatherWhen: (config) => config.allowQuestions !== false,
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
@@ -105,7 +104,7 @@ export const fishbowlModule: ModuleServerDef<FishbowlConfig> = {
   async computeView(ctx: ModuleContext): Promise<FishbowlView> {
     const c = ctx.config as unknown as FishbowlConfig;
     const innerSeats = Math.max(2, Number(c.innerSeats) || 4);
-    const allowQuestions = Boolean(c.allowQuestions);
+    const allowQuestions = c.allowQuestions !== false;
 
     const votes = await ctx.store.readVotes(ctx.phase.id);
 
@@ -149,12 +148,13 @@ export const fishbowlModule: ModuleServerDef<FishbowlConfig> = {
     // staff roles; participants seated in the circle won't have raw access here,
     // so the list is simply empty for them — the projector carries the feed.)
     const maySeeQuestions = isStaff || ctx.role === "projector" || amSeated;
-    const questions: FishbowlQuestion[] = allowQuestions && maySeeQuestions
-      ? ctx.submissions
-          .filter((s) => s.phaseId === ctx.phase.id && s.tag === "question")
-          .sort((a, b) => a.createdAt - b.createdAt)
-          .map((s) => ({ id: s.id, text: s.text }))
-      : [];
+    const questions: FishbowlQuestion[] =
+      allowQuestions && maySeeQuestions
+        ? ctx.submissions
+            .filter((s) => s.phaseId === ctx.phase.id && s.tag === "question")
+            .sort((a, b) => a.createdAt - b.createdAt)
+            .map((s) => ({ id: s.id, text: s.text }))
+        : [];
 
     return {
       innerSeats,
@@ -171,24 +171,29 @@ export const fishbowlModule: ModuleServerDef<FishbowlConfig> = {
     if (!action.token) return { ok: false, reason: "missing" };
     const c = ctx.config as unknown as FishbowlConfig;
     const innerSeats = Math.max(2, Number(c.innerSeats) || 4);
-    const allowQuestions = Boolean(c.allowQuestions);
+    const allowQuestions = c.allowQuestions !== false;
 
     if (action.type === "sit") {
-      const votes = await ctx.store.readVotes(ctx.phase.id);
-      const occupied = Object.values(votes).filter(
-        (v) => readSeat(v)?.seated,
-      ).length;
-      const mine = readSeat(votes[action.token]);
-      if (mine?.seated) return { ok: false, reason: "already seated" };
-      // Enforce the invariant: occupants may never exceed innerSeats, so a sit
-      // is only allowed while an empty chair exists.
-      if (occupied >= innerSeats) return { ok: false, reason: "circle full" };
-      // Date.now() lives only in handleAction (computeView stays pure).
-      await ctx.store.castVote(ctx.phase.id, action.token, {
-        seated: true,
-        since: Date.now(),
-      });
-      return { ok: true };
+      const result = await ctx.store.withLock(
+        `fishbowl:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          const occupied = Object.values(votes).filter(
+            (value) => readSeat(value)?.seated,
+          ).length;
+          const mine = readSeat(votes[action.token!]);
+          if (mine?.seated) return "already seated";
+          // The lock makes the empty-chair invariant atomic under simultaneous taps.
+          if (occupied >= innerSeats) return "circle full";
+          await ctx.store.castVote(ctx.phase.id, action.token!, {
+            seated: true,
+            since: Date.now(),
+          });
+          return null;
+        },
+      );
+      if (!result.ok) return { ok: false, reason: "One moment." };
+      return result.value ? { ok: false, reason: result.value } : { ok: true };
     }
 
     if (action.type === "leave") {

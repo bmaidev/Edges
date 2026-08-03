@@ -32,10 +32,10 @@ function vis(
 }
 
 // ---- predefined gradient level sets ---------------------------------------
-// All sets are ordered from STRONGEST SUPPORT (index 0) … to BLOCK / OBJECT
-// (last index). This single orientation lets the dissent band, the
-// requireReasonBelow threshold, and the projector colouring all key off the
-// HIGH end of the index range meaning "concern / dissent".
+// The labels retain the familiar ordering of each facilitation method. Because
+// fist-to-five runs in the opposite direction to Kaner and consent, concern
+// behaviour is derived from named concern bands rather than a brittle numeric
+// threshold.
 
 export const GRADIENT_SCALES = {
   // 0..5 (six levels). Index 0 is the block (fist), 5 is enthusiastic — note
@@ -105,8 +105,9 @@ export interface GradientView {
   total: number;
   // votes that fall at/below the "concern" threshold for this scale.
   dissentCount: number;
-  // level index below/at which a written reason is required (undefined = never).
-  requireReasonBelow?: number;
+  // Exact levels where a written reason is required. This stays correct when a
+  // facilitator switches between scales with opposite orientations.
+  reasonRequiredLevels: number[];
   // which level indices count as dissent (so the client can tint the band).
   dissentLevels: number[];
   // full reasons — facilitator/cohost/admin only; omitted for participants.
@@ -121,7 +122,7 @@ interface GradientConfig {
   label: string;
   proposal: string;
   scale?: GradientScale;
-  requireReasonBelow?: number;
+  requireReasonForConcern?: boolean;
 }
 
 interface StoredVote {
@@ -157,18 +158,19 @@ export const gradientModule: ModuleServerDef<GradientConfig> = {
       label: z.string(),
       proposal: z.string(),
       scale: z.enum(["kaner8", "fist5", "consent"]).optional(),
-      requireReasonBelow: z.number().optional(),
+      requireReasonForConcern: z.boolean().optional(),
     })
     .passthrough(),
   defaultConfig: {
     label: "Gradient",
     proposal: "We adopt this proposal as written.",
     scale: "fist5",
-    requireReasonBelow: 2,
+    requireReasonForConcern: true,
   },
   // Everyone can watch the gradient form; participants act on it.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes",
+  capabilities: {
+    gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
@@ -179,12 +181,18 @@ export const gradientModule: ModuleServerDef<GradientConfig> = {
     const scale = ((c.scale as GradientScale) ?? "fist5") as GradientScale;
     const levels = [...GRADIENT_SCALES[scale]];
     const proposal = (c.proposal as string) ?? "";
-    const requireReasonBelow =
-      typeof c.requireReasonBelow === "number"
-        ? c.requireReasonBelow
-        : undefined;
-
     const dissent = dissentIndices(scale);
+    // `requireReasonBelow` is a legacy configuration key. Its presence means
+    // the workshop previously opted into concern reasons; preserving that
+    // intent as a scale-aware concern band fixes old workshops when their scale
+    // is changed without exposing the misleading threshold to new authors.
+    const requireReasonForConcern =
+      typeof c.requireReasonForConcern === "boolean"
+        ? c.requireReasonForConcern
+        : typeof c.requireReasonBelow === "number";
+    const reasonRequiredLevels = requireReasonForConcern
+      ? Array.from(dissent)
+      : [];
     const votes = await ctx.store.readVotes(ctx.phase.id);
 
     const distribution = levels.map(() => 0);
@@ -219,7 +227,7 @@ export const gradientModule: ModuleServerDef<GradientConfig> = {
       distribution,
       total,
       dissentCount,
-      requireReasonBelow,
+      reasonRequiredLevels,
       dissentLevels: Array.from(dissent),
       objections: seesReasons ? objections : undefined,
       mine,
@@ -243,15 +251,11 @@ export const gradientModule: ModuleServerDef<GradientConfig> = {
         ? reasonRaw.trim().slice(0, 500)
         : undefined;
 
-    const requireReasonBelow =
-      typeof c.requireReasonBelow === "number"
-        ? c.requireReasonBelow
-        : undefined;
-    if (
-      requireReasonBelow !== undefined &&
-      level <= requireReasonBelow &&
-      !reason
-    )
+    const requireReasonForConcern =
+      typeof c.requireReasonForConcern === "boolean"
+        ? c.requireReasonForConcern
+        : typeof c.requireReasonBelow === "number";
+    if (requireReasonForConcern && dissentIndices(scale).has(level) && !reason)
       return { ok: false, reason: "reason required" };
 
     await ctx.store.castVote(ctx.phase.id, action.token, { level, reason });

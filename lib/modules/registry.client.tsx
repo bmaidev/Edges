@@ -73,8 +73,10 @@ const LobbyRenderer: Renderer = ({ view }) => {
   const v = view as LobbyView;
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 p-8 text-center">
-      <div className="h-16 w-16 rounded-full bg-accent animate-pulseSoft" />
-      <p className="max-w-xs text-lg leading-relaxed text-white/90">{v.message}</p>
+      <div className="h-16 w-16 animate-pulseSoft rounded-full bg-accent" />
+      <p className="max-w-xs text-lg leading-relaxed text-white/90">
+        {v.message}
+      </p>
       <p className="flex items-center gap-2 text-sm text-muted">
         <span className="inline-block h-2 w-2 animate-pulseSoft rounded-full bg-accent" />
         {countCopy(v.present ?? 0)}
@@ -96,7 +98,9 @@ const ContentRenderer: Renderer = ({ view, pulse }) => {
       )}
       {v.heading && <h2 className="text-lg font-semibold">{v.heading}</h2>}
       {v.items.length === 0 ? (
-        <p className="mt-8 text-center text-muted">Waiting for the facilitator…</p>
+        <p className="mt-8 text-center text-muted">
+          Waiting for the facilitator…
+        </p>
       ) : (
         v.items.map((c) => (
           <article
@@ -266,7 +270,9 @@ const CaptureFacilitator: Renderer = ({ view, act }) => {
         {deck.map((c) => (
           <button
             key={c}
-            onClick={() => act({ type: "injectConstraint", payload: { constraint: c } })}
+            onClick={() =>
+              act({ type: "injectConstraint", payload: { constraint: c } })
+            }
             className={`rounded-lg border px-3 py-2 text-left text-sm ${
               v.activeConstraint === c
                 ? "border-accent bg-accent/10 text-accent"
@@ -278,7 +284,9 @@ const CaptureFacilitator: Renderer = ({ view, act }) => {
         ))}
         {v.activeConstraint && (
           <button
-            onClick={() => act({ type: "injectConstraint", payload: { constraint: "" } })}
+            onClick={() =>
+              act({ type: "injectConstraint", payload: { constraint: "" } })
+            }
             className="rounded-lg border border-border px-3 py-2 text-sm text-muted"
           >
             Clear
@@ -300,7 +308,9 @@ const AllocateRenderer: Renderer = ({ view, act }) => {
     <div className="flex flex-1 flex-col gap-4 p-6">
       <p className="text-base leading-snug text-white/90">{v.header}</p>
       {v.options.length === 0 && (
-        <p className="text-muted">Waiting for the facilitator to add options…</p>
+        <p className="text-muted">
+          Waiting for the facilitator to add options…
+        </p>
       )}
       <div className="flex flex-col gap-3">
         {v.options.map((o, i) => {
@@ -314,7 +324,10 @@ const AllocateRenderer: Renderer = ({ view, act }) => {
               aria-pressed={isMine}
               onClick={async () => {
                 setErr(null);
-                const ok = await act({ type: "allocate", payload: { choice: o.name } });
+                const ok = await act({
+                  type: "allocate",
+                  payload: { choice: o.name },
+                });
                 if (!ok) setErr("That group just filled up — pick another.");
               }}
               className={`min-h-[96px] rounded-xl border p-4 text-left transition-colors disabled:opacity-50 ${
@@ -333,9 +346,13 @@ const AllocateRenderer: Renderer = ({ view, act }) => {
                   {v.cap ? ` / ${v.cap}` : ""}
                 </span>
               </div>
-              {o.subtitle && <p className="mt-1 text-sm text-muted">{o.subtitle}</p>}
+              {o.subtitle && (
+                <p className="mt-1 text-sm text-muted">{o.subtitle}</p>
+              )}
               {v.kind === "lens" && isMine && (
-                <p className="mt-2 text-xs text-accent">Your lens. Your triad: {i + 1}.</p>
+                <p className="mt-2 text-xs text-accent">
+                  Your lens. Your triad: {i + 1}.
+                </p>
               )}
             </button>
           );
@@ -389,7 +406,9 @@ const CoordinatorRenderer: Renderer = ({ view }) => {
           You don&apos;t have a pair yet — join another pair to make a three.
         </p>
       ) : (
-        <p className="max-w-sm text-lg leading-relaxed text-white/90">{v.message}</p>
+        <p className="max-w-sm text-lg leading-relaxed text-white/90">
+          {v.message}
+        </p>
       )}
       {v.members && v.members.length > 0 && (
         <p className="text-sm text-muted">With: {v.members.join(", ")}</p>
@@ -405,7 +424,9 @@ const ReadAroundRenderer: Renderer = ({ view }) => {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
       {!v || v.total === 0 || !v.item ? (
-        <p className="text-muted">The facilitator will pace through these shortly.</p>
+        <p className="text-muted">
+          The facilitator will pace through these shortly.
+        </p>
       ) : (
         <>
           {v.item.tag && (
@@ -413,7 +434,10 @@ const ReadAroundRenderer: Renderer = ({ view }) => {
               {v.item.tag}
             </span>
           )}
-          <p key={v.index} className="max-w-md animate-fadeInUp text-xl leading-relaxed">
+          <p
+            key={v.index}
+            className="max-w-md animate-fadeInUp text-xl leading-relaxed"
+          >
             {v.item.text}
           </p>
           <p className="text-xs text-muted">
@@ -431,8 +455,13 @@ const ReadAroundProjector: Renderer = ({ view }) => {
     <div className="flex flex-1 flex-col items-center justify-center gap-8 p-12 text-center">
       {v.item ? (
         <>
-          {v.item.tag && <span className="text-xl text-muted">{v.item.tag}</span>}
-          <p key={v.index} className="max-w-4xl animate-fadeInUp text-4xl leading-relaxed">
+          {v.item.tag && (
+            <span className="text-xl text-muted">{v.item.tag}</span>
+          )}
+          <p
+            key={v.index}
+            className="max-w-4xl animate-fadeInUp text-4xl leading-relaxed"
+          >
             {v.item.text}
           </p>
           <p className="text-lg text-muted">
@@ -453,8 +482,8 @@ const CloseRenderer: Renderer = ({ view }) => {
   const [copied, setCopied] = useState(false);
   if (v.ended) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center animate-riseIn">
-        <p className="font-display max-w-xs text-2xl leading-relaxed text-white/90">
+      <div className="flex flex-1 animate-riseIn flex-col items-center justify-center gap-4 p-8 text-center">
+        <p className="max-w-xs font-display text-2xl leading-relaxed text-white/90">
           Session closed. Nothing was kept. See you next time.
         </p>
       </div>
@@ -479,11 +508,16 @@ const CloseRenderer: Renderer = ({ view }) => {
     );
   }
   return (
-    <div className="flex flex-1 flex-col gap-5 p-6 animate-riseIn">
+    <div className="flex flex-1 animate-riseIn flex-col gap-5 p-6">
       <div>
         <p className="font-display text-2xl font-semibold tracking-tight">
-          Thanks for being here.
+          {v.message}
         </p>
+        {v.nextStep && (
+          <p className="mt-1 text-sm leading-relaxed text-muted">
+            {v.nextStep}
+          </p>
+        )}
         {contributions.length > 0 && (
           <p className="mt-1 text-sm text-muted">
             You contributed {contributions.length} thing
@@ -537,7 +571,9 @@ const PollRenderer: Renderer = ({ view, act }) => {
   const { status, send } = useSend(act);
   function pick(o: string) {
     if (v.multi) {
-      const next = mine.includes(o) ? mine.filter((x) => x !== o) : [...mine, o];
+      const next = mine.includes(o)
+        ? mine.filter((x) => x !== o)
+        : [...mine, o];
       send({ type: "vote", payload: { choices: next } });
     } else {
       send({ type: "vote", payload: { choice: o } });
@@ -555,17 +591,24 @@ const PollRenderer: Renderer = ({ view, act }) => {
               aria-pressed={isMine}
               onClick={() => pick(o)}
               className={`min-h-[60px] rounded-xl border p-4 text-left transition-colors ${
-                isMine ? "border-accent bg-accent/10" : "border-border bg-surface active:bg-[#222b54]"
+                isMine
+                  ? "border-accent bg-accent/10"
+                  : "border-border bg-surface active:bg-[#222b54]"
               }`}
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="text-base">
                   {o}
-                  {isMine && <span className="ml-2 text-xs text-accent">your pick</span>}
+                  {isMine && (
+                    <span className="ml-2 text-xs text-accent">your pick</span>
+                  )}
                 </span>
                 {v.counts && (
-                  <span className="shrink-0 text-xs text-muted tabular-nums">
-                    {v.total ? Math.round(((v.counts[o] ?? 0) / v.total) * 100) : 0}%
+                  <span className="shrink-0 text-xs tabular-nums text-muted">
+                    {v.total
+                      ? Math.round(((v.counts[o] ?? 0) / v.total) * 100)
+                      : 0}
+                    %
                   </span>
                 )}
               </div>
@@ -574,7 +617,9 @@ const PollRenderer: Renderer = ({ view, act }) => {
                 <div className="mt-2 h-1.5 overflow-hidden rounded bg-bg/60">
                   <div
                     className="h-1.5 rounded bg-accent transition-[width] duration-500 ease-out"
-                    style={{ width: `${v.total ? ((v.counts[o] ?? 0) / v.total) * 100 : 0}%` }}
+                    style={{
+                      width: `${v.total ? ((v.counts[o] ?? 0) / v.total) * 100 : 0}%`,
+                    }}
                   />
                 </div>
               )}
@@ -591,7 +636,9 @@ const PollRenderer: Renderer = ({ view, act }) => {
           {v.multi && mine.length > 1 ? ` (${mine.length} selected)` : ""}
         </p>
       ) : null}
-      {v.counts && <p className="text-center text-xs text-muted">{v.total} responded</p>}
+      {v.counts && (
+        <p className="text-center text-xs text-muted">{v.total} responded</p>
+      )}
     </div>
   );
 };
@@ -600,7 +647,9 @@ const PollProjector: Renderer = ({ view }) => {
   const v = view as PollView;
   return (
     <div className="flex flex-1 flex-col justify-center gap-6 p-12">
-      <h2 className="font-display text-3xl font-semibold tracking-tight">{v.question}</h2>
+      <h2 className="font-display text-3xl font-semibold tracking-tight">
+        {v.question}
+      </h2>
       <div className="text-2xl">
         <Bars counts={v.counts ?? {}} options={v.options} showLead />
       </div>
@@ -635,13 +684,18 @@ const DotVoteRenderer: Renderer = ({ view, act }) => {
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      {v.prompt && <p className="text-lg font-medium leading-snug">{v.prompt}</p>}
+      {v.prompt && (
+        <p className="text-lg font-medium leading-snug">{v.prompt}</p>
+      )}
       <p className="text-sm text-accent">
         Dots left: {remaining} of {v.dots}
       </p>
       <div className="flex flex-col gap-3">
         {v.options.map((o) => (
-          <div key={o} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4">
+          <div
+            key={o}
+            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4"
+          >
             <span className="flex-1 text-base">{o}</span>
             <span className="w-8 text-center text-accent">{mine[o] ?? 0}</span>
             <div className="flex gap-2">
@@ -701,10 +755,15 @@ const RankRenderer: Renderer = ({ view, act }) => {
   return (
     <>
       <div className="flex flex-1 flex-col gap-4 p-6 pb-6">
-        {v.prompt && <p className="text-lg font-medium leading-snug">{v.prompt}</p>}
+        {v.prompt && (
+          <p className="text-lg font-medium leading-snug">{v.prompt}</p>
+        )}
         <div className="flex flex-col gap-2">
           {order.map((item, i) => (
-            <div key={item} className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3">
+            <div
+              key={item}
+              className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3"
+            >
               <span className="w-6 text-center text-accent">{i + 1}</span>
               <span className="flex-1 text-base">{item}</span>
               <div className="flex flex-col">
@@ -829,14 +888,22 @@ const ScaleProjector: Renderer = ({ view }) => {
     <div className="flex flex-1 flex-col justify-center gap-5 p-12 text-2xl">
       {v.statements.map((st, i) => {
         const stat = v.stats?.[i];
-        const pct = stat && v.max > v.min ? ((stat.mean - v.min) / (v.max - v.min)) * 100 : 0;
+        const pct =
+          stat && v.max > v.min
+            ? ((stat.mean - v.min) / (v.max - v.min)) * 100
+            : 0;
         return (
           <div key={i} className="flex flex-col gap-1">
             <span>{st}</span>
             <div className="relative h-6 rounded bg-surface">
-              <div className="absolute top-0 h-6 w-1 bg-accent" style={{ left: `${pct}%` }} />
+              <div
+                className="absolute top-0 h-6 w-1 bg-accent"
+                style={{ left: `${pct}%` }}
+              />
             </div>
-            <span className="text-sm text-muted">mean {stat?.mean ?? 0} · {stat?.count ?? 0} votes</span>
+            <span className="text-sm text-muted">
+              mean {stat?.mean ?? 0} · {stat?.count ?? 0} votes
+            </span>
           </div>
         );
       })}
@@ -890,7 +957,11 @@ const WordCloudRenderer: Renderer = ({ view, act }) => {
   );
 };
 
-function WordCloudView_({ words }: { words: { text: string; count: number }[] }) {
+function WordCloudView_({
+  words,
+}: {
+  words: { text: string; count: number }[];
+}) {
   const max = Math.max(1, ...words.map((w) => w.count));
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -963,7 +1034,9 @@ const QnaRenderer: Renderer = ({ view, act }) => {
       {status === "error" && <StatusLine status={status} onRetry={ask} />}
       <div className="flex flex-col gap-2">
         {v.questions.length === 0 ? (
-          <p className="text-sm text-muted">No questions yet — ask the first.</p>
+          <p className="text-sm text-muted">
+            No questions yet — ask the first.
+          </p>
         ) : (
           v.questions.map((qq) => (
             <div
@@ -973,9 +1046,13 @@ const QnaRenderer: Renderer = ({ view, act }) => {
               <button
                 aria-label={qq.mine ? "Remove your upvote" : "Upvote"}
                 aria-pressed={qq.mine}
-                onClick={() => act({ type: "upvote", payload: { questionId: qq.id } })}
+                onClick={() =>
+                  act({ type: "upvote", payload: { questionId: qq.id } })
+                }
                 className={`flex h-12 w-12 flex-col items-center justify-center rounded-lg border text-xs ${
-                  qq.mine ? "border-accent bg-accent/10 text-accent" : "border-border text-muted"
+                  qq.mine
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border text-muted"
                 }`}
               >
                 <span>▲</span>
@@ -1055,20 +1132,29 @@ const MatrixRenderer: Renderer = ({ view, act }) => {
         </div>
         <MatrixPlot v={v} ghost={{ x, y }} />
         <p className="text-center text-xs text-muted">
-          The ringed dot is where you&apos;ll land — drag the sliders, then place it.
+          The ringed dot is where you&apos;ll land — drag the sliders, then
+          place it.
         </p>
         <StatusLine status={status} sentLabel="Placed." />
       </div>
       <StickyAction
         label={v.mine ? "Update placement" : "Place it"}
         disabled={!text.trim()}
-        onClick={() => send({ type: "plot", payload: { text: text.trim(), x, y } })}
+        onClick={() =>
+          send({ type: "plot", payload: { text: text.trim(), x, y } })
+        }
       />
     </>
   );
 };
 
-function MatrixPlot({ v, ghost }: { v: MatrixView; ghost?: { x: number; y: number } }) {
+function MatrixPlot({
+  v,
+  ghost,
+}: {
+  v: MatrixView;
+  ghost?: { x: number; y: number };
+}) {
   const span = v.max - v.min || 1;
   const pos = (n: number) => ((n - v.min) / span) * 100;
   return (
@@ -1107,10 +1193,18 @@ const MatrixProjector: Renderer = ({ view }) => {
         <div className="absolute left-1/2 top-0 h-full w-px bg-border" />
         <div className="absolute left-0 top-1/2 h-px w-full bg-border" />
         {/* All four poles, on the edge midpoints so the quadrants read clearly. */}
-        <span className="absolute left-1/2 top-2 -translate-x-1/2 text-sm text-muted">{v.yLabel[1]}</span>
-        <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-sm text-muted">{v.yLabel[0]}</span>
-        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted">{v.xLabel[0]}</span>
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-muted">{v.xLabel[1]}</span>
+        <span className="absolute left-1/2 top-2 -translate-x-1/2 text-sm text-muted">
+          {v.yLabel[1]}
+        </span>
+        <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-sm text-muted">
+          {v.yLabel[0]}
+        </span>
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted">
+          {v.xLabel[0]}
+        </span>
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-muted">
+          {v.xLabel[1]}
+        </span>
         {v.items.map((it, i) => (
           <div
             key={i}
@@ -1128,32 +1222,51 @@ const MatrixProjector: Renderer = ({ view }) => {
 // ---- registry -------------------------------------------------------------
 
 export const CLIENT_MODULES: Record<ModuleKind, ClientModule> = {
-  lobby: { renderers: { participant: LobbyRenderer, projector: LobbyRenderer } },
+  lobby: {
+    renderers: { participant: LobbyRenderer, projector: LobbyRenderer },
+  },
   content: {
     renderers: { participant: ContentRenderer, projector: ContentProjector },
   },
   media: { renderers: mediaRenderers },
   ambient: { renderers: ambientRenderers },
   capture: {
-    renderers: { participant: CaptureRenderer, facilitator: CaptureFacilitator },
+    renderers: {
+      participant: CaptureRenderer,
+      facilitator: CaptureFacilitator,
+    },
   },
   allocate: {
     renderers: { participant: AllocateRenderer, projector: AllocateProjector },
   },
   coordinator: { renderers: { participant: CoordinatorRenderer } },
   readaround: {
-    renderers: { participant: ReadAroundRenderer, projector: ReadAroundProjector },
+    renderers: {
+      participant: ReadAroundRenderer,
+      projector: ReadAroundProjector,
+    },
   },
-  close: { renderers: { participant: CloseRenderer, projector: CloseRenderer } },
+  close: {
+    renderers: { participant: CloseRenderer, projector: CloseRenderer },
+  },
   poll: { renderers: { participant: PollRenderer, projector: PollProjector } },
-  dotvote: { renderers: { participant: DotVoteRenderer, projector: DotVoteProjector } },
+  dotvote: {
+    renderers: { participant: DotVoteRenderer, projector: DotVoteProjector },
+  },
   rank: { renderers: { participant: RankRenderer, projector: RankProjector } },
-  scale: { renderers: { participant: ScaleRenderer, projector: ScaleProjector } },
+  scale: {
+    renderers: { participant: ScaleRenderer, projector: ScaleProjector },
+  },
   wordcloud: {
-    renderers: { participant: WordCloudRenderer, projector: WordCloudProjector },
+    renderers: {
+      participant: WordCloudRenderer,
+      projector: WordCloudProjector,
+    },
   },
   qna: { renderers: { participant: QnaRenderer, projector: QnaProjector } },
-  matrix: { renderers: { participant: MatrixRenderer, projector: MatrixProjector } },
+  matrix: {
+    renderers: { participant: MatrixRenderer, projector: MatrixProjector },
+  },
   brainwrite: { renderers: brainwriteRenderers },
   marketplace: { renderers: marketplaceRenderers },
   redistribute: { renderers: redistributeRenderers },

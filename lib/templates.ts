@@ -297,7 +297,8 @@ export const TEMPLATES: SessionTemplate[] = [
         moduleId: "capture",
         config: {
           label: "What?",
-          prompt: "What actually happened? Just the facts you observed — no interpretation yet.",
+          prompt:
+            "What actually happened? Just the facts you observed — no interpretation yet.",
           timerSeconds: 240,
           multiSubmit: true,
         },
@@ -344,32 +345,65 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "white",
         moduleId: "capture",
-        config: { label: "⚪ White — facts", prompt: "White hat: just the facts and data. What do we know?", timerSeconds: 180, multiSubmit: true },
+        config: {
+          label: "⚪ White — facts",
+          prompt: "White hat: just the facts and data. What do we know?",
+          timerSeconds: 180,
+          multiSubmit: true,
+        },
       },
       {
         id: "red",
         moduleId: "capture",
-        config: { label: "🔴 Red — feelings", prompt: "Red hat: gut feelings and instincts, no justification needed.", timerSeconds: 150, multiSubmit: true },
+        config: {
+          label: "🔴 Red — feelings",
+          prompt:
+            "Red hat: gut feelings and instincts, no justification needed.",
+          timerSeconds: 150,
+          multiSubmit: true,
+        },
       },
       {
         id: "black",
         moduleId: "capture",
-        config: { label: "⚫ Black — risks", prompt: "Black hat: caution. What could go wrong? Where's the weakness?", timerSeconds: 180, multiSubmit: true },
+        config: {
+          label: "⚫ Black — risks",
+          prompt:
+            "Black hat: caution. What could go wrong? Where's the weakness?",
+          timerSeconds: 180,
+          multiSubmit: true,
+        },
       },
       {
         id: "yellow",
         moduleId: "capture",
-        config: { label: "🟡 Yellow — benefits", prompt: "Yellow hat: optimism. What's the value? Why might it work?", timerSeconds: 180, multiSubmit: true },
+        config: {
+          label: "🟡 Yellow — benefits",
+          prompt: "Yellow hat: optimism. What's the value? Why might it work?",
+          timerSeconds: 180,
+          multiSubmit: true,
+        },
       },
       {
         id: "green",
         moduleId: "capture",
-        config: { label: "🟢 Green — ideas", prompt: "Green hat: creativity. New possibilities, wild alternatives.", timerSeconds: 180, multiSubmit: true },
+        config: {
+          label: "🟢 Green — ideas",
+          prompt:
+            "Green hat: creativity. New possibilities, wild alternatives.",
+          timerSeconds: 180,
+          multiSubmit: true,
+        },
       },
       {
         id: "blue",
         moduleId: "capture",
-        config: { label: "🔵 Blue — next", prompt: "Blue hat: process. So what do we do next?", timerSeconds: 180, multiSubmit: true },
+        config: {
+          label: "🔵 Blue — next",
+          prompt: "Blue hat: process. So what do we do next?",
+          timerSeconds: 180,
+          multiSubmit: true,
+        },
       },
       close,
     ],
@@ -385,22 +419,40 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "rose",
         moduleId: "capture",
-        config: { label: "🌹 Rose", prompt: "Rose: what's genuinely working well right now?", timerSeconds: 200, multiSubmit: true },
+        config: {
+          label: "🌹 Rose",
+          prompt: "Rose: what's genuinely working well right now?",
+          timerSeconds: 200,
+          multiSubmit: true,
+        },
       },
       {
         id: "thorn",
         moduleId: "capture",
-        config: { label: "🌵 Thorn", prompt: "Thorn: what's painful, stuck, or draining?", timerSeconds: 200, multiSubmit: true },
+        config: {
+          label: "🌵 Thorn",
+          prompt: "Thorn: what's painful, stuck, or draining?",
+          timerSeconds: 200,
+          multiSubmit: true,
+        },
       },
       {
         id: "bud",
         moduleId: "capture",
-        config: { label: "🌱 Bud", prompt: "Bud: what's an emerging opportunity worth nurturing?", timerSeconds: 200, multiSubmit: true },
+        config: {
+          label: "🌱 Bud",
+          prompt: "Bud: what's an emerging opportunity worth nurturing?",
+          timerSeconds: 200,
+          multiSubmit: true,
+        },
       },
       {
         id: "rtb-read",
         moduleId: "readaround",
-        config: { label: "Read-around", readaround: { source: "submissions", sourcePhaseId: "bud" } },
+        config: {
+          label: "Read-around",
+          readaround: { source: "submissions", sourcePhaseId: "bud" },
+        },
       },
       close,
     ],
@@ -418,7 +470,8 @@ export const TEMPLATES: SessionTemplate[] = [
         moduleId: "capture",
         config: {
           label: "Put ideas on the table",
-          prompt: "What should we do? One idea per submission — keep them short and distinct.",
+          prompt:
+            "What should we do? One idea per submission — keep them short and distinct.",
           timerSeconds: 360,
           multiSubmit: true,
         },
@@ -428,7 +481,8 @@ export const TEMPLATES: SessionTemplate[] = [
         moduleId: "marketplace",
         config: {
           label: "Invest",
-          prompt: "You have 100 credits. Invest in the ideas you predict will actually succeed.",
+          prompt:
+            "You have 100 credits. Invest in the ideas you predict will actually succeed.",
           sourcePhaseId: "ideas",
           budget: 100,
           maxPerIdea: 50,
@@ -459,7 +513,12 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "devil",
         moduleId: "devil",
-        config: { label: "Devil's advocate", sourcePhaseId: "plan", target: "group", maxObjections: 3 },
+        config: {
+          label: "Devil's advocate",
+          sourcePhaseId: "plan",
+          target: "group",
+          maxObjections: 3,
+        },
       },
       {
         id: "consent",
@@ -468,7 +527,7 @@ export const TEMPLATES: SessionTemplate[] = [
           label: "Where do we land?",
           proposal: "Given the objections, we should proceed with the plan.",
           scale: "fist5",
-          requireReasonBelow: 2,
+          requireReasonForConcern: true,
         },
       },
       close,
@@ -487,7 +546,8 @@ export const TEMPLATES: SessionTemplate[] = [
         moduleId: "worldcafe",
         config: {
           label: "Café",
-          prompt: "What would have to be true for us to succeed here? Build on what the last table left.",
+          prompt:
+            "What would have to be true for us to succeed here? Build on what the last table left.",
           captureNotes: true,
         },
       },
@@ -509,7 +569,8 @@ export const TEMPLATES: SessionTemplate[] = [
           label: "Stations",
           stations: ["Station A", "Station B", "Station C", "Station D"],
           groupSize: 3,
-          prompt: "At each station, react and add one thing the hosts should know.",
+          prompt:
+            "At each station, react and add one thing the hosts should know.",
           captureNotes: true,
         },
       },
@@ -529,7 +590,8 @@ export const TEMPLATES: SessionTemplate[] = [
         moduleId: "onetwofour",
         config: {
           label: "1-2-4-All",
-          prompt: "What's the boldest thing we could do about this — and what's stopping us?",
+          prompt:
+            "What's the boldest thing we could do about this — and what's stopping us?",
           captureShared: true,
         },
       },
@@ -549,7 +611,8 @@ export const TEMPLATES: SessionTemplate[] = [
         moduleId: "twentyfive10",
         config: {
           label: "25/10",
-          prompt: "If you were ten times bolder, what would you have us do? One idea, one sentence.",
+          prompt:
+            "If you were ten times bolder, what would you have us do? One idea, one sentence.",
           maxScore: 5,
           passes: 5,
         },
@@ -570,7 +633,8 @@ export const TEMPLATES: SessionTemplate[] = [
         moduleId: "minspecs",
         config: {
           label: "Min Specs",
-          prompt: "To achieve our goal, what are all the musts and must-nots we believe we have to honour?",
+          prompt:
+            "To achieve our goal, what are all the musts and must-nots we believe we have to honour?",
         },
       },
       close,
@@ -587,7 +651,11 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "brainwrite",
         moduleId: "brainwrite",
-        config: { label: "Build in silence", prompt: "Build on the idea you're handed — add one line, then you'll be passed a new card." },
+        config: {
+          label: "Build in silence",
+          prompt:
+            "Build on the idea you're handed — add one line, then you'll be passed a new card.",
+        },
       },
       close,
     ],
@@ -603,12 +671,21 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "pitch",
         moduleId: "capture",
-        config: { label: "The pitch", prompt: "In a few lines: what's the idea, and who's it for?", timerSeconds: 300, multiSubmit: true },
+        config: {
+          label: "The pitch",
+          prompt: "In a few lines: what's the idea, and who's it for?",
+          timerSeconds: 300,
+          multiSubmit: true,
+        },
       },
       {
         id: "panel",
         moduleId: "persona",
-        config: { label: "Customer panel", sourcePhaseId: "pitch", societyMode: false },
+        config: {
+          label: "Customer panel",
+          sourcePhaseId: "pitch",
+          societyMode: false,
+        },
       },
       close,
     ],
@@ -647,7 +724,12 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "voices",
         moduleId: "capture",
-        config: { label: "What's on your mind?", prompt: "What's the real issue here, from where you sit?", timerSeconds: 480, multiSubmit: true },
+        config: {
+          label: "What's on your mind?",
+          prompt: "What's the real issue here, from where you sit?",
+          timerSeconds: 480,
+          multiSubmit: true,
+        },
       },
       {
         id: "map",
@@ -668,7 +750,10 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "relay",
         moduleId: "promptrelay",
-        config: { label: "Build the prompt", task: "Draft a clear, compelling one-paragraph announcement of what we decided today." },
+        config: {
+          label: "Build the prompt",
+          task: "Draft a clear, compelling one-paragraph announcement of what we decided today.",
+        },
       },
       close,
     ],
@@ -684,12 +769,22 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "spec",
         moduleId: "capture",
-        config: { label: "Describe the screen", prompt: "Describe the interface we should prototype — what's on it, what does it do?", timerSeconds: 360, multiSubmit: true },
+        config: {
+          label: "Describe the screen",
+          prompt:
+            "Describe the interface we should prototype — what's on it, what does it do?",
+          timerSeconds: 360,
+          multiSubmit: true,
+        },
       },
       {
         id: "build",
         moduleId: "builder",
-        config: { label: "Build", sourcePhaseId: "spec", brief: "A simple, clean single-screen prototype." },
+        config: {
+          label: "Build",
+          sourcePhaseId: "spec",
+          brief: "A simple, clean single-screen prototype.",
+        },
       },
       close,
     ],
@@ -720,7 +815,14 @@ export const TEMPLATES: SessionTemplate[] = [
       {
         id: "ps-work",
         moduleId: "capture",
-        config: { label: "What would make it safer?", prompt: "What's one thing that would make it easier to speak up here?", anonymity: "anonymous", timerSeconds: 300, multiSubmit: true },
+        config: {
+          label: "What would make it safer?",
+          prompt:
+            "What's one thing that would make it easier to speak up here?",
+          anonymity: "anonymous",
+          timerSeconds: 300,
+          multiSubmit: true,
+        },
       },
       {
         id: "ps-end",
@@ -752,7 +854,8 @@ export const TEMPLATES: SessionTemplate[] = [
         moduleId: "lobby",
         config: {
           label: "Lobby",
-          message: "Phones out — scan the screen to join. No app, nothing stored.",
+          message:
+            "Phones out — scan the screen to join. No app, nothing stored.",
         },
       },
       {

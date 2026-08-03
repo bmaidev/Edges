@@ -76,7 +76,7 @@ export interface SynthesisResult {
 
 // ---- view types -----------------------------------------------------------
 
-// Facilitator / projector / admin always see the full review payload.
+// Facilitator / cohost / admin see the private review payload.
 export interface SynthesisFacilitatorView {
   hasResult: boolean;
   bullets: string[];
@@ -186,7 +186,9 @@ export const synthesisModule: ModuleServerDef<SynthesisConfig> = {
     bulletCount: DEFAULT_BULLET_COUNT,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { usesAi: true, gatherSource: "none",
+  capabilities: {
+    usesAi: true,
+    gatherSource: "none",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
@@ -200,7 +202,7 @@ export const synthesisModule: ModuleServerDef<SynthesisConfig> = {
     const promoted = readPromoted(votes);
 
     // ---- participant: content only once promoted ----
-    if (ctx.role === "participant") {
+    if (ctx.role === "participant" || ctx.role === "projector") {
       if (promoted && result) {
         const view: SynthesisParticipantView = {
           hasResult: true,
@@ -218,7 +220,7 @@ export const synthesisModule: ModuleServerDef<SynthesisConfig> = {
       return view;
     }
 
-    // ---- facilitator / projector / admin: always the full review payload ----
+    // ---- facilitator / cohost / admin: private review payload ----
     const sourcePhaseId = ctx.config.sourcePhaseId as string | undefined;
     const currentInputCount = sourcePhaseId
       ? ctx.submissions.filter((s) => s.phaseId === sourcePhaseId).length
@@ -231,7 +233,9 @@ export const synthesisModule: ModuleServerDef<SynthesisConfig> = {
       inputCount: result?.inputCount ?? 0,
       available,
       promoted,
-      stale: hasResult && (result as SynthesisResult).inputCount !== currentInputCount,
+      stale:
+        hasResult &&
+        (result as SynthesisResult).inputCount !== currentInputCount,
     };
     return view;
   },

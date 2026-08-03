@@ -76,6 +76,17 @@ describe("synthesis module — promote gates participant visibility", () => {
     expect(data.bullets).toBeUndefined();
   });
 
+  it("withholds the private draft from the projector until promoted", async () => {
+    withDummyKey();
+    const roomId = await setup();
+    const projected = await getPublicState(null, roomId, "projector");
+    const data = partData(projected);
+    expect(data.promoted).toBe(false);
+    expect(data.hasResult).toBe(false);
+    expect(data.bullets).toBeUndefined();
+    expect(JSON.stringify(data)).not.toContain(SEED.tension);
+  });
+
   it("reveals the result to participants after promote is toggled on", async () => {
     withDummyKey();
     const roomId = await setup();

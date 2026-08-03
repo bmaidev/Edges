@@ -5,8 +5,8 @@
 // facilitator: a "Synthesize" / "Regenerate" button, the input count, the
 //   bullets + the one tension in an editable-looking review card, and a
 //   "Promote to room" toggle. Nothing reaches participants until promoted.
-// projector: the bullets large + the tension highlighted, with a promoted/
-//   review badge so the room knows whether it's live.
+// projector: a holding state until promotion, then the bullets large + the
+//   tension highlighted. Draft text never leaks onto the shared screen.
 // participant: once promoted, the bullets + tension under a calm heading;
 //   otherwise a neutral "the facilitator is summarizing…" holding line.
 //
@@ -66,7 +66,11 @@ const SynthesisFacilitator: Renderer = ({ view, act }) => {
       <StatusLine status={status === "sent" ? "idle" : status} />
 
       {status === "sending" ? (
-        <AiGenerating verb="Reading the room" inputCount={v.inputCount} cards={3} />
+        <AiGenerating
+          verb="Reading the room"
+          inputCount={v.inputCount}
+          cards={3}
+        />
       ) : !v.hasResult ? (
         <p className="mt-4 text-center text-sm text-muted">
           Tap Synthesize to draft a few neutral bullets and the key tension from
@@ -107,9 +111,7 @@ const SynthesisFacilitator: Renderer = ({ view, act }) => {
               : "border-border bg-surface active:bg-[#222b54]"
           }`}
         >
-          {v.promoted
-            ? "Showing the room — tap to hide"
-            : "Promote to room"}
+          {v.promoted ? "Showing the room — tap to hide" : "Promote to room"}
         </button>
       )}
     </div>
@@ -119,19 +121,23 @@ const SynthesisFacilitator: Renderer = ({ view, act }) => {
 // ---- projector ------------------------------------------------------------
 
 const SynthesisProjector: Renderer = ({ view }) => {
-  const v = view as SynthesisFacilitatorView;
+  const v = view as SynthesisParticipantView;
+  if (!v.promoted) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-12 text-center">
+        <div className="h-14 w-14 animate-pulseSoft rounded-full bg-accent" />
+        <p className="text-2xl text-muted">
+          The facilitator is reviewing the synthesis…
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-1 flex-col justify-center gap-8 p-12">
       <div className="flex items-center gap-4">
         <h2 className="text-3xl font-semibold">What the room is saying</h2>
-        <span
-          className={`rounded-full px-3 py-1 text-sm ${
-            v.promoted
-              ? "border border-accent bg-accent/10 text-accent"
-              : "border border-border text-muted"
-          }`}
-        >
-          {v.promoted ? "Live" : "In review"}
+        <span className="rounded-full border border-accent bg-accent/10 px-3 py-1 text-sm text-accent">
+          Shared
         </span>
       </div>
 
@@ -140,7 +146,7 @@ const SynthesisProjector: Renderer = ({ view }) => {
       ) : (
         <>
           <ul className="flex flex-col gap-4">
-            {v.bullets.map((b, i) => (
+            {(v.bullets ?? []).map((b, i) => (
               <Reveal key={i} i={i}>
                 <li className="flex gap-4 text-3xl leading-relaxed">
                   <span className="text-accent">•</span>
@@ -150,7 +156,10 @@ const SynthesisProjector: Renderer = ({ view }) => {
             ))}
           </ul>
           {v.tension && (
-            <div className="animate-riseIn rounded-xl border border-accent/50 bg-accent/10 p-6" style={{ animationDelay: "350ms" }}>
+            <div
+              className="animate-riseIn rounded-xl border border-accent/50 bg-accent/10 p-6"
+              style={{ animationDelay: "350ms" }}
+            >
               <p className="mb-2 text-lg uppercase tracking-wide text-accent">
                 The tension
               </p>
@@ -171,7 +180,7 @@ const SynthesisParticipant: Renderer = ({ view }) => {
   if (!v.promoted) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
-        <div className="h-12 w-12 rounded-full bg-accent animate-pulseSoft" />
+        <div className="h-12 w-12 animate-pulseSoft rounded-full bg-accent" />
         <p className="max-w-xs text-lg leading-relaxed text-white/90">
           One moment — the facilitator is summarizing…
         </p>

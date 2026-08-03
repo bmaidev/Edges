@@ -79,9 +79,11 @@ function vis(
 // Gather the spec contributions for this phase: participants tag them "spec"
 // via the "addSpec" action; both the source capture phase (if configured) and
 // this phase's own contributions count.
-function collectSpecItems(
-  ctx: { config: Record<string, unknown>; submissions: BuilderSpecItem[] | any[]; phase: { id: string } },
-): BuilderSpecItem[] {
+function collectSpecItems(ctx: {
+  config: Record<string, unknown>;
+  submissions: BuilderSpecItem[] | any[];
+  phase: { id: string };
+}): BuilderSpecItem[] {
   const c = ctx.config as unknown as BuilderConfig;
   const sourcePhaseId = c.sourcePhaseId ?? "";
   return (ctx.submissions as any[])
@@ -137,13 +139,15 @@ Return ONLY the full HTML document, starting with <!DOCTYPE html>. No code fence
 function extractHtml(text: string): string {
   let s = text.trim();
   // Strip a leading ```html / ``` fence and a trailing ``` fence, if present.
-  s = s.replace(/^```(?:html)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+  s = s
+    .replace(/^```(?:html)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim();
   // Prefer the bounds of the actual document if the model added stray prose.
   const lower = s.toLowerCase();
   const docStart = lower.indexOf("<!doctype html");
   const htmlStart = lower.indexOf("<html");
-  const start =
-    docStart !== -1 ? docStart : htmlStart !== -1 ? htmlStart : -1;
+  const start = docStart !== -1 ? docStart : htmlStart !== -1 ? htmlStart : -1;
   if (start > 0) s = s.slice(start);
   const close = s.toLowerCase().lastIndexOf("</html>");
   if (close !== -1) s = s.slice(0, close + "</html>".length);
@@ -168,12 +172,15 @@ export const builderModule: ModuleServerDef<BuilderConfig> = {
     .passthrough(),
   defaultConfig: {
     label: "Prototype builder",
-    brief: "",
+    brief:
+      "Turn the strongest ideas into a simple prototype the room can react to and improve.",
   },
   // The generated artifact is room-facing (AI-authored, not a personal
   // submission), so the same payload is shown to everyone.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { usesAi: true, gatherSource: "none",
+  capabilities: {
+    usesAi: true,
+    gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
@@ -190,8 +197,7 @@ export const builderModule: ModuleServerDef<BuilderConfig> = {
     // here — this runs on every poll.
     const votes = await ctx.store.readVotes(ctx.phase.id);
     const cached = votes["__ai__"] as BuilderCache | undefined;
-    const html =
-      cached && typeof cached.html === "string" ? cached.html : "";
+    const html = cached && typeof cached.html === "string" ? cached.html : "";
 
     return {
       hasResult: html.length > 0,
@@ -221,21 +227,21 @@ export const builderModule: ModuleServerDef<BuilderConfig> = {
       return { ok: true };
     }
 
-    if (action.type !== "build")
-      return { ok: false, reason: "unknown action" };
+    if (action.type !== "build") return { ok: false, reason: "unknown action" };
 
     // Building is a facilitation act — never participant-triggered.
-    if (ctx.role === "participant")
-      return { ok: false, reason: "not allowed" };
-    if (!aiAvailable())
-      return { ok: false, reason: "AI unavailable" };
+    if (ctx.role === "participant") return { ok: false, reason: "not allowed" };
+    if (!aiAvailable()) return { ok: false, reason: "AI unavailable" };
 
     const c = ctx.config as unknown as BuilderConfig;
     const brief = c.brief ?? "";
     const specItems = collectSpecItems(ctx);
     const spec = assembleSpec(brief, specItems);
     if (!spec)
-      return { ok: false, reason: "Nothing to build yet — add a brief or spec" };
+      return {
+        ok: false,
+        reason: "Nothing to build yet — add a brief or spec",
+      };
 
     return withGenerateLock(ctx.store, ctx.phase.id, "builder", async () => {
       // Stream the large (~4000-token) HTML document — the service uses

@@ -70,25 +70,44 @@ import type { PromptRelayView } from "./defs/promptrelay.server";
 import type { ActionsParticipantView } from "./defs/actions.server";
 
 type Cfg = Record<string, unknown>;
-const str = (c: Cfg, k: string, d = "") => (typeof c[k] === "string" ? (c[k] as string) : d);
+const str = (c: Cfg, k: string, d = "") =>
+  typeof c[k] === "string" ? (c[k] as string) : d;
 const arr = (c: Cfg, k: string): string[] =>
-  Array.isArray(c[k]) ? (c[k] as unknown[]).filter((x): x is string => typeof x === "string") : [];
-const num = (c: Cfg, k: string, d: number) => (typeof c[k] === "number" ? (c[k] as number) : d);
+  Array.isArray(c[k])
+    ? (c[k] as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+const num = (c: Cfg, k: string, d: number) =>
+  typeof c[k] === "number" ? (c[k] as number) : d;
 
 function sampleContent(title: string, body: string): ContentItem {
-  return { id: "sample", type: "note", title, body, visible: true, queued: false, addedAt: 0 };
+  return {
+    id: "sample",
+    type: "note",
+    title,
+    body,
+    visible: true,
+    queued: false,
+    addedAt: 0,
+  };
 }
 
 // Each factory returns the View its renderer expects, populated illustratively.
 // `Partial` — modules without a factory fall back to a "preview coming" card.
-export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>> = {
+export const SAMPLE_VIEWS: Partial<
+  Record<ModuleKind, (config: Cfg) => unknown>
+> = {
   lobby: (c): LobbyView => ({
     message: str(c, "message", "We'll begin shortly."),
     present: 4,
   }),
   content: (c): ContentView => ({
     heading: str(c, "contentHeading") || undefined,
-    items: [sampleContent("Reference", "This is how injected content reads to the room.")],
+    items: [
+      sampleContent(
+        "Reference",
+        "This is how injected content reads to the room.",
+      ),
+    ],
     pulseKey: 0,
   }),
   capture: (c): CaptureView => ({
@@ -104,11 +123,18 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   readaround: (): ReadAroundView => ({
     index: 1,
     total: 3,
-    item: { text: "A sample contribution, read aloud one at a time.", tag: null },
+    item: {
+      text: "A sample contribution, read aloud one at a time.",
+      tag: null,
+    },
   }),
-  close: (): CloseView => ({
+  close: (c): CloseView => ({
     ended: false,
-    yourContributions: [{ text: "An idea you contributed earlier.", tag: null }],
+    message: str(c, "message", "Thanks for being here."),
+    nextStep: str(c, "nextStep") || undefined,
+    yourContributions: [
+      { text: "An idea you contributed earlier.", tag: null },
+    ],
   }),
   // F2 — yours-first commitments. The preview shows the participant's own list
   // (the payoff state) plus the soft room-momentum signal.
@@ -138,19 +164,25 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   }),
   allocate: (c): AllocateView => {
     const fixed = arr(c, "fixedOptions");
-    const options = (fixed.length ? fixed : ["Optimist", "Skeptic", "Realist"]).map((name) => ({ name }));
+    const options = (
+      fixed.length ? fixed : ["Optimist", "Skeptic", "Realist"]
+    ).map((name) => ({ name }));
     return {
       header: str(c, "header", "Pick a lens"),
       kind: "lens",
       options,
-      counts: Object.fromEntries(options.map((o, i) => [o.name, [2, 1, 3][i % 3]])),
+      counts: Object.fromEntries(
+        options.map((o, i) => [o.name, [2, 1, 3][i % 3]]),
+      ),
       mine: null,
     };
   },
   poll: (c): PollView => {
     // B2 faithfulness — the preview is the REAL pollView shaper over synthetic
     // votes, not a hand-authored literal, so it can't drift from the live view.
-    const options = arr(c, "options").length ? arr(c, "options") : ["Yes", "No", "Maybe"];
+    const options = arr(c, "options").length
+      ? arr(c, "options")
+      : ["Yes", "No", "Maybe"];
     const question = str(c, "question") || str(c, "label", "Which option?");
     const multi = Boolean(c.multi);
     return pollView(
@@ -162,7 +194,9 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   },
   // B2 faithfulness — the vote previews are the REAL shapers over synthetic votes.
   dotvote: (c): DotVoteView => {
-    const options = arr(c, "options").length ? arr(c, "options") : ["Idea A", "Idea B", "Idea C"];
+    const options = arr(c, "options").length
+      ? arr(c, "options")
+      : ["Idea A", "Idea B", "Idea C"];
     const dots = num(c, "dots", 5);
     return dotVoteView(
       { prompt: str(c, "prompt", "Spend your dots"), options, dots },
@@ -171,7 +205,9 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     );
   },
   rank: (c): RankView => {
-    const items = arr(c, "items").length ? arr(c, "items") : ["First", "Second", "Third"];
+    const items = arr(c, "items").length
+      ? arr(c, "items")
+      : ["First", "Second", "Third"];
     return rankView(
       { prompt: str(c, "prompt", "Drag to rank"), items },
       sampleRankVotes(items),
@@ -179,7 +215,9 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     );
   },
   scale: (c): ScaleView => {
-    const statements = arr(c, "statements").length ? arr(c, "statements") : ["This excites me"];
+    const statements = arr(c, "statements").length
+      ? arr(c, "statements")
+      : ["This excites me"];
     const labels = arr(c, "labels");
     const max = num(c, "max", 5);
     return scaleView(
@@ -194,7 +232,11 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     );
   },
   wordcloud: (c): WordCloudView =>
-    wordCloudView({ prompt: str(c, "prompt", "One word that comes to mind?") }, sampleWords(), "me"),
+    wordCloudView(
+      { prompt: str(c, "prompt", "One word that comes to mind?") },
+      sampleWords(),
+      "me",
+    ),
   qna: (c): QnaView =>
     qnaView(
       { prompt: str(c, "prompt", "Ask anything") },
@@ -221,8 +263,12 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   spectrogram: (c): SpectrogramView => {
     const poles = arr(c, "poleLabels");
     return {
-      statement: str(c, "statement") || str(c, "label", "How strongly do you agree?"),
-      poleLabels: poles.length >= 2 ? [poles[0], poles[1]] : ["strongly disagree", "strongly agree"],
+      statement:
+        str(c, "statement") || str(c, "label", "How strongly do you agree?"),
+      poleLabels:
+        poles.length >= 2
+          ? [poles[0], poles[1]]
+          : ["strongly disagree", "strongly agree"],
       mode: "continuous",
       buckets: 5,
       distribution: [
@@ -244,25 +290,34 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   gradient: (c): GradientView => {
     const levels = ["✊ block", "concerns", "lukewarm", "support", "🖐 all in"];
     return {
-      proposal: str(c, "proposal") || str(c, "label", "Do we have consent to proceed?"),
+      proposal:
+        str(c, "proposal") || str(c, "label", "Do we have consent to proceed?"),
       scale: (str(c, "scale") as GradientView["scale"]) || "fist5",
       levels,
       distribution: [0, 1, 2, 4, 3],
       total: 10,
       dissentCount: 1,
       dissentLevels: [0, 1],
+      reasonRequiredLevels: [0, 1],
       mine: null,
     };
   },
   marketplace: (c): MarketplaceView => {
     const budget = num(c, "budget", 100);
     return {
-      prompt: str(c, "prompt") || str(c, "label", "Invest in the ideas you believe in"),
+      prompt:
+        str(c, "prompt") ||
+        str(c, "label", "Invest in the ideas you believe in"),
       currencyLabel: str(c, "currencyLabel", "credits"),
       budget,
       remaining: Math.round(budget * 0.6),
       ideas: [
-        { id: "i1", text: "A weekly demo to share progress", total: 220, mine: Math.round(budget * 0.4) },
+        {
+          id: "i1",
+          text: "A weekly demo to share progress",
+          total: 220,
+          mine: Math.round(budget * 0.4),
+        },
         { id: "i2", text: "Pair-programming Fridays", total: 140, mine: 0 },
         { id: "i3", text: "A shared customer-call rota", total: 90, mine: 0 },
       ],
@@ -271,11 +326,30 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   },
   minspecs: (c): MinSpecsView => ({
     phase: "expand",
-    prompt: str(c, "prompt") || str(c, "label", "What are the rules we must keep?"),
+    prompt:
+      str(c, "prompt") || str(c, "label", "What are the rules we must keep?"),
     rules: [
-      { id: "r1", text: "Every decision has a named owner", keep: 6, cut: 1, survivor: true },
-      { id: "r2", text: "No meeting without an agenda", keep: 4, cut: 3, survivor: true },
-      { id: "r3", text: "Ship behind a flag", keep: 2, cut: 5, survivor: false },
+      {
+        id: "r1",
+        text: "Every decision has a named owner",
+        keep: 6,
+        cut: 1,
+        survivor: true,
+      },
+      {
+        id: "r2",
+        text: "No meeting without an agenda",
+        keep: 4,
+        cut: 3,
+        survivor: true,
+      },
+      {
+        id: "r3",
+        text: "Ship behind a flag",
+        keep: 2,
+        cut: 5,
+        survivor: false,
+      },
     ],
   }),
   synthesis: (): SynthesisFacilitatorView => ({
@@ -296,7 +370,10 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
       {
         need: "Confidence the work will land",
         jtbd: "When I commit to a plan, I want early signal it's working, so I can adjust without losing face.",
-        evidence: ["“we never know if it's working until too late”", "“I want a faster feedback loop”"],
+        evidence: [
+          "“we never know if it's working until too late”",
+          "“I want a faster feedback loop”",
+        ],
         confidence: "high",
       },
     ],
@@ -323,7 +400,8 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   emptychair: (c): EmptychairView => ({
     hasResult: true,
     available: true,
-    personaName: str(c, "personaName") || str(c, "label", "The absent customer"),
+    personaName:
+      str(c, "personaName") || str(c, "label", "The absent customer"),
     personaDescription: str(
       c,
       "personaDescription",
@@ -349,7 +427,8 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     tensions: [
       {
         axis: "Speed vs. rigor",
-        tension: "The room wants to move fast but fears shipping something half-baked.",
+        tension:
+          "The room wants to move fast but fears shipping something half-baked.",
         poleA: "Ship and learn",
         poleB: "Get it right first",
         intensity: 4,
@@ -378,7 +457,9 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   },
   consult: (c): ConsultParticipantView => ({
     format: (str(c, "format") as ConsultParticipantView["format"]) || "troika",
-    prompt: str(c, "prompt") || str(c, "label", "Share your challenge; the others advise."),
+    prompt:
+      str(c, "prompt") ||
+      str(c, "label", "Share your challenge; the others advise."),
     round: 1,
     role: "client",
     groupMembers: ["You", "Ada", "Bo"],
@@ -388,7 +469,8 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   }),
   brainwrite: (c): BrainwriteParticipantView => ({
     for: "participant",
-    prompt: str(c, "prompt") || str(c, "label", "Build on the idea in front of you."),
+    prompt:
+      str(c, "prompt") || str(c, "label", "Build on the idea in front of you."),
     maxLen: num(c, "maxLen", 140),
     card: {
       id: "c1",
@@ -402,9 +484,15 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   prework: (c): PreworkParticipantView => ({
     for: "participant",
     brief: str(c, "brief") || undefined,
-    prompt: str(c, "prompt") || str(c, "label", "Add your thoughts before we meet."),
+    prompt:
+      str(c, "prompt") || str(c, "label", "Add your thoughts before we meet."),
     placeholder: str(c, "placeholder") || undefined,
-    mine: [{ text: "One thing I'm hoping we resolve is the ownership question.", at: 0 }],
+    mine: [
+      {
+        text: "One thing I'm hoping we resolve is the ownership question.",
+        at: 0,
+      },
+    ],
   }),
   // ---- rotation / grouping modules (participant phone view) ----
   onetwofour: (c): OneTwoFourParticipantView => ({
@@ -417,7 +505,9 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     mySharedSubmitted: false,
   }),
   stations: (c): StationsParticipantView => {
-    const stations = arr(c, "stations").length ? arr(c, "stations") : ["Station A", "Station B", "Station C"];
+    const stations = arr(c, "stations").length
+      ? arr(c, "stations")
+      : ["Station A", "Station B", "Station C"];
     return {
       round: 0,
       stationName: stations[0],
@@ -430,7 +520,8 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   },
   worldcafe: (c): WorldCafeParticipantView => ({
     round: 1,
-    prompt: str(c, "prompt") || str(c, "label", "What would real progress take?"),
+    prompt:
+      str(c, "prompt") || str(c, "label", "What would real progress take?"),
     tableIndex: 0,
     isHost: false,
     hostName: "Ada",
@@ -439,18 +530,28 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     myNoteSubmitted: false,
   }),
   redistribute: (c): RedistributeParticipantView => ({
-    prompt: str(c, "prompt") || str(c, "label", "Improve the idea you've been handed."),
+    prompt:
+      str(c, "prompt") ||
+      str(c, "label", "Improve the idea you've been handed."),
     mode: (str(c, "mode") as RedistributeParticipantView["mode"]) || "improve",
-    assignedCard: { id: "c1", text: "A weekly demo so progress stays visible." },
+    assignedCard: {
+      id: "c1",
+      text: "A weekly demo so progress stays visible.",
+    },
     myResponseSubmitted: false,
   }),
   twentyfive10: (c): Twentyfive10ParticipantView => ({
     phase: "score",
     round: 1,
     passes: num(c, "passes", 3),
-    prompt: str(c, "prompt") || str(c, "label", "Score the idea in front of you (0–5)."),
+    prompt:
+      str(c, "prompt") ||
+      str(c, "label", "Score the idea in front of you (0–5)."),
     maxScore: num(c, "maxScore", 5),
-    assignedCard: { id: "c1", text: "Run a blameless retro after every launch." },
+    assignedCard: {
+      id: "c1",
+      text: "Run a blameless retro after every launch.",
+    },
     myScoreForIt: null,
   }),
   // ---- timed / media / open-space ----
@@ -465,17 +566,29 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
   }),
   media: (c): MediaView => ({
     label: str(c, "label") || undefined,
-    card: { id: "m1", kind: "image", url: "", title: "A shared reference image" },
+    card: {
+      id: "m1",
+      kind: "image",
+      url: "",
+      title: "A shared reference image",
+    },
     index: 0,
     total: 3,
   }),
   openspace: (c): OpenSpaceView => {
-    const spaces = arr(c, "spaces").length ? arr(c, "spaces") : ["Table 1", "Table 2"];
+    const spaces = arr(c, "spaces").length
+      ? arr(c, "spaces")
+      : ["Table 1", "Table 2"];
     return {
       slots: num(c, "slots", 2),
       spaces,
       topics: [
-        { id: "t1", title: "How do we shorten the feedback loop?", signupCount: 4, cell: { slot: 0, space: spaces[0] } },
+        {
+          id: "t1",
+          title: "How do we shorten the feedback loop?",
+          signupCount: 4,
+          cell: { slot: 0, space: spaces[0] },
+        },
         { id: "t2", title: "What should we stop doing?", signupCount: 2 },
       ],
       mySignups: ["t1"],
@@ -510,7 +623,10 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
         id: "i1",
         label: "Ownership",
         summary: "Who is accountable when priorities collide?",
-        positions: [{ text: "A single DRI per initiative" }, { text: "Shared ownership by the team" }],
+        positions: [
+          { text: "A single DRI per initiative" },
+          { text: "Shared ownership by the team" },
+        ],
         pinned: false,
       },
     ],
@@ -524,25 +640,34 @@ export const SAMPLE_VIEWS: Partial<Record<ModuleKind, (config: Cfg) => unknown>>
     reactions: [
       {
         persona: "The skeptical veteran",
-        reaction: "I've seen three of these initiatives stall. Show me it survives contact with a real deadline.",
+        reaction:
+          "I've seen three of these initiatives stall. Show me it survives contact with a real deadline.",
         wouldAdopt: 2,
         objections: ["No time budgeted", "Unclear owner"],
       },
     ],
-    personas: [{ name: "The skeptical veteran", description: "Ten years in; has survived many reorgs." }],
+    personas: [
+      {
+        name: "The skeptical veteran",
+        description: "Ten years in; has survived many reorgs.",
+      },
+    ],
   }),
   promptrelay: (c): PromptRelayView => ({
-    task: str(c, "task") || str(c, "label", "Draft a message to the wider team"),
+    task:
+      str(c, "task") || str(c, "label", "Draft a message to the wider team"),
     segmentKinds: ["audience", "tone", "key point"],
     segments: [
       { kind: "audience", text: "the whole engineering org" },
       { kind: "tone", text: "candid but hopeful" },
       { kind: "key point", text: "we're changing how we plan, and why" },
     ],
-    assembledPrompt: "Write to the whole engineering org, candid but hopeful, about how we're changing planning.",
+    assembledPrompt:
+      "Write to the whole engineering org, candid but hopeful, about how we're changing planning.",
     hasResult: true,
     available: true,
-    result: "Team — we're shifting to shorter planning cycles so we can course-correct sooner…",
+    result:
+      "Team — we're shifting to shorter planning cycles so we can course-correct sooner…",
   }),
 };
 

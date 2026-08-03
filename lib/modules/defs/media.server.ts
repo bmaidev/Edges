@@ -42,15 +42,22 @@ export interface MediaConfig {
 }
 
 const cardSchema = z.object({
-  id: z.string(),
+  id: z.string().trim().min(1).max(160),
   kind: z.enum(["image", "video"]),
-  url: z.string(),
-  title: z.string().optional(),
+  url: z
+    .string()
+    .url()
+    .max(2000)
+    .refine(safeUrl, "Use a trusted HTTP or HTTPS URL."),
+  title: z.string().trim().max(200).optional(),
 });
 
 const MAX_CARDS = 300;
 
-function readDeck(votes: Record<string, unknown>, config: MediaConfig): MediaCard[] {
+function readDeck(
+  votes: Record<string, unknown>,
+  config: MediaConfig,
+): MediaCard[] {
   const fromVotes = votes["__deck__"];
   if (Array.isArray(fromVotes)) return fromVotes as MediaCard[];
   return config.cards ?? [];
@@ -82,12 +89,13 @@ export const mediaModule: ModuleServerDef<MediaConfig> = {
   schema: z
     .object({
       label: z.string(),
-      cards: z.array(cardSchema).optional(),
+      cards: z.array(cardSchema).max(MAX_CARDS).optional(),
     })
     .passthrough(),
   defaultConfig: { label: "Presentation" },
   defaultVisibility: vis(),
-  capabilities: { gatherSource: "none",
+  capabilities: {
+    gatherSource: "none",
     acceptsActions: true,
     liveResults: false,
     needsTimer: false,
@@ -112,13 +120,13 @@ export const mediaModule: ModuleServerDef<MediaConfig> = {
   },
   async handleAction(ctx, action) {
     // Every media action is facilitator-driven (load/advance the deck).
-    if (ctx.role === "participant")
-      return { ok: false, reason: "forbidden" };
+    if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
 
     if (action.type === "setDeck") {
       const raw = action.payload?.deck;
       if (!Array.isArray(raw)) return { ok: false, reason: "no deck" };
-      if (raw.length > MAX_CARDS) return { ok: false, reason: "too many slides" };
+      if (raw.length > MAX_CARDS)
+        return { ok: false, reason: "too many slides" };
       // Validate + sanitise every card before it can reach the room screen.
       const deck: MediaCard[] = [];
       for (const c of raw) {
@@ -139,19 +147,30 @@ export const mediaModule: ModuleServerDef<MediaConfig> = {
       return { ok: true };
     }
 
-    if (action.type === "setIndex" || action.type === "next" || action.type === "prev") {
-      const res = await ctx.store.withLock(`media:${ctx.phase.id}`, async () => {
-        const votes = await ctx.store.readVotes(ctx.phase.id);
-        const deck = readDeck(votes, ctx.config as unknown as MediaConfig);
-        const cur = clampIndex(readIndex(votes), deck.length);
-        const target =
-          action.type === "next"
-            ? cur + 1
-            : action.type === "prev"
-              ? cur - 1
-              : Number(action.payload?.index ?? cur);
-        await ctx.store.castVote(ctx.phase.id, "__index__", clampIndex(target, deck.length));
-      });
+    if (
+      action.type === "setIndex" ||
+      action.type === "next" ||
+      action.type === "prev"
+    ) {
+      const res = await ctx.store.withLock(
+        `media:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          const deck = readDeck(votes, ctx.config as unknown as MediaConfig);
+          const cur = clampIndex(readIndex(votes), deck.length);
+          const target =
+            action.type === "next"
+              ? cur + 1
+              : action.type === "prev"
+                ? cur - 1
+                : Number(action.payload?.index ?? cur);
+          await ctx.store.castVote(
+            ctx.phase.id,
+            "__index__",
+            clampIndex(target, deck.length),
+          );
+        },
+      );
       return res.ok ? { ok: true } : { ok: false, reason: "One moment." };
     }
 

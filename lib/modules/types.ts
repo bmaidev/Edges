@@ -105,6 +105,10 @@ export interface ModuleCapabilities {
   //   "votes"       → vote modules (poll, dotvote, rank, scale, matrix, wordcloud)
   //   "none"        → display-only / non-gather (lobby, content, readaround, …)
   gatherSource: "none" | "submissions" | "votes";
+  // Some structured methods gather only when an optional capture channel is
+  // enabled. This keeps response counts, nudges, attribution, and rehearsal
+  // data honest instead of advertising a response task that does not exist.
+  gatherWhen?: (config: Record<string, unknown>) => boolean;
   // H2 — true if this module calls the AI in its path, so pre-flight can warn
   // (never block) when no ANTHROPIC_API_KEY is set. Optional to avoid forcing a
   // value on every module; a guard test asserts the AI defs set it.

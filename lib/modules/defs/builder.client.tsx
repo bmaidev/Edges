@@ -13,13 +13,32 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui";
-import { AiGenerating, Reveal, StatusLine, StickyAction, useSend } from "../render-kit";
+import {
+  AiGenerating,
+  Reveal,
+  StatusLine,
+  StickyAction,
+  useSend,
+} from "../render-kit";
 import type { Renderer } from "../render-kit";
 import type { Role } from "../types";
 import type { BuilderView } from "./builder.server";
 
 // Shared sandboxed preview. allow-scripts WITHOUT allow-same-origin → the
 // artifact runs but is fully isolated from the parent app.
+function isolatedHtml(html: string): string {
+  // Sandboxing isolates the prototype from Edges; this CSP also prevents a
+  // generated script/form from sending workshop content to the network.
+  const policy =
+    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; ` +
+    `script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; ` +
+    `font-src data:; media-src data: blob:; connect-src 'none'; form-action 'none'; ` +
+    `base-uri 'none'; frame-src 'none'">`;
+  return /<head(?:\s[^>]*)?>/i.test(html)
+    ? html.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${policy}`)
+    : `${policy}${html}`;
+}
+
 function PreviewFrame({
   html,
   title,
@@ -32,7 +51,7 @@ function PreviewFrame({
   return (
     <iframe
       title={title}
-      srcDoc={html}
+      srcDoc={isolatedHtml(html)}
       sandbox="allow-scripts"
       className={className}
     />
@@ -212,7 +231,9 @@ const BuilderParticipant: Renderer = ({ view, act }) => {
                 key={s.id}
                 className="rounded-xl border border-border bg-surface px-4 py-3"
               >
-                <p className="text-sm leading-relaxed text-white/85">{s.text}</p>
+                <p className="text-sm leading-relaxed text-white/85">
+                  {s.text}
+                </p>
                 <p className="mt-1 text-xs text-muted">{s.handle}</p>
               </div>
             ))}

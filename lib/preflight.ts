@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { SERVER_MODULES, getServerModule } from "./modules/registry.server";
+import { producesRoomText } from "./modules/cards";
 import type { ModuleKind, Readiness, ReadinessCheck, Severity } from "./types";
 
 // Load-bearing text fields (a prompt/message/etc.) are `z.string()` with no
@@ -36,8 +37,9 @@ function isOptional(zt: any): boolean {
 
 function schemaShape(moduleId: ModuleKind): Record<string, any> | null {
   try {
-    const schema = SERVER_MODULES[moduleId]?.schema as any;
-    return schema?.shape ?? schema?._def?.shape?.() ?? null;
+    const schema = unwrap(SERVER_MODULES[moduleId]?.schema as any);
+    const shape = schema?.shape ?? schema?._def?.shape;
+    return (typeof shape === "function" ? shape() : shape) ?? null;
   } catch {
     return null;
   }
@@ -53,7 +55,10 @@ export function validatePhaseConfig(
   const r = schema.safeParse(config);
   if (r.success) return { ok: true };
   const issue = r.error.issues[0];
-  return { ok: false, msg: `${issue.path.join(".") || "config"}: ${issue.message}` };
+  return {
+    ok: false,
+    msg: `${issue.path.join(".") || "config"}: ${issue.message}`,
+  };
 }
 
 // Does this module consume an earlier phase's contributions (a required
@@ -84,7 +89,11 @@ function emptyRequiredText(
 }
 
 export interface PreflightInput {
-  phases: { id: string; moduleId: ModuleKind; config: Record<string, unknown> }[];
+  phases: {
+    id: string;
+    moduleId: ModuleKind;
+    config: Record<string, unknown>;
+  }[];
   participantCount: number;
   isProd: boolean;
   kvConfigured: boolean;
@@ -102,10 +111,22 @@ export interface PreflightInput {
 // own 2s poll, throttled to ≤8s, so ~3 missed beats).
 export const PROJECTOR_LOST_MS = 20_000;
 
-const RANK: Record<Severity, number> = { blocker: 3, warning: 2, info: 1, pass: 0 };
+const RANK: Record<Severity, number> = {
+  blocker: 3,
+  warning: 2,
+  info: 1,
+  pass: 0,
+};
 
-function label(p: { moduleId: ModuleKind; config: Record<string, unknown> }): string {
-  return (p.config.label as string) || getServerModule(p.moduleId)?.meta.name || p.moduleId;
+function label(p: {
+  moduleId: ModuleKind;
+  config: Record<string, unknown>;
+}): string {
+  return (
+    (p.config.label as string) ||
+    getServerModule(p.moduleId)?.meta.name ||
+    p.moduleId
+  );
 }
 
 export function computeReadiness(input: PreflightInput): Readiness {
@@ -166,7 +187,8 @@ export function computeReadiness(input: PreflightInput): Readiness {
         id: `empty:${p.id}`,
         severity: "blocker",
         title: `“${name}” has an empty ${empty}`,
-        detail: "This phase ships a blank to every screen — fill it in before going live.",
+        detail:
+          "This phase ships a blank to every screen — fill it in before going live.",
         phaseId: p.id,
         remedyTab: "session",
       });
@@ -174,27 +196,67 @@ export function computeReadiness(input: PreflightInput): Readiness {
 
     // 4) Dependency wiring — a phase that consumes an earlier phase's input.
     const need = sourceNeed(p.moduleId);
-    if (need.has && need.required) {
-      const src = p.config.sourcePhaseId as string | undefined;
+    const readaround =
+      p.moduleId === "readaround" &&
+      p.config.readaround &&
+      typeof p.config.readaround === "object"
+        ? (p.config.readaround as Record<string, unknown>)
+        : null;
+    const nestedRead = readaround?.source === "submissions";
+    if (need.has || nestedRead) {
+      const required = need.required || nestedRead;
+      const src = (
+        nestedRead ? readaround?.sourcePhaseId : p.config.sourcePhaseId
+      ) as string | undefined;
       const srcIdx = src != null ? idToIndex.get(src) : undefined;
-      if (!src || srcIdx === undefined) {
+      if (!src && required) {
         checks.push({
           id: `dep:${p.id}`,
           severity: "blocker",
           title: `“${name}” has no source phase`,
-          detail: "It reads an earlier phase's contributions — point it at one that runs before it.",
+          detail:
+            "It reads an earlier phase's contributions — point it at one that runs before it.",
           phaseId: p.id,
           remedyTab: "session",
         });
-      } else if (srcIdx >= idx) {
+      } else if (src && srcIdx === undefined) {
+        checks.push({
+          id: `dep:${p.id}`,
+          severity: "blocker",
+          title: `“${name}” points to a missing phase`,
+          detail:
+            "Choose a writing phase that still exists and runs before this one.",
+          phaseId: p.id,
+          remedyTab: "session",
+        });
+      } else if (srcIdx !== undefined && srcIdx >= idx) {
         checks.push({
           id: `dep:${p.id}`,
           severity: "blocker",
           title: `“${name}” reads a phase that hasn't run yet`,
-          detail: "Its source phase comes after it (or is itself) — there'll be nothing to show.",
+          detail:
+            "Its source phase comes after it (or is itself) — there'll be nothing to show.",
           phaseId: p.id,
           remedyTab: "session",
         });
+      } else if (srcIdx !== undefined) {
+        const source = input.phases[srcIdx];
+        if (
+          !producesRoomText(
+            source.moduleId,
+            source.config as Record<string, unknown>,
+          )
+        ) {
+          checks.push({
+            id: `dep:${p.id}`,
+            severity: "blocker",
+            title: `“${name}” reads a phase with no reusable text`,
+            detail:
+              "Point it at an earlier writing activity such as Capture, Pre-work, or group notes.",
+            phaseId: p.id,
+            remedyTab: "session",
+          });
+        }
       }
     }
 
@@ -205,7 +267,8 @@ export function computeReadiness(input: PreflightInput): Readiness {
         id: `ai:${p.id}`,
         severity: "warning",
         title: `“${name}” uses AI, which isn't set up`,
-        detail: "It'll run, but its AI step is unavailable until an API key is configured.",
+        detail:
+          "It'll run, but its AI step is unavailable until an API key is configured.",
         phaseId: p.id,
       });
     }
@@ -216,7 +279,8 @@ export function computeReadiness(input: PreflightInput): Readiness {
         id: `media:${p.id}`,
         severity: "warning",
         title: `“${name}” needs image/file storage`,
-        detail: "Blob storage isn't configured, so uploads in this media phase won't work.",
+        detail:
+          "Blob storage isn't configured, so uploads in this media phase won't work.",
         phaseId: p.id,
         remedyTab: "content",
       });

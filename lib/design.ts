@@ -4,29 +4,30 @@
 // apply. The facilitator edits and launches in the builder.
 
 import { SERVER_MODULES, getServerModule } from "./modules/registry.server";
-import { MODULE_CARDS } from "./modules/cards";
+import {
+  MODULE_CARDS,
+  PRODUCES_ROOM_TEXT,
+  producesRoomText,
+} from "./modules/cards";
 import { TEMPLATES } from "./templates";
 import { generateJSON, topicLine } from "./ai";
 import type { ModuleKind, PhaseInstance } from "./types";
-
-// Modules that PRODUCE free-text contributions a later phase can analyse.
-const PRODUCERS = new Set<ModuleKind>([
-  "capture",
-  "prework",
-  "qna",
-  "brainwrite",
-]);
 
 // Does a module take a `sourcePhaseId` (i.e. it consumes an earlier phase's
 // contributions), and is it required? Derived from the zod schema so it can't
 // drift from the actual modules.
 function sourceNeed(id: ModuleKind): { has: boolean; required: boolean } {
+  // Read-around stores its conditional link in `readaround.sourcePhaseId`.
+  if (id === "readaround") return { has: true, required: false };
   const mod = getServerModule(id);
-  const schema = mod?.schema as unknown as {
-    shape?: Record<string, { isOptional?: () => boolean }>;
-    _def?: { shape?: () => Record<string, { isOptional?: () => boolean }> };
-  };
-  const shape = schema?.shape ?? schema?._def?.shape?.();
+  let schema: any = mod?.schema;
+  for (let i = 0; i < 6 && schema?._def; i++) {
+    const inner = schema._def.innerType ?? schema._def.schema;
+    if (!inner) break;
+    schema = inner;
+  }
+  const rawShape = schema?.shape ?? schema?._def?.shape;
+  const shape = typeof rawShape === "function" ? rawShape() : rawShape;
   const f = shape?.sourcePhaseId;
   if (!f) return { has: false, required: false };
   const required = typeof f.isOptional === "function" ? !f.isOptional() : true;
@@ -57,7 +58,9 @@ function moduleCatalog(): string {
 }
 
 function templateCatalog(): string {
-  return TEMPLATES.map((t) => `- ${t.name} (${t.tag}): ${t.description}`).join("\n");
+  return TEMPLATES.map((t) => `- ${t.name} (${t.tag}): ${t.description}`).join(
+    "\n",
+  );
 }
 
 export interface SuggestedSession {
@@ -66,7 +69,7 @@ export interface SuggestedSession {
   phases: PhaseInstance[];
 }
 
-const PRODUCERS_LIST = Array.from(PRODUCERS).join(", ");
+const PRODUCERS_LIST = PRODUCES_ROOM_TEXT.join(", ");
 
 // Time budget → how many phases to aim for. Workshops run long when every idea
 // becomes its own phase; budget ~13 min/phase (setup + activity + debrief) and
@@ -106,7 +109,9 @@ function buildPhases(rawPhases: unknown[]): PhaseInstance[] {
     phases.push({
       id,
       moduleId,
-      config: parsed.success ? (cfg as Record<string, unknown>) : mod.defaultConfig,
+      config: parsed.success
+        ? (cfg as Record<string, unknown>)
+        : mod.defaultConfig,
     });
   }
   return phases;
@@ -119,16 +124,44 @@ function repairDependencies(phases: PhaseInstance[]): PhaseInstance[] {
   const repaired: PhaseInstance[] = [];
   for (const ph of phases) {
     const need = sourceNeed(ph.moduleId);
-    if (need.has) {
+    const nestedReadaround =
+      ph.moduleId === "readaround" &&
+      ph.config.readaround &&
+      typeof ph.config.readaround === "object"
+        ? ({
+            ...(ph.config.readaround as Record<string, unknown>),
+          } as Record<string, unknown>)
+        : null;
+    const readsSubmissions = nestedReadaround?.source === "submissions";
+    if (need.has && (ph.moduleId !== "readaround" || readsSubmissions)) {
       const cfg = { ...(ph.config as Record<string, unknown>) };
-      const cur = cfg.sourcePhaseId;
+      const cur = readsSubmissions
+        ? nestedReadaround?.sourcePhaseId
+        : cfg.sourcePhaseId;
       const refOk =
         typeof cur === "string" &&
-        repaired.some((p) => p.id === cur && PRODUCERS.has(p.moduleId));
+        repaired.some(
+          (p) =>
+            p.id === cur &&
+            producesRoomText(p.moduleId, p.config as Record<string, unknown>),
+        );
       if (!refOk) {
-        const src = [...repaired].reverse().find((p) => PRODUCERS.has(p.moduleId));
-        if (src) cfg.sourcePhaseId = src.id;
-        else if (need.required) continue;
+        const src = [...repaired]
+          .reverse()
+          .find((p) =>
+            producesRoomText(p.moduleId, p.config as Record<string, unknown>),
+          );
+        if (src) {
+          if (readsSubmissions && nestedReadaround) {
+            nestedReadaround.sourcePhaseId = src.id;
+            cfg.readaround = nestedReadaround;
+          } else cfg.sourcePhaseId = src.id;
+        } else if (readsSubmissions && nestedReadaround) {
+          // A read-around can still run from facilitator-curated patterns when
+          // no earlier writing activity exists; this is safer than a dead link.
+          cfg.readaround = { ...nestedReadaround, source: "patterns" };
+          delete (cfg.readaround as Record<string, unknown>).sourcePhaseId;
+        } else if (need.required) continue;
         else delete cfg.sourcePhaseId;
         ph.config = cfg;
       }
@@ -159,7 +192,11 @@ export function enforceArc(phases: PhaseInstance[]): PhaseInstance[] {
     if (i > 0) out.unshift(out.splice(i, 1)[0]);
     else {
       const mod = getServerModule("lobby");
-      out.unshift({ id: uniqueId("lobby"), moduleId: "lobby", config: mod?.defaultConfig ?? { label: "Lobby" } });
+      out.unshift({
+        id: uniqueId("lobby"),
+        moduleId: "lobby",
+        config: mod?.defaultConfig ?? { label: "Lobby" },
+      });
     }
   }
   // close last
@@ -168,7 +205,11 @@ export function enforceArc(phases: PhaseInstance[]): PhaseInstance[] {
     if (i >= 0 && i < out.length - 1) out.push(out.splice(i, 1)[0]);
     else {
       const mod = getServerModule("close");
-      out.push({ id: uniqueId("close"), moduleId: "close", config: mod?.defaultConfig ?? { label: "Close" } });
+      out.push({
+        id: uniqueId("close"),
+        moduleId: "close",
+        config: mod?.defaultConfig ?? { label: "Close" },
+      });
     }
   }
   return out;
@@ -231,12 +272,17 @@ Return JSON only, in this shape:
   const phases = enforceArc(
     repairDependencies(buildPhases(Array.isArray(d.phases) ? d.phases : [])),
   );
-  if (phases.length === 0) return { ok: false, reason: "No usable phases suggested." };
+  if (phases.length === 0)
+    return { ok: false, reason: "No usable phases suggested." };
   return {
     ok: true,
     suggestion: {
-      sessionName: typeof d.sessionName === "string" ? d.sessionName.slice(0, 80) : "Suggested session",
-      rationale: typeof d.rationale === "string" ? d.rationale.slice(0, 600) : "",
+      sessionName:
+        typeof d.sessionName === "string"
+          ? d.sessionName.slice(0, 80)
+          : "Suggested session",
+      rationale:
+        typeof d.rationale === "string" ? d.rationale.slice(0, 600) : "",
       phases,
     },
   };
@@ -254,7 +300,10 @@ export async function reviseSession(
 ): Promise<{ ok: boolean; suggestion?: SuggestedSession; reason?: string }> {
   const tg = timeGuidance(minutes);
   const outline = current
-    .map((p, i) => `${i + 1}. {"id":"${p.id}","moduleId":"${p.moduleId}","config":${JSON.stringify(p.config)}}`)
+    .map(
+      (p, i) =>
+        `${i + 1}. {"id":"${p.id}","moduleId":"${p.moduleId}","config":${JSON.stringify(p.config)}}`,
+    )
     .join("\n");
   const res = await generateJSON<{
     sessionName?: unknown;
@@ -296,12 +345,17 @@ Return JSON only, in this shape:
   const phases = enforceArc(
     repairDependencies(buildPhases(Array.isArray(d.phases) ? d.phases : [])),
   );
-  if (phases.length === 0) return { ok: false, reason: "Couldn't revise the session." };
+  if (phases.length === 0)
+    return { ok: false, reason: "Couldn't revise the session." };
   return {
     ok: true,
     suggestion: {
-      sessionName: typeof d.sessionName === "string" ? d.sessionName.slice(0, 80) : "Revised session",
-      rationale: typeof d.rationale === "string" ? d.rationale.slice(0, 600) : "",
+      sessionName:
+        typeof d.sessionName === "string"
+          ? d.sessionName.slice(0, 80)
+          : "Revised session",
+      rationale:
+        typeof d.rationale === "string" ? d.rationale.slice(0, 600) : "",
       phases,
     },
   };
@@ -319,7 +373,10 @@ export async function critiqueSession(
   topic: string,
 ): Promise<{ ok: boolean; critique?: DesignCritique; reason?: string }> {
   const outline = phases
-    .map((p, i) => `${i + 1}. [${p.moduleId}] ${(p.config?.label as string) ?? p.id} (id: ${p.id})`)
+    .map(
+      (p, i) =>
+        `${i + 1}. [${p.moduleId}] ${(p.config?.label as string) ?? p.id} (id: ${p.id})`,
+    )
     .join("\n");
   const res = await generateJSON<{ strengths?: unknown; issues?: unknown }>({
     label: "critique-session",
@@ -343,9 +400,17 @@ Return JSON only:
   });
   if (!res.ok || !res.data) return { ok: false, reason: res.reason };
   const strList = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((s) => s.slice(0, 300)).slice(0, 10) : [];
+    Array.isArray(v)
+      ? v
+          .filter((x): x is string => typeof x === "string")
+          .map((s) => s.slice(0, 300))
+          .slice(0, 10)
+      : [];
   return {
     ok: true,
-    critique: { strengths: strList(res.data.strengths), issues: strList(res.data.issues) },
+    critique: {
+      strengths: strList(res.data.strengths),
+      issues: strList(res.data.issues),
+    },
   };
 }

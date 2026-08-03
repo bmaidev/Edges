@@ -17,7 +17,10 @@ const BASE: Omit<PreflightInput, "phases"> = {
   aiConfigured: true,
   blobConfigured: true,
 };
-function run(phases: PreflightInput["phases"], over: Partial<PreflightInput> = {}) {
+function run(
+  phases: PreflightInput["phases"],
+  over: Partial<PreflightInput> = {},
+) {
   return computeReadiness({ ...BASE, phases, ...over });
 }
 const capture = (id: string, prompt = "Go") => ({
@@ -33,10 +36,10 @@ describe("computeReadiness", () => {
     expect(r.checks.some((c) => c.severity === "blocker")).toBe(false);
   });
 
-  it("empty required prompt → blocker (zod alone would pass it)", () => {
-    // zod passes an empty string prompt...
-    expect(validatePhaseConfig("capture", { label: "x", prompt: "" }).ok).toBe(true);
-    // ...but pre-flight catches the blank.
+  it("empty required prompt → schema and readiness both reject it", () => {
+    expect(validatePhaseConfig("capture", { label: "x", prompt: "" }).ok).toBe(
+      false,
+    );
     const r = run([capture("p1", "   ")]);
     const b = r.checks.find((c) => c.id === "empty:p1");
     expect(b?.severity).toBe("blocker");
@@ -56,15 +59,81 @@ describe("computeReadiness", () => {
     ).toBe("blocker");
     // source comes AFTER the consumer
     const later = run([mk("r1", "p2"), capture("p2")]);
-    expect(later.checks.find((c) => c.id === "dep:r1")?.severity).toBe("blocker");
+    expect(later.checks.find((c) => c.id === "dep:r1")?.severity).toBe(
+      "blocker",
+    );
     // correctly wired (source earlier) → no dep blocker
     const ok = run([capture("p1"), mk("r2", "p1")]);
     expect(ok.checks.find((c) => c.id === "dep:r2")).toBeUndefined();
   });
 
+  it("rejects a source that exists but does not produce reusable text", () => {
+    const phases: PreflightInput["phases"] = [
+      {
+        id: "vote",
+        moduleId: "poll",
+        config: { label: "Vote", question: "Choose", options: ["A", "B"] },
+      },
+      {
+        id: "market",
+        moduleId: "marketplace",
+        config: {
+          label: "Market",
+          prompt: "Invest",
+          sourcePhaseId: "vote",
+          budget: 10,
+          currencyLabel: "credits",
+        },
+      },
+    ];
+    expect(run(phases).checks.find((c) => c.id === "dep:market")).toMatchObject(
+      { severity: "blocker" },
+    );
+  });
+
+  it("validates optional and nested source links whenever they are configured", () => {
+    const optionalMissing = run([
+      capture("ideas"),
+      {
+        id: "syn",
+        moduleId: "synthesis",
+        config: { label: "Synthesis", sourcePhaseId: "deleted" },
+      },
+    ]);
+    expect(
+      optionalMissing.checks.find((check) => check.id === "dep:syn")?.severity,
+    ).toBe("blocker");
+
+    const nestedMissing = run([
+      {
+        id: "read",
+        moduleId: "readaround",
+        config: {
+          label: "Read",
+          readaround: { source: "submissions", sourcePhaseId: "deleted" },
+        },
+      },
+    ]);
+    expect(
+      nestedMissing.checks.find((check) => check.id === "dep:read")?.severity,
+    ).toBe("blocker");
+
+    const optionalAll = run([
+      capture("ideas"),
+      { id: "syn", moduleId: "synthesis", config: { label: "Synthesis" } },
+    ]);
+    expect(
+      optionalAll.checks.find((check) => check.id === "dep:syn"),
+    ).toBeUndefined();
+  });
+
   it("AI phase without a key → warning, never blocker", () => {
     const phases = [
-      { id: "s1", moduleId: "synthesis" as ModuleKind, config: { label: "Synth" } },
+      {
+        id: "s1",
+        moduleId: "synthesis" as ModuleKind,
+        config: { label: "Synth" },
+      },
     ];
     const r = run(phases, { aiConfigured: false });
     const ai = r.checks.find((c) => c.id === "ai:s1");
@@ -77,10 +146,22 @@ describe("computeReadiness", () => {
   });
 
   it("storage: blocker in prod, info in dev (never cries wolf locally)", () => {
-    expect(run([capture("p1")], { kvConfigured: false, isProd: true }).checks.find((c) => c.id === "kv")?.severity).toBe("blocker");
-    expect(run([capture("p1")], { kvConfigured: false, isProd: false }).checks.find((c) => c.id === "kv")?.severity).toBe("info");
+    expect(
+      run([capture("p1")], { kvConfigured: false, isProd: true }).checks.find(
+        (c) => c.id === "kv",
+      )?.severity,
+    ).toBe("blocker");
+    expect(
+      run([capture("p1")], { kvConfigured: false, isProd: false }).checks.find(
+        (c) => c.id === "kv",
+      )?.severity,
+    ).toBe("info");
     // configured → no kv check at all
-    expect(run([capture("p1")], { kvConfigured: true }).checks.find((c) => c.id === "kv")).toBeUndefined();
+    expect(
+      run([capture("p1")], { kvConfigured: true }).checks.find(
+        (c) => c.id === "kv",
+      ),
+    ).toBeUndefined();
   });
 
   it("always reports the joined count as info", () => {
@@ -122,7 +203,9 @@ describe("usesAi guard (regression: AI defs must declare it)", () => {
       "synthesis",
     ];
     for (const id of AI_DEFS) {
-      expect(SERVER_MODULES[id]?.capabilities.usesAi, `${id} usesAi`).toBe(true);
+      expect(SERVER_MODULES[id]?.capabilities.usesAi, `${id} usesAi`).toBe(
+        true,
+      );
     }
   });
 

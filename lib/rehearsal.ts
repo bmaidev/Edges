@@ -14,7 +14,10 @@ import {
   purgeRoom,
   setPhases,
 } from "./store";
-import { getServerModule } from "./modules/registry.server";
+import {
+  effectiveGatherSource,
+  getServerModule,
+} from "./modules/registry.server";
 import type { PhaseInstance } from "./types";
 
 const TAG = "::rehearsal:";
@@ -27,7 +30,20 @@ export function isRehearsalRoom(id: string): boolean {
   return id.includes(TAG);
 }
 
-const CAST = ["Ada", "Bo", "Cy", "Dev", "Eli", "Fae", "Gus", "Hana", "Ivo", "Jo", "Kit", "Lun"];
+const CAST = [
+  "Ada",
+  "Bo",
+  "Cy",
+  "Dev",
+  "Eli",
+  "Fae",
+  "Gus",
+  "Hana",
+  "Ivo",
+  "Jo",
+  "Kit",
+  "Lun",
+];
 const GENERIC_SAMPLES = [
   "A bold idea worth testing.",
   "What if we flipped the model entirely?",
@@ -59,7 +75,16 @@ export function sampleTextsForTopic(topic: string): string[] {
 export const MIN_CAST = 4;
 export const MAX_CAST = 12;
 
-const WORDS = ["clarity", "focus", "trust", "momentum", "energy", "calm", "speed", "care"];
+const WORDS = [
+  "clarity",
+  "focus",
+  "trust",
+  "momentum",
+  "energy",
+  "calm",
+  "speed",
+  "care",
+];
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
@@ -89,21 +114,43 @@ const CANNED_AI: Record<string, () => Record<string, unknown>> = {
   }),
   devil: () => ({
     objections: [
-      { title: "Who actually owns this?", body: "With no single accountable person, the plan stalls at the first resistance." },
-      { title: "What if adoption is only partial?", body: "A half-adopted change can be worse than today." },
+      {
+        title: "Who actually owns this?",
+        body: "With no single accountable person, the plan stalls at the first resistance.",
+      },
+      {
+        title: "What if adoption is only partial?",
+        body: "A half-adopted change can be worse than today.",
+      },
     ],
   }),
   friction: () => ({
     tensions: [
-      { axis: "Speed vs. rigor", tension: "The room wants to move fast but fears shipping something half-baked.", poleA: "Ship and learn", poleB: "Get it right first", intensity: 4 },
+      {
+        axis: "Speed vs. rigor",
+        tension:
+          "The room wants to move fast but fears shipping something half-baked.",
+        poleA: "Ship and learn",
+        poleB: "Get it right first",
+        intensity: 4,
+      },
     ],
   }),
 };
 
-async function seedAiResult(shadowId: string, phase: PhaseInstance, inputCount: number): Promise<void> {
+async function seedAiResult(
+  shadowId: string,
+  phase: PhaseInstance,
+  inputCount: number,
+): Promise<void> {
   const make = CANNED_AI[phase.moduleId];
   if (!make) return;
-  await castVote(phase.id, "__ai__", { ...make(), generatedAt: 0, inputCount }, shadowId);
+  await castVote(
+    phase.id,
+    "__ai__",
+    { ...make(), generatedAt: 0, inputCount },
+    shadowId,
+  );
 }
 
 // B5 — per-module response seeding: cast plausible, DETERMINISTIC votes (keyed by
@@ -116,14 +163,17 @@ async function seedVotePhase(
   voters: string[],
 ): Promise<void> {
   const c = phase.config as Record<string, unknown>;
-  const cast = (token: string, value: unknown) => castVote(phase.id, token, value, shadowId);
+  const cast = (token: string, value: unknown) =>
+    castVote(phase.id, token, value, shadowId);
   switch (phase.moduleId) {
     case "poll": {
       const opts = strArr(c.options);
       if (!opts.length) return;
       const multi = Boolean(c.multi);
       await Promise.all(
-        voters.map((t, i) => cast(t, multi ? [opts[i % opts.length]] : opts[i % opts.length])),
+        voters.map((t, i) =>
+          cast(t, multi ? [opts[i % opts.length]] : opts[i % opts.length]),
+        ),
       );
       break;
     }
@@ -132,14 +182,18 @@ async function seedVotePhase(
       const dots = typeof c.dots === "number" ? c.dots : 3;
       if (!opts.length) return;
       await Promise.all(
-        voters.map((t, i) => cast(t, { [opts[i % opts.length]]: Math.min(dots, 1 + (i % dots)) })),
+        voters.map((t, i) =>
+          cast(t, { [opts[i % opts.length]]: Math.min(dots, 1 + (i % dots)) }),
+        ),
       );
       break;
     }
     case "rank": {
       const items = strArr(c.items);
       if (items.length < 2) return;
-      await Promise.all(voters.map((t, i) => cast(t, i % 2 ? [...items].reverse() : items)));
+      await Promise.all(
+        voters.map((t, i) => cast(t, i % 2 ? [...items].reverse() : items)),
+      );
       break;
     }
     case "scale": {
@@ -148,18 +202,35 @@ async function seedVotePhase(
       const min = typeof c.min === "number" ? c.min : 1;
       if (!statements.length) return;
       await Promise.all(
-        voters.map((t, i) => cast(t, statements.map((_, j) => min + ((i + j) % Math.max(1, max - min + 1))))),
+        voters.map((t, i) =>
+          cast(
+            t,
+            statements.map(
+              (_, j) => min + ((i + j) % Math.max(1, max - min + 1)),
+            ),
+          ),
+        ),
       );
       break;
     }
     case "matrix": {
       await Promise.all(
-        voters.map((t, i) => cast(t, { text: GENERIC_SAMPLES[i % GENERIC_SAMPLES.length].slice(0, 30), x: (i * 2) % 10, y: (i * 3) % 10 })),
+        voters.map((t, i) =>
+          cast(t, {
+            text: GENERIC_SAMPLES[i % GENERIC_SAMPLES.length].slice(0, 30),
+            x: (i * 2) % 10,
+            y: (i * 3) % 10,
+          }),
+        ),
       );
       break;
     }
     case "wordcloud": {
-      await Promise.all(voters.map((t, i) => addWord(phase.id, t, WORDS[i % WORDS.length], shadowId)));
+      await Promise.all(
+        voters.map((t, i) =>
+          addWord(phase.id, t, WORDS[i % WORDS.length], shadowId),
+        ),
+      );
       break;
     }
   }
@@ -198,12 +269,20 @@ export async function seedRehearsal(
   const voters = tokens.slice(0, Math.max(1, Math.round(n * 0.75)));
   for (const p of phases) {
     const mod = getServerModule(p.moduleId);
-    if (mod?.capabilities.gatherSource === "submissions") {
+    const gatherSource = effectiveGatherSource(p.moduleId, p.config);
+    if (gatherSource === "submissions") {
       const count = Math.min(6, n);
       for (let i = 0; i < count; i++) {
-        await addSubmission(handles[i], samples[i % samples.length], p.id, null, tokens[i], shadowId);
+        await addSubmission(
+          handles[i],
+          samples[i % samples.length],
+          p.id,
+          null,
+          tokens[i],
+          shadowId,
+        );
       }
-    } else if (mod?.capabilities.gatherSource === "votes") {
+    } else if (gatherSource === "votes") {
       await seedVotePhase(shadowId, p, voters);
     }
     // Canned AI result for the synthesis modules (so the dry-run shows the output).

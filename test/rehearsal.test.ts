@@ -25,8 +25,16 @@ import type { PhaseInstance } from "@/lib/types";
 // the room-facing surfaces.
 
 const PHASES: PhaseInstance[] = [
-  { id: "p1", moduleId: "capture", config: { label: "Brainstorm", prompt: "Go" } },
-  { id: "p2", moduleId: "worldcafe", config: { label: "Café", prompt: "?", tables: 2 } },
+  {
+    id: "p1",
+    moduleId: "capture",
+    config: { label: "Brainstorm", prompt: "Go" },
+  },
+  {
+    id: "p2",
+    moduleId: "worldcafe",
+    config: { label: "Café", prompt: "?", tables: 2 },
+  },
 ];
 
 describe("shadow room identity", () => {
@@ -43,7 +51,14 @@ describe("isolation — the live room is never touched", () => {
     // a real live session with a real participant + submission
     await setPhases(PHASES, "Real session", room.slug);
     await addParticipant("realtok", "RealPerson", room.slug);
-    await addSubmission("RealPerson", "a real idea", "p1", null, "realtok", room.slug);
+    await addSubmission(
+      "RealPerson",
+      "a real idea",
+      "p1",
+      null,
+      "realtok",
+      room.slug,
+    );
     const liveBefore = await getState(room.slug);
     const partsBefore = await listParticipants(room.slug);
     const subsBefore = await listSubmissions(room.slug);
@@ -69,10 +84,13 @@ describe("seeding — the shadow is populated", () => {
     expect(tokens.length).toBe(8);
     expect((await listParticipants(shadow)).length).toBe(8);
     // capture phase (submissions-gather) is populated
-    expect((await listSubmissions(shadow)).filter((s) => s.phaseId === "p1").length).toBeGreaterThan(0);
+    expect(
+      (await listSubmissions(shadow)).filter((s) => s.phaseId === "p1").length,
+    ).toBeGreaterThan(0);
     // the world-café projector view forms real tables from the roster
     await setPhase("p2", shadow);
-    const proj = (await getPublicState(null, shadow, "projector")).view?.data as { tables: unknown[] };
+    const proj = (await getPublicState(null, shadow, "projector")).view
+      ?.data as { tables: unknown[] };
     expect(Array.isArray(proj.tables)).toBe(true);
     expect(proj.tables.length).toBeGreaterThan(0);
   });
@@ -105,17 +123,24 @@ describe("B5 — vote-phase response seeding", () => {
     const shadow = shadowRoomId("seed-poll", "n1");
     await tearDownRehearsal(shadow);
     const phases: PhaseInstance[] = [
-      { id: "v", moduleId: "poll", config: { label: "P", question: "Pick", options: ["A", "B", "C"] } },
+      {
+        id: "v",
+        moduleId: "poll",
+        config: { label: "P", question: "Pick", options: ["A", "B", "C"] },
+      },
     ];
     const { tokens } = await seedRehearsal(shadow, phases, 8);
     await setPhase("v", shadow);
-    const view = (await getPublicState(null, shadow, "projector")).view?.data as {
+    const view = (await getPublicState(null, shadow, "projector")).view
+      ?.data as {
       counts: Record<string, number>;
       total: number;
     };
     expect(Object.keys(view.counts)).toEqual(["A", "B", "C"]); // config-true
     expect(view.total).toBeGreaterThan(0); // populated, not blank
-    expect(Object.values(view.counts).reduce((s, n) => s + n, 0)).toBe(view.total);
+    expect(Object.values(view.counts).reduce((s, n) => s + n, 0)).toBe(
+      view.total,
+    );
     await tearDownRehearsal(shadow);
   });
 
@@ -123,11 +148,16 @@ describe("B5 — vote-phase response seeding", () => {
     const shadow = shadowRoomId("seed-scale", "n2");
     await tearDownRehearsal(shadow);
     const phases: PhaseInstance[] = [
-      { id: "s", moduleId: "scale", config: { label: "S", statements: ["A", "B"], min: 1, max: 5 } },
+      {
+        id: "s",
+        moduleId: "scale",
+        config: { label: "S", statements: ["A", "B"], min: 1, max: 5 },
+      },
     ];
     await seedRehearsal(shadow, phases, 8);
     await setPhase("s", shadow);
-    const view = (await getPublicState(null, shadow, "projector")).view?.data as {
+    const view = (await getPublicState(null, shadow, "projector")).view
+      ?.data as {
       stats: { mean: number; count: number }[];
     };
     expect(view.stats).toHaveLength(2);
@@ -188,8 +218,16 @@ describe("B5 — canned AI for the dry-run", () => {
   // The AI modules only READ their cached result when AI is configured (the case
   // where canned-AI's value is skipping the slow/costly REAL generation).
   const SYN: PhaseInstance[] = [
-    { id: "ideas", moduleId: "capture", config: { label: "Ideas", prompt: "Go" } },
-    { id: "syn", moduleId: "synthesis", config: { label: "Synthesis", sourcePhaseId: "ideas" } },
+    {
+      id: "ideas",
+      moduleId: "capture",
+      config: { label: "Ideas", prompt: "Go" },
+    },
+    {
+      id: "syn",
+      moduleId: "synthesis",
+      config: { label: "Synthesis", sourcePhaseId: "ideas" },
+    },
   ];
   async function withAiKey<T>(fn: () => Promise<T>): Promise<T> {
     const prev = process.env.ANTHROPIC_API_KEY;
@@ -202,13 +240,14 @@ describe("B5 — canned AI for the dry-run", () => {
     }
   }
 
-  it("a rehearsed synthesis previews a canned result by default (no real AI call)", async () => {
+  it("a rehearsed synthesis gives the facilitator a private canned preview by default", async () => {
     await withAiKey(async () => {
       const shadow = shadowRoomId("ai-canned", "n6");
       await tearDownRehearsal(shadow);
       await seedRehearsal(shadow, SYN, 8); // cannedAi defaults on
       await setPhase("syn", shadow);
-      const view = (await getPublicState(null, shadow, "projector")).view?.data as {
+      const view = (await getPublicState(null, shadow, "facilitator")).view
+        ?.data as {
         hasResult: boolean;
         bullets?: string[];
       };
@@ -224,7 +263,8 @@ describe("B5 — canned AI for the dry-run", () => {
       await tearDownRehearsal(shadow);
       await seedRehearsal(shadow, SYN, 8, { cannedAi: false });
       await setPhase("syn", shadow);
-      const view = (await getPublicState(null, shadow, "projector")).view?.data as { hasResult: boolean };
+      const view = (await getPublicState(null, shadow, "projector")).view
+        ?.data as { hasResult: boolean };
       expect(view.hasResult).toBe(false);
       await tearDownRehearsal(shadow);
     });
@@ -253,7 +293,13 @@ describe("B5 — auto punch-list (readiness over the shadow session)", () => {
     await tearDownRehearsal(shadow);
     await seedRehearsal(
       shadow,
-      [{ id: "c", moduleId: "capture", config: { label: "C", prompt: "What stands out?" } }],
+      [
+        {
+          id: "c",
+          moduleId: "capture",
+          config: { label: "C", prompt: "What stands out?" },
+        },
+      ],
       6,
     );
     const fs = await getFacilitatorState(shadow);

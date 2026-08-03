@@ -48,8 +48,10 @@ const LightningParticipant: Renderer = ({ view, act }) => {
   return (
     <div className="flex flex-1 flex-col gap-5 p-6">
       {v.iAmCurrent ? (
-        <div className="animate-fadeInUp flex flex-col items-center gap-3 rounded-2xl border border-accent bg-accent/10 p-6 text-center">
-          <p className="text-sm uppercase tracking-wide text-accent">You&apos;re up</p>
+        <div className="flex animate-fadeInUp flex-col items-center gap-3 rounded-2xl border border-accent bg-accent/10 p-6 text-center">
+          <p className="text-sm uppercase tracking-wide text-accent">
+            You&apos;re up
+          </p>
           <p className="text-2xl font-semibold">Go — you have the floor.</p>
           <Countdown
             endsAt={endsAt(v)}
@@ -71,7 +73,9 @@ const LightningParticipant: Renderer = ({ view, act }) => {
       {/* Now / Next strip */}
       <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs uppercase tracking-wide text-muted">Now</span>
+          <span className="text-xs uppercase tracking-wide text-muted">
+            Now
+          </span>
           <span className="flex-1 truncate text-right text-base font-medium">
             {v.current ? v.current.handle : "—"}
             {v.current?.topic ? (
@@ -80,7 +84,9 @@ const LightningParticipant: Renderer = ({ view, act }) => {
           </span>
         </div>
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs uppercase tracking-wide text-muted">Next</span>
+          <span className="text-xs uppercase tracking-wide text-muted">
+            Next
+          </span>
           <span className="flex-1 truncate text-right text-sm text-white/85">
             {v.next ? v.next.handle : "—"}
           </span>
@@ -118,7 +124,11 @@ const LightningParticipant: Renderer = ({ view, act }) => {
           </div>
         ))}
 
-      <StatusLine status={status} sentLabel="Updated." onRetry={inQueue ? leave : join} />
+      <StatusLine
+        status={status}
+        sentLabel="Updated."
+        onRetry={inQueue ? leave : join}
+      />
 
       {/* Full queue */}
       {v.queue.length > 0 && (
@@ -131,7 +141,9 @@ const LightningParticipant: Renderer = ({ view, act }) => {
               <li
                 key={`${q.handle}-${i}`}
                 className={`flex items-baseline gap-2 rounded-lg px-3 py-2 text-sm ${
-                  i === 0 ? "bg-accent/10 text-accent" : "bg-surface text-white/85"
+                  i === 0
+                    ? "bg-accent/10 text-accent"
+                    : "bg-surface text-white/85"
                 }`}
               >
                 <span className="w-5 text-right tabular-nums text-muted">
@@ -139,7 +151,9 @@ const LightningParticipant: Renderer = ({ view, act }) => {
                 </span>
                 <span className="flex-1 truncate">
                   {q.handle}
-                  {q.topic ? <span className="text-muted"> · {q.topic}</span> : null}
+                  {q.topic ? (
+                    <span className="text-muted"> · {q.topic}</span>
+                  ) : null}
                 </span>
               </li>
             ))}
@@ -161,7 +175,9 @@ const LightningProjector: Renderer = ({ view }) => {
           <p className="text-2xl uppercase tracking-wide text-muted">Now</p>
           {v.current ? (
             <>
-              <p className="mt-2 truncate text-6xl font-bold">{v.current.handle}</p>
+              <p className="mt-2 truncate text-6xl font-bold">
+                {v.current.handle}
+              </p>
               {v.current.topic && (
                 <p className="mt-3 truncate text-3xl text-white/80">
                   {v.current.topic}
@@ -184,7 +200,9 @@ const LightningProjector: Renderer = ({ view }) => {
       </div>
 
       <div className="flex items-baseline gap-4 border-t border-border pt-6">
-        <span className="text-2xl uppercase tracking-wide text-muted">Next</span>
+        <span className="text-2xl uppercase tracking-wide text-muted">
+          Next
+        </span>
         <span className="truncate text-4xl font-semibold">
           {v.next ? v.next.handle : "—"}
         </span>
@@ -225,14 +243,17 @@ const LightningFacilitator: Renderer = ({ view, act }) => {
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-semibold">Run the queue</h2>
         <p className="text-sm text-muted">
-          {fmtBudget(v.secondsPerSpeaker)} per speaker. Advance when they&apos;re done.
+          {fmtBudget(v.secondsPerSpeaker)} per speaker. Advance when
+          they&apos;re done.
         </p>
       </div>
 
       {/* Now / Next strip */}
       <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs uppercase tracking-wide text-muted">Now</span>
+          <span className="text-xs uppercase tracking-wide text-muted">
+            Now
+          </span>
           <span className="flex-1 truncate text-right text-base font-medium">
             {v.current ? v.current.handle : "—"}
             {v.current?.topic ? (
@@ -241,7 +262,9 @@ const LightningFacilitator: Renderer = ({ view, act }) => {
           </span>
         </div>
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs uppercase tracking-wide text-muted">Next</span>
+          <span className="text-xs uppercase tracking-wide text-muted">
+            Next
+          </span>
           <span className="flex-1 truncate text-right text-sm text-white/85">
             {v.next ? v.next.handle : "—"}
           </span>
@@ -249,10 +272,10 @@ const LightningFacilitator: Renderer = ({ view, act }) => {
       </div>
 
       <Button className="w-full" onClick={next} disabled={!v.current}>
-        Next speaker →
+        {v.startedAt ? "Next speaker →" : "Start first speaker"}
       </Button>
 
-      <StatusLine status={status} sentLabel="Advanced." onRetry={next} />
+      <StatusLine status={status} sentLabel="Queue updated." onRetry={next} />
 
       <p className="text-center text-sm text-muted">
         {remaining === 0

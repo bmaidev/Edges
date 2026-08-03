@@ -66,4 +66,21 @@ describe("worldcafe nextRound — lock collapses the double-tap race", () => {
     expect(res.reason).toBe("forbidden");
     expect(await currentRound(roomId)).toBe(0);
   });
+
+  it("stops after every table has been visited", async () => {
+    const roomId = await setup();
+    expect(
+      (await dispatchAction(roomId, { type: "nextRound" }, "facilitator")).ok,
+    ).toBe(true);
+    const extra = await dispatchAction(
+      roomId,
+      { type: "nextRound" },
+      "facilitator",
+    );
+    expect(extra).toMatchObject({
+      ok: false,
+      reason: "Every table has been visited.",
+    });
+    expect(await currentRound(roomId)).toBe(1);
+  });
 });

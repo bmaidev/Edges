@@ -26,11 +26,7 @@ import {
   oneTwoFourSize,
   sortedTokens,
 } from "../groups";
-import type {
-  ModuleServerDef,
-  Role,
-  Visibility,
-} from "../types";
+import type { ModuleServerDef, Role, Visibility } from "../types";
 
 // ---- shared helper (replicated from registry.server.ts) -------------------
 
@@ -133,7 +129,9 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
     captureShared: true,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
+    gatherWhen: (config) => config.captureShared !== false,
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,
@@ -142,7 +140,11 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
   async onEnter(ctx) {
     // Snapshot the roster at stage 0 so the pair/foursome nesting is computed
     // from a fixed set — a join mid-progression can't reshuffle the fours.
-    await freezeCohort(ctx.store, ctx.phase.id, ctx.participants.map((p) => p.token));
+    await freezeCohort(
+      ctx.store,
+      ctx.phase.id,
+      ctx.participants.map((p) => p.token),
+    );
   },
   async computeView(ctx) {
     const prompt = (ctx.config.prompt as string) ?? "";
@@ -221,11 +223,7 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
     }
 
     // ---- facilitator / projector ----
-    const groupCount = wholeRoom
-      ? live.length > 0
-        ? 1
-        : 0
-      : groups.length;
+    const groupCount = wholeRoom ? (live.length > 0 ? 1 : 0) : groups.length;
 
     if (ctx.role === "projector") {
       const view: OneTwoFourProjectorView = {
@@ -257,12 +255,17 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
     // Facilitator-only stage control.
     if (action.type === "nextRound") {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
-      const res = await ctx.store.withLock(`round:${ctx.phase.id}`, async () => {
-        const votes = await ctx.store.readVotes(ctx.phase.id);
-        const next = Math.min(3, readRound(votes) + 1); // cap at 3 (Whole group)
-        await ctx.store.castVote(ctx.phase.id, "__round__", next);
-      });
-      return res.ok ? { ok: true } : { ok: false, reason: "Advancing — one moment." };
+      const res = await ctx.store.withLock(
+        `round:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          const next = Math.min(3, readRound(votes) + 1); // cap at 3 (Whole group)
+          await ctx.store.castVote(ctx.phase.id, "__round__", next);
+        },
+      );
+      return res.ok
+        ? { ok: true }
+        : { ok: false, reason: "Advancing — one moment." };
     }
 
     if (action.type === "share") {
@@ -276,11 +279,21 @@ export const onetwofourModule: ModuleServerDef<OneTwoFourConfig> = {
 
       const votes = await ctx.store.readVotes(ctx.phase.id);
       const round = readRound(votes);
+      const tag = `r${round}`;
+      if (
+        ctx.submissions.some(
+          (submission) =>
+            submission.phaseId === ctx.phase.id &&
+            submission.tag === tag &&
+            submission.token === me.token,
+        )
+      )
+        return { ok: false, reason: "already submitted" };
       await ctx.store.addSubmission(
         me.handle,
         text,
         ctx.phase.id,
-        `r${round}`,
+        tag,
         action.token,
       );
       return { ok: true };

@@ -115,7 +115,8 @@ export const lightningModule: ModuleServerDef<LightningConfig> = {
     topicPrompt: "What will you show? (optional)",
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes",
+  capabilities: {
+    gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,
@@ -137,7 +138,9 @@ export const lightningModule: ModuleServerDef<LightningConfig> = {
     const doneRaw = votes[SYNTH_DONE];
     const done = new Set(
       Array.isArray(doneRaw)
-        ? (doneRaw as unknown[]).filter((x): x is string => typeof x === "string")
+        ? (doneRaw as unknown[]).filter(
+            (x): x is string => typeof x === "string",
+          )
         : [],
     );
     const startedRaw = votes[SYNTH_STARTED];
@@ -163,7 +166,8 @@ export const lightningModule: ModuleServerDef<LightningConfig> = {
         if (ka !== kb) return ka - kb;
         return a.token < b.token ? -1 : 1;
       }
-      if (a.rec.joinedAt !== b.rec.joinedAt) return a.rec.joinedAt - b.rec.joinedAt;
+      if (a.rec.joinedAt !== b.rec.joinedAt)
+        return a.rec.joinedAt - b.rec.joinedAt;
       return a.token < b.token ? -1 : 1;
     });
 
@@ -213,8 +217,7 @@ export const lightningModule: ModuleServerDef<LightningConfig> = {
           : undefined;
       // Preserve original joinedAt if they're re-joining after a leave.
       const prev = readRecord(votes[action.token]);
-      const joinedAt =
-        prev && prev.joinedAt > 0 ? prev.joinedAt : Date.now();
+      const joinedAt = prev && prev.joinedAt > 0 ? prev.joinedAt : Date.now();
       const record: QueueRecord = { inQueue: true, joinedAt, topic };
       await ctx.store.castVote(ctx.phase.id, action.token, record);
       return { ok: true };
@@ -236,44 +239,67 @@ export const lightningModule: ModuleServerDef<LightningConfig> = {
       // Accountable advance: facilitators/cohosts/admins only.
       if (ctx.role === "participant")
         return { ok: false, reason: "not allowed" };
+      const result = await ctx.store.withLock(
+        `lightning:${ctx.phase.id}`,
+        async () => {
+          // Re-read under the lock so simultaneous lead/cohost taps cannot skip
+          // two speakers or leave the timer attached to the wrong person.
+          const liveVotes = await ctx.store.readVotes(ctx.phase.id);
+          const doneRaw = liveVotes[SYNTH_DONE];
+          const done = Array.isArray(doneRaw)
+            ? (doneRaw as unknown[]).filter(
+                (x): x is string => typeof x === "string",
+              )
+            : [];
+          const doneSet = new Set(done);
+          const queueMode =
+            (ctx.config as Record<string, unknown>).queueMode === "random"
+              ? "random"
+              : "signup";
 
-      // Recompute the current speaker the same way computeView orders the queue.
-      const doneRaw = votes[SYNTH_DONE];
-      const done = Array.isArray(doneRaw)
-        ? (doneRaw as unknown[]).filter(
-            (x): x is string => typeof x === "string",
-          )
-        : [];
-      const doneSet = new Set(done);
-      const queueMode =
-        (ctx.config as Record<string, unknown>).queueMode === "random"
-          ? "random"
-          : "signup";
+          const entries: { token: string; rec: QueueRecord }[] = [];
+          for (const [token, value] of Object.entries(liveVotes)) {
+            if (token === SYNTH_DONE || token === SYNTH_STARTED) continue;
+            const rec = readRecord(value);
+            if (!rec || !rec.inQueue || doneSet.has(token)) continue;
+            entries.push({ token, rec });
+          }
+          entries.sort((a, b) => {
+            if (queueMode === "random") {
+              const ka = shuffleKey(a.token);
+              const kb = shuffleKey(b.token);
+              if (ka !== kb) return ka - kb;
+              return a.token < b.token ? -1 : 1;
+            }
+            if (a.rec.joinedAt !== b.rec.joinedAt)
+              return a.rec.joinedAt - b.rec.joinedAt;
+            return a.token < b.token ? -1 : 1;
+          });
 
-      const entries: { token: string; rec: QueueRecord }[] = [];
-      for (const [token, value] of Object.entries(votes)) {
-        if (token === SYNTH_DONE || token === SYNTH_STARTED) continue;
-        const rec = readRecord(value);
-        if (!rec || !rec.inQueue || doneSet.has(token)) continue;
-        entries.push({ token, rec });
-      }
-      entries.sort((a, b) => {
-        if (queueMode === "random") {
-          const ka = shuffleKey(a.token);
-          const kb = shuffleKey(b.token);
-          if (ka !== kb) return ka - kb;
-          return a.token < b.token ? -1 : 1;
-        }
-        if (a.rec.joinedAt !== b.rec.joinedAt)
-          return a.rec.joinedAt - b.rec.joinedAt;
-        return a.token < b.token ? -1 : 1;
-      });
+          const current = entries[0];
+          if (!current) return false;
+          const started = liveVotes[SYNTH_STARTED];
+          if (typeof started !== "number") {
+            // The first tap starts the first speaker; it must not immediately
+            // mark them done and move the queue past them.
+            await ctx.store.castVote(ctx.phase.id, SYNTH_STARTED, Date.now());
+            return true;
+          }
 
-      const current = entries[0];
-      if (current) done.push(current.token);
-      await ctx.store.castVote(ctx.phase.id, SYNTH_DONE, done);
-      await ctx.store.castVote(ctx.phase.id, SYNTH_STARTED, Date.now());
-      return { ok: true };
+          done.push(current.token);
+          await ctx.store.castVote(ctx.phase.id, SYNTH_DONE, done);
+          await ctx.store.castVote(
+            ctx.phase.id,
+            SYNTH_STARTED,
+            entries.length > 1 ? Date.now() : null,
+          );
+          return true;
+        },
+      );
+      if (!result.ok) return { ok: false, reason: "Advancing — one moment." };
+      return result.value
+        ? { ok: true }
+        : { ok: false, reason: "The queue is empty." };
     }
 
     return { ok: false, reason: "unknown action" };

@@ -16,7 +16,7 @@ Some modules use Claude to generate content (objections, summaries, personas, pr
 
 ### Modules that read an earlier phase
 
-Several modules don't collect anything themselves — they work on what the room produced in an **earlier** phase. You point them at that phase using a **sourcePhaseId** setting (the id of an earlier module, usually a capture). The modules that do this are: **Idea marketplace**, **Redistribute**, **Devil's advocate**, **Tension map**, **Persona panel**, **Issue map**, **Prototype builder**, and **Synthesis**. For **Synthesis** and **Issue map** the source phase is optional — leave it blank and they work across *all* submissions in the session.
+Several modules don't collect anything themselves — they work on what the room produced in an **earlier** phase. You point them at that phase using a **sourcePhaseId** setting (the id of an earlier module, usually a capture). The modules that do this are: **Idea marketplace**, **Redistribute**, **Devil's advocate**, **Tension map**, **Persona panel**, **Issue map**, **Prototype builder**, and **Synthesis**. For **Synthesis** and **Issue map** the source phase is optional — leave it blank and they work across _all_ submissions in the session.
 
 ---
 
@@ -25,6 +25,7 @@ Several modules don't collect anything themselves — they work on what the room
 Framing and pacing modules — no data collection.
 
 ### Lobby
+
 A holding screen shown before the session starts. Participants see a waiting message; the facilitator keeps it on the projector until they're ready to begin.
 
 - **What participants do:** Wait. They see an optional welcome message.
@@ -34,6 +35,7 @@ A holding screen shown before the session starts. Participants see a waiting mes
   - `message` — optional text shown to the room while waiting.
 
 ### Content display
+
 Read-only material the facilitator pushes to the room (cases, prompts, notes, etc.).
 
 - **What participants do:** Read. Nothing to submit.
@@ -44,6 +46,7 @@ Read-only material the facilitator pushes to the room (cases, prompts, notes, et
   - `showContentTypes` — optionally limit to certain content types (`case`, `lens`, `prompt`, `argument`, `note`).
 
 ### Presentation
+
 A simple slide-and-video deck on the room screen, advanced by the facilitator — for showing slides (PDF/images) or videos between activities.
 
 - **What participants do:** Watch the current slide/video (the same one that's on the projector). Nothing to submit.
@@ -53,6 +56,7 @@ A simple slide-and-video deck on the room screen, advanced by the facilitator �
   - `cards` — the deck (built in the console by uploading files or pasting image/video URLs); can also be loaded and reordered live.
 
 ### Break
+
 A calm "we're on a break" or "we'll resume shortly" holding screen, with optional breathing or countdown scenes. Unlike other modules you don't place it in a sequence — the facilitator **summons it live** at any point to pause the room.
 
 - **What participants do:** See a calm break/hold screen (and a countdown clock if a timer is running). Nothing to submit.
@@ -63,6 +67,7 @@ A calm "we're on a break" or "we'll resume shortly" holding screen, with optiona
   - `note` — an optional line of copy on the screen.
 
 ### Close
+
 An end-of-session message, with a recap of each person's own contributions.
 
 - **What participants do:** Read the closing message and see a list of everything they personally contributed during the session.
@@ -77,6 +82,7 @@ An end-of-session message, with a recap of each person's own contributions.
 Collecting input and bringing it back into the room.
 
 ### Capture
+
 A mic-and-textarea box that collects short text submissions — the workhorse capture step.
 
 - **What participants do:** Type or dictate a response to a prompt (optionally a second prompt too). Can be set to allow multiple submissions.
@@ -91,9 +97,10 @@ A mic-and-textarea box that collects short text submissions — the workhorse ca
   - `contentHeading` / `showContentTypes` — optionally show reference material alongside the box.
 
 ### Pre-work jam
+
 Asynchronous, anonymous pre-session divergence — people add ideas in their own time before you meet.
 
-- **What participants do:** Write or dictate ideas whenever it suits them, see "Saved — add more any time", and review a running list of their *own* prior contributions to build on.
+- **What participants do:** Write or dictate ideas whenever it suits them, see "Saved — add more any time", and review a running list of their _own_ prior contributions to build on.
 - **Facilitator / projector:** See anonymous aggregate progress only ("N people have contributed M ideas") — never the raw text. Projectable.
 - **Key settings:**
   - `label`, `prompt` — the question.
@@ -102,7 +109,8 @@ Asynchronous, anonymous pre-session divergence — people add ideas in their own
   - `multiSubmit` — allow multiple ideas (on by default).
 
 ### Actions
-"Yours-first" commitments capture — the closing move of a good session. Everyone leaves with something concrete *they'll* do.
+
+"Yours-first" commitments capture — the closing move of a good session. Everyone leaves with something concrete _they'll_ do.
 
 - **What participants do:** Capture their own short action items and see them listed back, theirs first — a personal to-do list, not a shared feed. They see only their own items, plus a soft anonymous "N people, M commitments" momentum signal.
 - **Facilitator / projector:** The facilitator and cohost see the full list (owner + text) for follow-up. The projector shows **counts only** — commitments never go on the big screen verbatim.
@@ -113,6 +121,7 @@ Asynchronous, anonymous pre-session divergence — people add ideas in their own
   - `askOwner` — ask who'll own each action (defaults to the author's handle, editable).
 
 ### Read-around
+
 The facilitator paces through submissions or detected patterns, one at a time, live to the room.
 
 - **What participants do:** Watch as items are surfaced one by one.
@@ -129,6 +138,7 @@ The facilitator paces through submissions or detected patterns, one at a time, l
 Forming groups and running discussion formats.
 
 ### Self-allocation
+
 Participants claim a lens or a side; live counts with an optional cap.
 
 - **What participants do:** Pick one option from a list (e.g. a side or a perspective). See live counts.
@@ -141,6 +151,7 @@ Participants claim a lens or a side; live counts with an optional cap.
   - `allocate.cap` — optional maximum number of people per option.
 
 ### Coordinator
+
 Tells each person who their pair or triad is.
 
 - **What participants do:** See a personal message naming their partner (pair) or their group members (lens-triad).
@@ -151,6 +162,7 @@ Tells each person who their pair or triad is.
   - `coordinator.message` — the message template; `[PARTNER]`, `[LENS]`, and `[MEMBERS]` are filled in per person.
 
 ### 1-2-4-All
+
 The canonical Liberating Structure: the same question worked alone, then in pairs, then in fours, then by the whole group.
 
 - **What participants do:** Work the same question at four widening scales. They see the current stage ("Think alone" → "Compare in pairs" → "Combine into fours" → "Whole-group share"), who they're with, and (optionally) a box to capture the group's combined answer.
@@ -160,6 +172,7 @@ The canonical Liberating Structure: the same question worked alone, then in pair
   - `captureShared` — let groups record their combined answer (on by default).
 
 ### World Café
+
 Fixed tables each with a persistent host; everyone else moves to a new table each round, cross-pollinating ideas.
 
 - **What participants do:** Each round, see "Go to Table K", the host's name, and tablemates, all working one shared question. Hosts get a "stay and welcome travellers" panel. With notes on, anyone can record the table's shared insight.
@@ -170,6 +183,7 @@ Fixed tables each with a persistent host; everyone else moves to a new table eac
   - `captureNotes` — allow capturing table insights (on by default).
 
 ### Stations
+
 Shift & Share: intact small groups tour a set of named stations, one round per station.
 
 - **What participants do:** Stay in their group and rotate through stations. See "Round N of M — your group is at [Station]", their groupmates, and an optional notes box.
@@ -182,6 +196,7 @@ Shift & Share: intact small groups tour a set of named stations, one round per s
   - `prompt` — instruction shown at each station.
 
 ### Consult
+
 Troika / Wise Crowds peer consulting: fixed small groups take turns as the "client" who goes silent while consultants advise.
 
 - **What participants do:** Are auto-grouped into trios. Each round one person is the client (presents a challenge, then goes "listen only" with input disabled during the silent sub-phase); the rest are consultants who submit advice by voice or text.
@@ -192,6 +207,7 @@ Troika / Wise Crowds peer consulting: fixed small groups take turns as the "clie
   - `phaseSeconds.present` and `phaseSeconds.advise` — timing for the present and advise sub-phases.
 
 ### Fishbowl
+
 An open fishbowl with the empty chair — a self-facilitating discussion. Take the empty seat to speak; a current speaker then steps out.
 
 - **What participants do:** See a circle of inner seats with one highlighted empty chair. Tap "Take the empty seat" to join (a current speaker steps out) or "Leave the circle" if seated. Those outside can submit short question cards.
@@ -199,10 +215,10 @@ An open fishbowl with the empty chair — a self-facilitating discussion. Take t
 - **Key settings:**
   - `label`.
   - `innerSeats` — number of seats in the inner circle (at least 2).
-  - `mode` — `open` or `closed`.
   - `allowQuestions` — let outer-circle participants submit questions (on by default).
 
 ### Open Space
+
 A participant-built agenda: people propose topics, others sign up, and the facilitator places them into a time × space grid.
 
 - **What participants do:** Propose discussion topics, see the live list with signup counts, and Join/Leave any topic freely. Once a topic is placed, they're told which space and slot to go to.
@@ -219,6 +235,7 @@ A participant-built agenda: people propose topics, others sign up, and the facil
 Decision and prioritisation tools, with live results.
 
 ### Poll
+
 Single or multiple choice over a fixed set of options, with live results.
 
 - **What participants do:** Choose one option (or several, if multi). See results.
@@ -230,6 +247,7 @@ Single or multiple choice over a fixed set of options, with live results.
   - `reveal` — `live` (everyone sees results immediately) or `onAdvance` (participants see results only after you move on; facilitator always sees them).
 
 ### Dot voting
+
 Spend a budget of dots across options to prioritise.
 
 - **What participants do:** Distribute a fixed number of dots across options using +/− steppers; see how many dots they have left.
@@ -240,6 +258,7 @@ Spend a budget of dots across options to prioritise.
   - `dots` — how many dots each person gets.
 
 ### Ranking
+
 Drag items into priority order; aggregated by Borda count.
 
 - **What participants do:** Drag a list of items into their preferred order.
@@ -249,6 +268,7 @@ Drag items into priority order; aggregated by Borda count.
   - `items` — the things to rank (at least 2).
 
 ### Scale
+
 Rate one or more statements on a numeric scale; shows the mean.
 
 - **What participants do:** Move a slider for each statement.
@@ -260,6 +280,7 @@ Rate one or more statements on a numeric scale; shows the mean.
   - `labels` — optional text labels for the two ends.
 
 ### Gradient of agreement
+
 Consent / gradient of agreement: each person places themselves on a scale of support, so partial dissent surfaces instead of collapsing into a fake yes/no.
 
 - **What participants do:** Pick a level on an ordered support scale. Selecting a low/dissent level prompts (or requires) a written reason.
@@ -267,9 +288,10 @@ Consent / gradient of agreement: each person places themselves on a scale of sup
 - **Key settings:**
   - `label`, `proposal` — the proposal being decided.
   - `scale` — `fist5` (six levels), `kaner8` (nine levels), or `consent` (three levels).
-  - `requireReasonBelow` — levels at or below this number require a written reason.
+  - `requireReasonForConcern` — require a short explanation for any concern or objection, regardless of the selected scale's direction.
 
 ### Idea marketplace
+
 Invest a budget across ideas from an earlier phase to predict which will succeed — a lightweight prediction market. **Reads an earlier phase.**
 
 - **What participants do:** Spend a credit budget across ideas drawn from an earlier capture phase, using +/− steppers, to back the ones they predict will succeed. (Author names are never shown.)
@@ -284,6 +306,7 @@ Invest a budget across ideas from an earlier phase to predict which will succeed
   - `allowSelfInvest` — whether people can invest in their own idea.
 
 ### 2×2 matrix
+
 Plot items by two criteria (e.g. impact vs. effort) into quadrants.
 
 - **What participants do:** Add an item and place it on the grid by two axes.
@@ -294,6 +317,7 @@ Plot items by two criteria (e.g. impact vs. effort) into quadrants.
   - `min` / `max` — the numeric range of each axis (default 0–10).
 
 ### Spectrogram
+
 An anonymous human spectrogram — everyone places themselves on a line between two poles; shows the live distribution and the before→after shift.
 
 - **What participants do:** Drag a slider to place themselves anonymously between two poles, optionally with a reason. See the live room distribution.
@@ -307,6 +331,7 @@ An anonymous human spectrogram — everyone places themselves on a line between 
   - `beforeAfter` — capture a before-and-after shift.
 
 ### 25/10 Crowd Sourcing
+
 Everyone writes one bold idea, then ideas detach from their authors and get blind-scored 1–5 over several passes — the strongest rise.
 
 - **What participants do:** First write one bold idea. Then, over several scoring passes, each person is handed an anonymous card they didn't write and scores it.
@@ -317,6 +342,7 @@ Everyone writes one bold idea, then ideas detach from their authors and get blin
   - `passes` — number of scoring rounds (default 5).
 
 ### Min Specs
+
 Generate the maximum list of rules/musts, then subtract — keep only the rules you genuinely can't succeed without.
 
 - **What participants do:** In the EXPAND phase, add candidate rules. In the TRIM phase, mark each rule "Essential (keep)" or "Could live without (cut)".
@@ -331,6 +357,7 @@ Generate the maximum list of rules/musts, then subtract — keep only the rules 
 Generating and challenging ideas.
 
 ### Brainwrite
+
 Silent round-robin build-on: everyone adds a line to an idea card someone else started, then rotates — no talking.
 
 - **What participants do:** Silently add one line to an anonymous idea "card" started by someone else, then get rotated to a different card next round.
@@ -340,6 +367,7 @@ Silent round-robin build-on: everyone adds a line to an idea card someone else s
   - `maxLen` — character limit per line (default 200).
 
 ### Redistribute
+
 Hands each person someone else's anonymous idea to critique, defend, or improve — legitimises dissent and counters groupthink. **Reads an earlier phase.**
 
 - **What participants do:** Each person is handed one anonymous idea (written by someone else) and writes a single response framed by the mode.
@@ -351,6 +379,7 @@ Hands each person someone else's anonymous idea to critique, defend, or improve 
   - `requireResponse` — make a response mandatory.
 
 ### Lightning talks
+
 A strict timeboxed speaker queue with an accountable advance — sign up, see who's next, share one countdown.
 
 - **What participants do:** Join or leave the speaker queue (with an optional topic), see their position and who's up, and get a "You're up" countdown when it's their turn.
@@ -362,6 +391,7 @@ A strict timeboxed speaker queue with an accountable advance — sign up, see wh
   - `topicPrompt` — optional topic question at signup.
 
 ### Q&A + upvoting
+
 Crowd questions, surfaced by upvotes — for AMAs and town-halls.
 
 - **What participants do:** Submit questions and upvote others' questions (tap to toggle).
@@ -370,6 +400,7 @@ Crowd questions, surfaced by upvotes — for AMAs and town-halls.
   - `label`, `prompt`.
 
 ### Word cloud
+
 Collect short words; render a live frequency cloud.
 
 - **What participants do:** Submit a few short words.
@@ -385,6 +416,7 @@ Collect short words; render a live frequency cloud.
 These modules use Claude. The AI runs only when the facilitator or cohost taps generate; participants can never trigger it.
 
 ### Devil's advocate
+
 AI red-teams the room's emerging view — grounded counterarguments to break confirmation bias. **Needs AI key. Reads an earlier phase.**
 
 - **What participants do:** Read a list of AI-generated objections (never attributed to any person).
@@ -396,6 +428,7 @@ AI red-teams the room's emerging view — grounded counterarguments to break con
   - `maxObjections` — how many to generate (default 3).
 
 ### Tension map
+
 AI surfaces the live disagreements in the room's contributions — the axes of tension. **Needs AI key. Reads an earlier phase.**
 
 - **What participants do:** See the tensions as pole-A ←→ pole-B with an intensity bar (example phrases are stripped for privacy).
@@ -406,6 +439,7 @@ AI surfaces the live disagreements in the room's contributions — the axes of t
   - `topNTensions` — how many axes to surface (default 4).
 
 ### Synthesis
+
 AI between-phase live synthesis — neutral bullets plus the one key tension, which the facilitator reviews privately and promotes to the room. **Needs AI key. Reads an earlier phase (optional).**
 
 - **What participants do:** See nothing until the facilitator promotes the summary (a calm "the facilitator is summarising…" screen), then see the bullets and the key tension.
@@ -416,6 +450,7 @@ AI between-phase live synthesis — neutral bullets plus the one key tension, wh
   - `bulletCount` — number of bullets (default 5).
 
 ### Persona panel
+
 A panel of synthetic AI personas reacts in-character to the room's idea — pressure-test before you build. Not real user data. **Needs AI key. Reads an earlier phase.**
 
 - **What participants do:** View read-only reaction cards (with an honesty banner reminding everyone these are synthetic). They don't submit here.
@@ -427,6 +462,7 @@ A panel of synthetic AI personas reacts in-character to the room's idea — pres
   - `societyMode` — let personas also react to each other.
 
 ### Empty chair
+
 Give voice to an absent stakeholder — the room asks an AI persona questions and it answers in character. **Needs AI key.**
 
 - **What participants do:** Type questions to the absent stakeholder.
@@ -436,6 +472,7 @@ Give voice to an absent stakeholder — the room asks an AI persona questions an
   - `persona.name` and `persona.description` — who the absent stakeholder is.
 
 ### Issue map
+
 AI organises the room's contributions into a live map of issues and the positions people hold; the facilitator can focus and pin issues. **Needs AI key. Reads an earlier phase (optional).**
 
 - **What participants do:** See the issue map; the focused issue is emphasised with its positions spelled out (other issues show only counts). They don't submit here.
@@ -445,6 +482,7 @@ AI organises the room's contributions into a live map of issues and the position
   - `sourcePhaseId` — the phase to cluster; **leave blank to cluster all submissions in the session**.
 
 ### Prompt relay
+
 The room co-builds one prompt for the AI — each person adds a segment — then the facilitator runs it. **Needs AI key.**
 
 - **What participants do:** Pick a segment kind (e.g. audience, tone) and add text segments to a shared prompt.
@@ -454,6 +492,7 @@ The room co-builds one prompt for the AI — each person adds a segment — then
   - `segmentKinds` — the segment types people can add (default: audience, tone, must include, must avoid, example).
 
 ### Prototype builder
+
 Text-to-UI: the room describes an interface, the facilitator builds it, and Claude returns a clickable single-file prototype. **Needs AI key. Reads an earlier phase (optional).**
 
 - **What participants do:** Add spec text describing the interface they want.
@@ -468,6 +507,7 @@ Text-to-UI: the room describes an interface, the facilitator builds it, and Clau
 ## Analytics
 
 ### Participation equity
+
 A facilitator-only dashboard of contributions per person — surfaces silent voices so you can rebalance airtime. Reads contribution data, never microphones.
 
 - **What participants do:** Nothing — they only ever see a neutral "the facilitator is reviewing the session" placeholder.

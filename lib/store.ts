@@ -26,13 +26,10 @@ import { computeCofac } from "./cofac";
 import {
   PROJECTOR_FLOOR,
   computeParticipationSignal,
+  effectiveGatherSource,
   getServerModule,
 } from "./modules/registry.server";
-import type {
-  ModuleAction,
-  ModuleContext,
-  ModuleStore,
-} from "./modules/types";
+import type { ModuleAction, ModuleContext, ModuleStore } from "./modules/types";
 import { resolveVisibility } from "./modules/types";
 import type {
   AllocationSummary,
@@ -266,9 +263,10 @@ if (useKv) {
     async rateLimit(key: string, windowSeconds: number) {
       const now = Date.now();
       const current = rateWindows.get(key);
-      const next = !current || current.expiresAt <= now
-        ? { count: 1, expiresAt: now + windowSeconds * 1000 }
-        : { ...current, count: current.count + 1 };
+      const next =
+        !current || current.expiresAt <= now
+          ? { count: 1, expiresAt: now + windowSeconds * 1000 }
+          : { ...current, count: current.count + 1 };
       rateWindows.set(key, next);
       return next.count;
     },
@@ -412,12 +410,9 @@ async function withStateLock<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
   for (let attempt = 0; attempt < 40; attempt++) {
-    const result = await withLock(
-      roomId,
-      "state",
-      operation,
-      { ttlSeconds: 10 },
-    );
+    const result = await withLock(roomId, "state", operation, {
+      ttlSeconds: 10,
+    });
     if (result.ok) return result.value;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -490,17 +485,17 @@ export async function setMode(
 ): Promise<SessionState> {
   const phases = modePhaseInstances(mode);
   return mutateState(roomId, (state) => ({
-      ...state,
-      mode,
-      sessionName: getMode(mode)?.name,
-      phases,
-      phaseId: phases[0]?.id ?? "lobby",
-      timerEndsAt: null,
-      timerRemainingMs: null,
-      readaroundIndex: 0,
-      spotlight: null, // C4 — a relaunch clears any lingering spotlight
-      ended: false,
-    }));
+    ...state,
+    mode,
+    sessionName: getMode(mode)?.name,
+    phases,
+    phaseId: phases[0]?.id ?? "lobby",
+    timerEndsAt: null,
+    timerRemainingMs: null,
+    readaroundIndex: 0,
+    spotlight: null, // C4 — a relaunch clears any lingering spotlight
+    ended: false,
+  }));
 }
 
 // The current effective build (name + full phase configs) for a room, however it
@@ -528,17 +523,17 @@ export async function setPhases(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   const written = await mutateState(roomId, (state) => ({
-      ...state,
-      mode: null,
-      sessionName,
-      phases,
-      phaseId: phases[0]?.id ?? null,
-      timerEndsAt: null,
-      timerRemainingMs: null,
-      readaroundIndex: 0,
-      spotlight: null, // C4 — a relaunch clears any lingering spotlight
-      ended: false,
-    }));
+    ...state,
+    mode: null,
+    sessionName,
+    phases,
+    phaseId: phases[0]?.id ?? null,
+    timerEndsAt: null,
+    timerRemainingMs: null,
+    readaroundIndex: 0,
+    spotlight: null, // C4 — a relaunch clears any lingering spotlight
+    ended: false,
+  }));
   await runOnEnter(roomId, written); // D4 — freeze a rotation first-phase's cohort
   return written;
 }
@@ -557,14 +552,14 @@ export async function setPhase(
 ): Promise<SessionState> {
   if (opts.release !== false) await releaseQueuedContent(roomId);
   const written = await mutateState(roomId, (state) => ({
-      ...state,
-      phaseId,
-      timerEndsAt: null,
-      timerRemainingMs: null,
-      readaroundIndex: 0,
-      spotlight: null, // C4 — advancing clears any spotlight from the prior phase
-      ...(opts.claimDriver ? { driver: opts.claimDriver } : {}), // C5 — co-claim
-    }));
+    ...state,
+    phaseId,
+    timerEndsAt: null,
+    timerRemainingMs: null,
+    readaroundIndex: 0,
+    spotlight: null, // C4 — advancing clears any spotlight from the prior phase
+    ...(opts.claimDriver ? { driver: opts.claimDriver } : {}), // C5 — co-claim
+  }));
   await runOnEnter(roomId, written); // D4 — let the entered module freeze its cohort
   // F4 — append a content-free phase-entry stamp (phaseId + time) so the host can
   // review plan-vs-actual phase timing after the run. Best-effort: a logging hiccup
@@ -602,7 +597,10 @@ export async function setSpotlight(
 // so the off-switch and the sensitivity dial move independently. Rides
 // authoritative-apply (writeState bumps rev).
 export async function setCofac(
-  patch: { enabled?: boolean; sensitivity?: import("./cofac").CofacSensitivity },
+  patch: {
+    enabled?: boolean;
+    sensitivity?: import("./cofac").CofacSensitivity;
+  },
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   return mutateState(roomId, (state) => {
@@ -623,7 +621,8 @@ export async function dismissCofac(
 ): Promise<SessionState> {
   return mutateState(roomId, (state) => {
     const prev = state.cofacDismissed ?? [];
-    if (prev.some((d) => d.phaseId === phaseId && d.kind === kind)) return state;
+    if (prev.some((d) => d.phaseId === phaseId && d.kind === kind))
+      return state;
     const next = [...prev, { phaseId, kind }].slice(-20);
     return { ...state, cofacDismissed: next };
   });
@@ -702,10 +701,14 @@ export async function setAmbient(
         kind,
         scene,
         // Keep the original start + snapshot across re-entry (extend / scene swap).
-        startedAt: already ? state.ambient!.startedAt ?? Date.now() : Date.now(),
+        startedAt: already
+          ? (state.ambient!.startedAt ?? Date.now())
+          : Date.now(),
         note: note?.slice(0, 200),
         returnPhaseId: already ? state.ambient!.returnPhaseId : state.phaseId,
-        returnTimerEndsAt: already ? state.ambient!.returnTimerEndsAt : state.timerEndsAt,
+        returnTimerEndsAt: already
+          ? state.ambient!.returnTimerEndsAt
+          : state.timerEndsAt,
       },
       timerEndsAt: endsAt,
       timerRemainingMs: null,
@@ -832,8 +835,18 @@ export async function replaceState(
 // read-modify-write.
 export type ActionItemOp =
   | { kind: "add"; text: string; ownerName?: string; due?: string }
-  | { kind: "update"; id: string; text?: string; ownerName?: string; due?: string }
-  | { kind: "setStatus"; id: string; status: import("./types").ActionItemStatus }
+  | {
+      kind: "update";
+      id: string;
+      text?: string;
+      ownerName?: string;
+      due?: string;
+    }
+  | {
+      kind: "setStatus";
+      id: string;
+      status: import("./types").ActionItemStatus;
+    }
   | { kind: "remove"; id: string }
   | { kind: "promote"; on: boolean }; // F2 — show/hide the board on the projector
 
@@ -843,7 +856,8 @@ export async function mutateActionItems(
 ): Promise<SessionState> {
   const apply = async () => {
     return mutateState(roomId, (state) => {
-      if (op.kind === "promote") return { ...state, actionItemsPromoted: op.on };
+      if (op.kind === "promote")
+        return { ...state, actionItemsPromoted: op.on };
       const items = [...(state.actionItems ?? [])];
       const now = Date.now();
       if (op.kind === "add") {
@@ -867,9 +881,13 @@ export async function mutateActionItems(
           else
             items[i] = {
               ...items[i],
-              text: op.text?.trim() ? op.text.trim().slice(0, 500) : items[i].text,
+              text: op.text?.trim()
+                ? op.text.trim().slice(0, 500)
+                : items[i].text,
               ownerName:
-                op.ownerName !== undefined ? op.ownerName.trim() || undefined : items[i].ownerName,
+                op.ownerName !== undefined
+                  ? op.ownerName.trim() || undefined
+                  : items[i].ownerName,
               due: op.due !== undefined ? op.due || undefined : items[i].due,
               updatedAt: now,
             };
@@ -1226,7 +1244,11 @@ export async function addWord(
   word: string,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<void> {
-  await backend.rpush<WordEntry>(roomKeys(roomId).words, { phaseId, token, word });
+  await backend.rpush<WordEntry>(roomKeys(roomId).words, {
+    phaseId,
+    token,
+    word,
+  });
 }
 
 export async function trackRoomUpload(
@@ -1455,7 +1477,9 @@ export async function readUndo(
   return backend.get<UndoSnapshot>(roomKeys(roomId).undo);
 }
 
-export async function clearUndo(roomId: string = DEFAULT_ROOM_ID): Promise<void> {
+export async function clearUndo(
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<void> {
   await backend.del(roomKeys(roomId).undo);
 }
 
@@ -1480,12 +1504,12 @@ export async function undoLastAction(
   }
 
   const restored = await mutateState(roomId, (state) => ({
-      ...state,
-      phaseId: snap.prevPhaseId,
-      timerEndsAt: snap.prevTimerEndsAt,
-      timerRemainingMs: snap.prevTimerRemainingMs,
-      readaroundIndex: snap.prevReadaroundIndex,
-    }));
+    ...state,
+    phaseId: snap.prevPhaseId,
+    timerEndsAt: snap.prevTimerEndsAt,
+    timerRemainingMs: snap.prevTimerRemainingMs,
+    readaroundIndex: snap.prevReadaroundIndex,
+  }));
   await clearUndo(roomId);
   return { state: restored, undone: true };
 }
@@ -1591,11 +1615,14 @@ export async function publishAndEnd(
       KEYS.undo,
       KEYS.hostPresence, // C5
     );
-    await writeStateUnlocked({
-      ...DEFAULT_STATE,
-      ended: true,
-      publishedTakeaway: { token, publishedAt: snapshot.publishedAt },
-    }, roomId);
+    await writeStateUnlocked(
+      {
+        ...DEFAULT_STATE,
+        ended: true,
+        publishedTakeaway: { token, publishedAt: snapshot.publishedAt },
+      },
+      roomId,
+    );
   });
 }
 
@@ -1690,7 +1717,9 @@ async function buildContext(
       listPatterns(roomId),
       listSubmissions(roomId),
     ]);
-  const me = token ? participants.find((p) => p.token === token) ?? null : null;
+  const me = token
+    ? (participants.find((p) => p.token === token) ?? null)
+    : null;
   const visible = content
     .filter((c) => c.visible)
     .sort((a, b) => a.addedAt - b.addedAt);
@@ -1732,7 +1761,8 @@ function resolveSpotlight(
   // handle solely for a named, non-anonymous source). A submission spotlight is
   // NEVER attributed — its stored handle is not a public-ness signal (an anonymous-
   // by-design phase still stores a real handle), so the room must never see it.
-  if (ref.kind === "literal") return { text: ref.text, handle: ref.handle ?? null };
+  if (ref.kind === "literal")
+    return { text: ref.text, handle: ref.handle ?? null };
   const sub = submissions.find((s) => s.id === ref.id);
   return sub ? { text: sub.text, handle: null } : null;
 }
@@ -1806,10 +1836,17 @@ export async function getPublicState(
           view = { moduleId, data };
           // Project legacy fields the facilitator console still reads.
           if (moduleId === "allocate") {
-            const d = data as { kind: "lens" | "side"; counts: Record<string, number>; mine: string | null };
+            const d = data as {
+              kind: "lens" | "side";
+              counts: Record<string, number>;
+              mine: string | null;
+            };
             allocation = { kind: d.kind, counts: d.counts, mine: d.mine };
           } else if (moduleId === "coordinator") {
-            const d = data as { kind: "lens-triad" | "pair"; members?: string[] };
+            const d = data as {
+              kind: "lens-triad" | "pair";
+              members?: string[];
+            };
             coordinator = { kind: d.kind, members: d.members };
           } else if (moduleId === "readaround") {
             readaround = data as PublicState["readaround"];
@@ -1827,21 +1864,33 @@ export async function getPublicState(
   // responders, never stored. Costs one hgetall only on gather phases.
   let participation: ParticipationSignal | null = null;
   if (ctx && moduleId) {
-    const gatherSource = getServerModule(moduleId)?.capabilities.gatherSource ?? "none";
+    const gatherSource = effectiveGatherSource(moduleId, cfg ?? {});
     if (gatherSource !== "none") {
       const heartbeats = await readHeartbeats(roomId);
-      const raw = await computeParticipationSignal(ctx, gatherSource, heartbeats);
+      const raw = await computeParticipationSignal(
+        ctx,
+        gatherSource,
+        heartbeats,
+      );
       if (raw) {
         const anonAnon = (cfg as { anonymity?: string } | null)?.anonymity;
-        const anonymous = anonAnon === "anonymous" || anonAnon === "anonymous-strict";
+        const anonymous =
+          anonAnon === "anonymous" || anonAnon === "anonymous-strict";
         if (role === "participant") {
           participation = null; // participants never see breakdowns
         } else if (role === "projector") {
           // bare present+responded, only when opted in AND above the privacy floor
-          const show = Boolean((cfg as { showLiveCount?: boolean } | null)?.showLiveCount);
+          const show = Boolean(
+            (cfg as { showLiveCount?: boolean } | null)?.showLiveCount,
+          );
           participation =
             show && raw.present >= PROJECTOR_FLOOR
-              ? { present: raw.present, responded: raw.responded, typing: 0, quiet: 0 }
+              ? {
+                  present: raw.present,
+                  responded: raw.responded,
+                  typing: 0,
+                  quiet: 0,
+                }
               : null;
         } else {
           // facilitator / cohost / admin: full numbers, but no per-person quiet
@@ -1856,17 +1905,25 @@ export async function getPublicState(
   // try so a throwing module never strands the indicator).
   const attribution = resolveAttribution(
     moduleId,
-    moduleId ? getServerModule(moduleId)?.capabilities.gatherSource ?? "none" : "none",
-    (cfg as { anonymity?: import("./modules/attribution").AnonymitySetting } | null)
-      ?.anonymity,
+    moduleId ? effectiveGatherSource(moduleId, cfg ?? {}) : "none",
+    (
+      cfg as {
+        anonymity?: import("./modules/attribution").AnonymitySetting;
+      } | null
+    )?.anonymity,
   );
 
   // C2 nudge — read the active gather phase's nudge marker so the participant can
   // re-pulse. Only on gather phases (one cheap read), never elsewhere.
   let nudgedAt: number | null = null;
-  if (ctx && moduleId && getServerModule(moduleId)?.capabilities.gatherSource !== "none") {
+  if (
+    ctx &&
+    moduleId &&
+    effectiveGatherSource(moduleId, cfg ?? {}) !== "none"
+  ) {
     const v = await readVotes(phase!.id, roomId);
-    nudgedAt = typeof v["__nudge__"] === "number" ? (v["__nudge__"] as number) : null;
+    nudgedAt =
+      typeof v["__nudge__"] === "number" ? (v["__nudge__"] as number) : null;
   }
 
   // F3 — when ended with a published take-away, attach the recap (handle-free)
@@ -1932,9 +1989,9 @@ export async function getPublicState(
         ? null
         : role === "projector"
           ? state.actionItemsPromoted
-            ? state.actionItems ?? []
+            ? (state.actionItems ?? [])
             : null
-          : state.actionItems ?? [],
+          : (state.actionItems ?? []),
     actionItemsPromoted: Boolean(state.actionItemsPromoted),
     // E1 — the authored lobby cue + count-visibility, surfaced for the projector
     // lobby and host preview. Count defaults to visible when never authored.
@@ -1978,7 +2035,10 @@ export async function dispatchAction(
   if (role === "participant" && !ctx.me)
     return { ok: false, reason: "join required", status: 401 };
   const result = await mod.handleAction(ctx, action);
-  return { ...result, status: result.ok ? 200 : result.reason === "full" ? 409 : 400 };
+  return {
+    ...result,
+    status: result.ok ? 200 : result.reason === "full" ? 409 : 400,
+  };
 }
 
 export async function getFacilitatorState(
@@ -1987,16 +2047,23 @@ export async function getFacilitatorState(
 ): Promise<FacilitatorState> {
   // Read state once and thread it through (avoids a second getState below).
   const state = stateOverride ?? (await getState(roomId));
-  const [pub, submissions, participants, allContent, heartbeats, presence, projectorSeen] =
-    await Promise.all([
-      getPublicState(null, roomId, "facilitator", state),
-      listSubmissions(roomId),
-      listParticipants(roomId),
-      listContent(roomId),
-      readHeartbeats(roomId),
-      readHostPresence(roomId),
-      readProjectorSeen(roomId),
-    ]);
+  const [
+    pub,
+    submissions,
+    participants,
+    allContent,
+    heartbeats,
+    presence,
+    projectorSeen,
+  ] = await Promise.all([
+    getPublicState(null, roomId, "facilitator", state),
+    listSubmissions(roomId),
+    listParticipants(roomId),
+    listContent(roomId),
+    readHeartbeats(roomId),
+    readHostPresence(roomId),
+    readProjectorSeen(roomId),
+  ]);
   // F4 — plan-vs-actual phase timing, from the content-free advance log.
   const phaseLog = await readPhaseLog(roomId);
   // H1 — room-wide health (every phase), from C2's existing liveness hash.
@@ -2057,7 +2124,8 @@ export async function getFacilitatorState(
     ).map((t) => ({ token: t, handle: handleByToken.get(t) ?? "—" }));
   }
   const curIdx = seq.findIndex((p) => p.id === state.phaseId);
-  const nextPhase = curIdx >= 0 && curIdx < seq.length - 1 ? seq[curIdx + 1] : null;
+  const nextPhase =
+    curIdx >= 0 && curIdx < seq.length - 1 ? seq[curIdx + 1] : null;
   const nextPeek = nextPhase
     ? (nextPhase.config.label as string) ||
       getServerModule(nextPhase.moduleId)?.meta.name ||
@@ -2085,7 +2153,9 @@ export async function getFacilitatorState(
     driver: state.driver ?? null,
     // C5 — the baton is stale when its console aged out (the next claim wins).
     // Derived on read; never written back here (the "no write in getState" rule).
-    driverStale: state.driver ? !isDriverLive(state.driver, presence, Date.now()) : false,
+    driverStale: state.driver
+      ? !isDriverLive(state.driver, presence, Date.now())
+      : false,
     // C7 — a deterministic, content-free co-facilitator nudge (host-only). Pure
     // function of the counts/timer in `pub` plus the lead's controls + persisted
     // dismissals from session state; no AI, no write, no cost.

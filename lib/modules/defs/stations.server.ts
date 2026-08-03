@@ -134,7 +134,9 @@ export const stationsModule: ModuleServerDef<StationsConfig> = {
     prompt: "Explore this station together, then capture what stands out.",
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
+    gatherWhen: (config) => config.captureNotes === true,
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,
@@ -142,7 +144,11 @@ export const stationsModule: ModuleServerDef<StationsConfig> = {
   },
   async onEnter(ctx) {
     // Snapshot the roster so the intact touring groups never reshuffle on a join.
-    await freezeCohort(ctx.store, ctx.phase.id, ctx.participants.map((p) => p.token));
+    await freezeCohort(
+      ctx.store,
+      ctx.phase.id,
+      ctx.participants.map((p) => p.token),
+    );
   },
   async computeView(ctx) {
     const stations = (ctx.config.stations as string[]) ?? [];
@@ -157,8 +163,7 @@ export const stationsModule: ModuleServerDef<StationsConfig> = {
 
     // Map a token → handle for rendering.
     const handleOf = new Map(ctx.participants.map((p) => [p.token, p.handle]));
-    const handles = (g: string[]) =>
-      g.map((t) => handleOf.get(t) ?? "—");
+    const handles = (g: string[]) => g.map((t) => handleOf.get(t) ?? "—");
 
     // ---- participant: just my group + my station this round ----
     if (ctx.role === "participant") {
@@ -218,11 +223,27 @@ export const stationsModule: ModuleServerDef<StationsConfig> = {
     // Facilitator-only: advance every group to its next station.
     if (action.type === "nextRound") {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
-      const res = await ctx.store.withLock(`round:${ctx.phase.id}`, async () => {
-        const votes = await ctx.store.readVotes(ctx.phase.id);
-        await ctx.store.castVote(ctx.phase.id, "__round__", readRound(votes) + 1);
-      });
-      return res.ok ? { ok: true } : { ok: false, reason: "Advancing — one moment." };
+      const res = await ctx.store.withLock(
+        `round:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          const stations = Array.isArray(ctx.config.stations)
+            ? ctx.config.stations
+            : [];
+          if (readRound(votes) >= Math.max(0, stations.length - 1))
+            return false;
+          await ctx.store.castVote(
+            ctx.phase.id,
+            "__round__",
+            readRound(votes) + 1,
+          );
+          return true;
+        },
+      );
+      if (!res.ok) return { ok: false, reason: "Advancing — one moment." };
+      return res.value
+        ? { ok: true }
+        : { ok: false, reason: "Every station has been visited." };
     }
 
     // Per-group note capture (only when enabled).
@@ -241,11 +262,21 @@ export const stationsModule: ModuleServerDef<StationsConfig> = {
       const groups = buildGroups(ctx, votes);
       const found = groupOf(groups, me.token);
       if (!found) return { ok: false, reason: "no group" };
+      const tag = `g${found.index}:r${round}`;
+      if (
+        ctx.submissions.some(
+          (submission) =>
+            submission.phaseId === ctx.phase.id &&
+            submission.tag === tag &&
+            submission.token === me.token,
+        )
+      )
+        return { ok: false, reason: "already submitted" };
       await ctx.store.addSubmission(
         me.handle,
         text,
         ctx.phase.id,
-        `g${found.index}:r${round}`,
+        tag,
         action.token,
       );
       return { ok: true };

@@ -57,6 +57,8 @@ export interface ReadAroundView {
 
 export interface CloseView {
   ended: boolean;
+  message: string;
+  nextStep?: string;
   // The caller's own contributions, so they can keep them.
   yourContributions: { text: string; tag?: string | null }[];
 }

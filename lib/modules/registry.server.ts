@@ -59,6 +59,7 @@ import { builderModule } from "./defs/builder.server";
 import { mediaModule } from "./defs/media.server";
 import { ambientModule } from "./defs/ambient.server";
 import { actionsModule } from "./defs/actions.server";
+import { qualitySchema } from "./config-quality";
 
 const CONTENT_TYPES = ["case", "lens", "prompt", "argument", "note"] as const;
 
@@ -143,11 +144,25 @@ export async function computeParticipationSignal(
 
 const lobby: ModuleServerDef = {
   id: "lobby",
-  meta: { name: "Lobby", description: "Holding screen before the session starts." },
-  schema: z.object({ label: z.string(), message: z.string().optional() }).passthrough(),
-  defaultConfig: { label: "Lobby" },
+  meta: {
+    name: "Lobby",
+    description: "Holding screen before the session starts.",
+  },
+  schema: z
+    .object({ label: z.string(), message: z.string().optional() })
+    .passthrough(),
+  defaultConfig: {
+    label: "Lobby",
+    message: "Welcome — we’ll begin shortly.",
+  },
   defaultVisibility: vis("visible", "hidden", "hidden", "visible"),
-  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "none",
+    acceptsActions: false,
+    liveResults: false,
+    needsTimer: false,
+    projectable: true,
+  },
   computeView(ctx): LobbyView {
     return {
       message: (ctx.config.message as string) ?? "",
@@ -160,7 +175,10 @@ const lobby: ModuleServerDef = {
 
 const content: ModuleServerDef = {
   id: "content",
-  meta: { name: "Content display", description: "Read-only markdown the facilitator pushes to the room." },
+  meta: {
+    name: "Content display",
+    description: "Read-only markdown the facilitator pushes to the room.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -170,7 +188,13 @@ const content: ModuleServerDef = {
     .passthrough(),
   defaultConfig: { label: "Content" },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "none",
+    acceptsActions: false,
+    liveResults: false,
+    needsTimer: false,
+    projectable: true,
+  },
   computeView(ctx): ContentView {
     const types = ctx.config.showContentTypes as ContentType[] | undefined;
     const items = visibleByTypes(ctx.visibleContent, types);
@@ -188,7 +212,10 @@ const content: ModuleServerDef = {
 
 const capture: ModuleServerDef = {
   id: "capture",
-  meta: { name: "Capture", description: "Mic + textarea. Collects short text submissions." },
+  meta: {
+    name: "Capture",
+    description: "Mic + textarea. Collects short text submissions.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -210,9 +237,19 @@ const capture: ModuleServerDef = {
       showContentTypes: z.array(z.enum(CONTENT_TYPES)).optional(),
     })
     .passthrough(),
-  defaultConfig: { label: "Capture", prompt: "" },
+  defaultConfig: {
+    label: "Capture",
+    prompt: "What feels most important to surface right now?",
+    placeholder: "One clear thought…",
+  },
   defaultVisibility: vis("visible", "visible", "visible", "hidden"),
-  capabilities: { gatherSource: "submissions", acceptsActions: true, liveResults: false, needsTimer: true, projectable: false },
+  capabilities: {
+    gatherSource: "submissions",
+    acceptsActions: true,
+    liveResults: false,
+    needsTimer: true,
+    projectable: false,
+  },
   async computeView(ctx): Promise<CaptureView> {
     const types = ctx.config.showContentTypes as ContentType[] | undefined;
     const deck = ctx.config.constraintDeck as string[] | undefined;
@@ -240,9 +277,16 @@ const capture: ModuleServerDef = {
     if (action.type === "injectConstraint") {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
       const c = String(action.payload?.constraint ?? "").trim();
+      const allowed = Array.isArray(ctx.config.constraintDeck)
+        ? (ctx.config.constraintDeck as string[])
+        : [];
+      if (c && !allowed.includes(c))
+        return { ok: false, reason: "unknown constraint" };
       await ctx.store.castVote(ctx.phase.id, "__constraint__", c || null);
       return { ok: true };
     }
+    if (action.type !== "submit")
+      return { ok: false, reason: "unknown action" };
     const text = String(action.payload?.text ?? "").trim();
     if (!text) return { ok: false, reason: "empty" };
     if (text.length > 2000) return { ok: false, reason: "too long" };
@@ -263,8 +307,16 @@ const capture: ModuleServerDef = {
     const anonymity = ctx.config.anonymity;
     if (anonymity === "anonymous" || anonymity === "anonymous-strict")
       handle = "Anonymous";
-    const writeToken =
-      anonymity === "anonymous-strict" ? null : action.token;
+    const writeToken = anonymity === "anonymous-strict" ? null : action.token;
+    if (!ctx.config.multiSubmit && writeToken) {
+      const allowed = ctx.config.prompt2 ? 2 : 1;
+      const mine = ctx.submissions.filter(
+        (submission) =>
+          submission.phaseId === ctx.phase.id &&
+          submission.token === writeToken,
+      ).length;
+      if (mine >= allowed) return { ok: false, reason: "already submitted" };
+    }
     await ctx.store.addSubmission(handle, text, ctx.phase.id, tag, writeToken);
     return { ok: true };
   },
@@ -274,7 +326,11 @@ const capture: ModuleServerDef = {
 
 const allocate: ModuleServerDef = {
   id: "allocate",
-  meta: { name: "Self-allocation", description: "Participants claim a lens or a side; live counts, optional cap." },
+  meta: {
+    name: "Self-allocation",
+    description:
+      "Participants claim a lens or a side; live counts, optional cap.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -289,10 +345,20 @@ const allocate: ModuleServerDef = {
     .passthrough(),
   defaultConfig: {
     label: "Pick",
-    allocate: { kind: "side", fixedOptions: ["A", "B"], header: "Pick one." },
+    allocate: {
+      kind: "side",
+      fixedOptions: ["Build the case", "Challenge the case"],
+      header: "Choose the perspective you’ll work from.",
+    },
   },
   defaultVisibility: vis("visible", "visible", "visible", "hidden"),
-  capabilities: { gatherSource: "none", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "none",
+    acceptsActions: true,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   computeView(ctx): AllocateView {
     const a = ctx.config.allocate as {
       kind: "lens" | "side";
@@ -314,14 +380,35 @@ const allocate: ModuleServerDef = {
       const v = a.kind === "lens" ? p.lens : p.side;
       if (v) counts[v] = (counts[v] ?? 0) + 1;
     }
-    const mine =
-      (a.kind === "lens" ? ctx.me?.lens : ctx.me?.side) ?? null;
-    return { header: a.header, kind: a.kind, options, counts, mine, cap: a.cap };
+    const mine = (a.kind === "lens" ? ctx.me?.lens : ctx.me?.side) ?? null;
+    return {
+      header: a.header,
+      kind: a.kind,
+      options,
+      counts,
+      mine,
+      cap: a.cap,
+    };
   },
   async handleAction(ctx, action) {
-    const a = ctx.config.allocate as { kind: "lens" | "side"; cap?: number };
+    if (action.type !== "allocate")
+      return { ok: false, reason: "unknown action" };
+    const a = ctx.config.allocate as {
+      kind: "lens" | "side";
+      cap?: number;
+      fixedOptions?: string[];
+      optionsFromContentType?: ContentType;
+    };
     const choice = String(action.payload?.choice ?? "");
     if (!action.token || !choice) return { ok: false, reason: "missing" };
+    const options = a.fixedOptions
+      ? a.fixedOptions
+      : a.optionsFromContentType
+        ? ctx.visibleContent
+            .filter((item) => item.type === a.optionsFromContentType)
+            .map((item) => item.title)
+        : [];
+    if (!options.includes(choice)) return { ok: false, reason: "bad option" };
     return ctx.store.allocate(action.token, a.kind, choice, a.cap);
   },
 };
@@ -330,7 +417,10 @@ const allocate: ModuleServerDef = {
 
 const coordinator: ModuleServerDef = {
   id: "coordinator",
-  meta: { name: "Coordinator", description: "Tells each person their pair or triad." },
+  meta: {
+    name: "Coordinator",
+    description: "Tells each person their pair or triad.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -345,7 +435,13 @@ const coordinator: ModuleServerDef = {
     coordinator: { kind: "pair", message: "You're paired with [PARTNER]." },
   },
   defaultVisibility: vis("visible", "visible", "visible", "hidden"),
-  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: false, needsTimer: false, projectable: false },
+  capabilities: {
+    gatherSource: "none",
+    acceptsActions: false,
+    liveResults: false,
+    needsTimer: false,
+    projectable: false,
+  },
   computeView(ctx): CoordinatorView {
     const c = ctx.config.coordinator as {
       kind: "lens-triad" | "pair";
@@ -378,7 +474,10 @@ const coordinator: ModuleServerDef = {
 
 const readaround: ModuleServerDef = {
   id: "readaround",
-  meta: { name: "Read-around", description: "Facilitator paces through submissions or patterns, live." },
+  meta: {
+    name: "Read-around",
+    description: "Facilitator paces through submissions or patterns, live.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -393,7 +492,13 @@ const readaround: ModuleServerDef = {
     readaround: { source: "patterns" },
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "none",
+    acceptsActions: false,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   computeView(ctx): ReadAroundView {
     const r = ctx.config.readaround as {
       source: "submissions" | "patterns";
@@ -432,10 +537,26 @@ const readaround: ModuleServerDef = {
 const close: ModuleServerDef = {
   id: "close",
   meta: { name: "Close", description: "End-of-session message." },
-  schema: z.object({ label: z.string() }).passthrough(),
-  defaultConfig: { label: "Close" },
+  schema: z
+    .object({
+      label: z.string(),
+      message: z.string().optional(),
+      nextStep: z.string().optional(),
+    })
+    .passthrough(),
+  defaultConfig: {
+    label: "Close",
+    message: "Thanks for being here.",
+    nextStep: "Copy anything you want to keep before you leave.",
+  },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "none", acceptsActions: false, liveResults: false, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "none",
+    acceptsActions: false,
+    liveResults: false,
+    needsTimer: false,
+    projectable: true,
+  },
   computeView(ctx) {
     const mine = ctx.me
       ? ctx.submissions
@@ -443,7 +564,13 @@ const close: ModuleServerDef = {
           .sort((a, b) => a.createdAt - b.createdAt)
           .map((s) => ({ text: s.text, tag: s.tag ?? null }))
       : [];
-    return { ended: ctx.state.ended, yourContributions: mine };
+    return {
+      ended: ctx.state.ended,
+      message:
+        (ctx.config.message as string | undefined) ?? "Thanks for being here.",
+      nextStep: ctx.config.nextStep as string | undefined,
+      yourContributions: mine,
+    };
   },
 };
 
@@ -451,7 +578,11 @@ const close: ModuleServerDef = {
 
 const poll: ModuleServerDef = {
   id: "poll",
-  meta: { name: "Poll", description: "Single or multiple choice over a fixed option set, with live results." },
+  meta: {
+    name: "Poll",
+    description:
+      "Single or multiple choice over a fixed option set, with live results.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -461,9 +592,19 @@ const poll: ModuleServerDef = {
       reveal: z.enum(["live", "onAdvance"]).optional(),
     })
     .passthrough(),
-  defaultConfig: { label: "Poll", question: "", options: ["Yes", "No"] },
+  defaultConfig: {
+    label: "Poll",
+    question: "Are we ready to move forward?",
+    options: ["Yes", "Not yet"],
+  },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "votes",
+    acceptsActions: true,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   async computeView(ctx) {
     // B2 faithfulness — the SAME pure shaper the in-builder preview uses, over the
     // real votes hash, so a preview can never drift from this live view.
@@ -471,15 +612,23 @@ const poll: ModuleServerDef = {
     return pollView(ctx.config, votes, ctx.me?.token ?? null, ctx.role);
   },
   async handleAction(ctx, action) {
+    if (action.type !== "vote") return { ok: false, reason: "unknown action" };
     if (!action.token) return { ok: false, reason: "missing" };
     const c = ctx.config as Record<string, any>;
     const multi = Boolean(c.multi);
+    const options: string[] = Array.isArray(c.options) ? c.options : [];
     const choice = action.payload?.choice;
     const choices = action.payload?.choices;
     let value: string | string[];
-    if (multi && Array.isArray(choices))
-      value = choices.filter((x): x is string => typeof x === "string");
-    else if (typeof choice === "string") value = multi ? [choice] : choice;
+    if (multi && Array.isArray(choices)) {
+      const selected = Array.from(
+        new Set(choices.filter((x): x is string => typeof x === "string")),
+      );
+      if (selected.some((option) => !options.includes(option)))
+        return { ok: false, reason: "bad option" };
+      value = selected;
+    } else if (typeof choice === "string" && options.includes(choice))
+      value = multi ? [choice] : choice;
     else return { ok: false, reason: "missing" };
     await ctx.store.castVote(ctx.phase.id, action.token, value);
     return { ok: true };
@@ -490,7 +639,10 @@ const poll: ModuleServerDef = {
 
 const dotvote: ModuleServerDef = {
   id: "dotvote",
-  meta: { name: "Dot voting", description: "Spend a budget of dots across options to prioritise." },
+  meta: {
+    name: "Dot voting",
+    description: "Spend a budget of dots across options to prioritise.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -499,26 +651,41 @@ const dotvote: ModuleServerDef = {
       dots: z.number().int().positive(),
     })
     .passthrough(),
-  defaultConfig: { label: "Dot vote", options: ["A", "B", "C"], dots: 3 },
+  defaultConfig: {
+    label: "Dot vote",
+    prompt: "Where should we focus first?",
+    options: ["Priority A", "Priority B", "Priority C"],
+    dots: 3,
+  },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "votes",
+    acceptsActions: true,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   async computeView(ctx) {
     // B2 faithfulness — shared shaper over the real votes (preview uses the same).
     const votes = await ctx.store.readVotes(ctx.phase.id);
     return dotVoteView(ctx.config, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
+    if (action.type !== "dot") return { ok: false, reason: "unknown action" };
     if (!action.token) return { ok: false, reason: "missing" };
     const c = ctx.config as Record<string, any>;
     const dots: number = c.dots ?? 3;
     const options: string[] = c.options ?? [];
     const choice = String(action.payload?.choice ?? "");
-    const delta = action.payload?.delta === -1 ? -1 : 1;
+    if (action.payload?.delta !== -1 && action.payload?.delta !== 1)
+      return { ok: false, reason: "bad delta" };
+    const delta = action.payload.delta;
     if (!options.includes(choice)) return { ok: false, reason: "bad option" };
     const votes = await ctx.store.readVotes(ctx.phase.id);
     const mine = ((votes[action.token] as Record<string, number>) ?? {}) || {};
     const used = Object.values(mine).reduce((s, n) => s + (Number(n) || 0), 0);
-    if (delta === 1 && used >= dots) return { ok: false, reason: "no dots left" };
+    if (delta === 1 && used >= dots)
+      return { ok: false, reason: "no dots left" };
     mine[choice] = Math.max(0, (Number(mine[choice]) || 0) + delta);
     await ctx.store.castVote(ctx.phase.id, action.token, mine);
     return { ok: true };
@@ -529,7 +696,10 @@ const dotvote: ModuleServerDef = {
 
 const rank: ModuleServerDef = {
   id: "rank",
-  meta: { name: "Ranking", description: "Drag items into priority order; aggregated by Borda count." },
+  meta: {
+    name: "Ranking",
+    description: "Drag items into priority order; aggregated by Borda count.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -537,23 +707,40 @@ const rank: ModuleServerDef = {
       items: z.array(z.string()).min(2),
     })
     .passthrough(),
-  defaultConfig: { label: "Rank", items: ["First", "Second", "Third"] },
+  defaultConfig: {
+    label: "Rank",
+    prompt: "Put these in priority order.",
+    items: ["Priority A", "Priority B", "Priority C"],
+  },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "votes",
+    acceptsActions: true,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   async computeView(ctx) {
     // B2 faithfulness — shared shaper over the real votes (preview uses the same).
     const votes = await ctx.store.readVotes(ctx.phase.id);
     return rankView(ctx.config, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
+    if (action.type !== "rank") return { ok: false, reason: "unknown action" };
     if (!action.token) return { ok: false, reason: "missing" };
     const order = action.payload?.order;
     if (!Array.isArray(order)) return { ok: false, reason: "missing order" };
-    await ctx.store.castVote(
-      ctx.phase.id,
-      action.token,
-      order.filter((x): x is string => typeof x === "string"),
-    );
+    const items = Array.isArray(ctx.config.items)
+      ? (ctx.config.items as string[])
+      : [];
+    const clean = order.filter((x): x is string => typeof x === "string");
+    if (
+      clean.length !== items.length ||
+      new Set(clean).size !== items.length ||
+      clean.some((item) => !items.includes(item))
+    )
+      return { ok: false, reason: "invalid ranking" };
+    await ctx.store.castVote(ctx.phase.id, action.token, clean);
     return { ok: true };
   },
 };
@@ -562,7 +749,11 @@ const rank: ModuleServerDef = {
 
 const scale: ModuleServerDef = {
   id: "scale",
-  meta: { name: "Scale", description: "Rate one or more statements on a numeric scale; shows the mean." },
+  meta: {
+    name: "Scale",
+    description:
+      "Rate one or more statements on a numeric scale; shows the mean.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -572,23 +763,45 @@ const scale: ModuleServerDef = {
       labels: z.tuple([z.string(), z.string()]).optional(),
     })
     .passthrough(),
-  defaultConfig: { label: "Scale", statements: ["Statement"], min: 1, max: 5 },
+  defaultConfig: {
+    label: "Scale",
+    statements: ["I feel confident about the way forward."],
+    min: 1,
+    max: 5,
+    labels: ["Not yet", "Completely"],
+  },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "votes",
+    acceptsActions: true,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   async computeView(ctx) {
     // B2 faithfulness — shared shaper over the real votes (preview uses the same).
     const votes = await ctx.store.readVotes(ctx.phase.id);
     return scaleView(ctx.config, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
+    if (action.type !== "scale") return { ok: false, reason: "unknown action" };
     if (!action.token) return { ok: false, reason: "missing" };
     const values = action.payload?.values;
     if (!Array.isArray(values)) return { ok: false, reason: "missing values" };
-    await ctx.store.castVote(
-      ctx.phase.id,
-      action.token,
-      values.map((n) => Number(n) || 0),
-    );
+    const statements = Array.isArray(ctx.config.statements)
+      ? ctx.config.statements
+      : [];
+    const min = typeof ctx.config.min === "number" ? ctx.config.min : 1;
+    const max = typeof ctx.config.max === "number" ? ctx.config.max : 5;
+    const clean = values.map(Number);
+    if (
+      clean.length !== statements.length ||
+      clean.some(
+        (value) => !Number.isFinite(value) || value < min || value > max,
+      )
+    )
+      return { ok: false, reason: "invalid values" };
+    await ctx.store.castVote(ctx.phase.id, action.token, clean);
     return { ok: true };
   },
 };
@@ -597,7 +810,10 @@ const scale: ModuleServerDef = {
 
 const wordcloud: ModuleServerDef = {
   id: "wordcloud",
-  meta: { name: "Word cloud", description: "Collect short words; render a live frequency cloud." },
+  meta: {
+    name: "Word cloud",
+    description: "Collect short words; render a live frequency cloud.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -605,9 +821,19 @@ const wordcloud: ModuleServerDef = {
       maxWords: z.number().int().positive().optional(),
     })
     .passthrough(),
-  defaultConfig: { label: "Word cloud", prompt: "", maxWords: 3 },
+  defaultConfig: {
+    label: "Word cloud",
+    prompt: "In one word, what is the room feeling right now?",
+    maxWords: 3,
+  },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "votes",
+    acceptsActions: true,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   async computeView(ctx) {
     // B2 faithfulness — shared shaper over the real words (preview uses the same).
     const words = await ctx.store.readWords(ctx.phase.id);
@@ -644,13 +870,23 @@ const wordcloud: ModuleServerDef = {
 
 const qna: ModuleServerDef = {
   id: "qna",
-  meta: { name: "Q&A + upvoting", description: "Crowd questions, surfaced by upvotes — for AMAs and town-halls." },
+  meta: {
+    name: "Q&A + upvoting",
+    description:
+      "Crowd questions, surfaced by upvotes — for AMAs and town-halls.",
+  },
   schema: z
     .object({ label: z.string(), prompt: z.string().optional() })
     .passthrough(),
   defaultConfig: { label: "Q&A", prompt: "Ask a question" },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "submissions",
+    acceptsActions: true,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   async computeView(ctx) {
     // B2 faithfulness — shared shaper. Questions are this phase's submissions;
     // upvotes are a per-token list of question ids. Preview uses the same shaper.
@@ -664,12 +900,23 @@ const qna: ModuleServerDef = {
       const text = String(action.payload?.text ?? "").trim();
       if (!text) return { ok: false, reason: "empty" };
       const handle = ctx.me?.handle ?? "Anonymous";
-      await ctx.store.addSubmission(handle, text.slice(0, 280), ctx.phase.id, null, action.token);
+      await ctx.store.addSubmission(
+        handle,
+        text.slice(0, 280),
+        ctx.phase.id,
+        null,
+        action.token,
+      );
       return { ok: true };
     }
     if (action.type === "upvote") {
       const id = String(action.payload?.questionId ?? "");
       if (!id) return { ok: false, reason: "missing" };
+      const valid = ctx.submissions.some(
+        (submission) =>
+          submission.phaseId === ctx.phase.id && submission.id === id,
+      );
+      if (!valid) return { ok: false, reason: "unknown question" };
       const votes = await ctx.store.readVotes(ctx.phase.id);
       const mine = ((votes[action.token] as string[]) ?? []).slice();
       const idx = mine.indexOf(id);
@@ -686,7 +933,11 @@ const qna: ModuleServerDef = {
 
 const matrix: ModuleServerDef = {
   id: "matrix",
-  meta: { name: "2×2 matrix", description: "Plot items by two criteria (e.g. impact vs. effort) into quadrants." },
+  meta: {
+    name: "2×2 matrix",
+    description:
+      "Plot items by two criteria (e.g. impact vs. effort) into quadrants.",
+  },
   schema: z
     .object({
       label: z.string(),
@@ -706,18 +957,36 @@ const matrix: ModuleServerDef = {
     max: 10,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes", acceptsActions: true, liveResults: true, needsTimer: false, projectable: true },
+  capabilities: {
+    gatherSource: "votes",
+    acceptsActions: true,
+    liveResults: true,
+    needsTimer: false,
+    projectable: true,
+  },
   async computeView(ctx) {
     // B2 faithfulness — shared shaper over the real votes (preview uses the same).
     const votes = await ctx.store.readVotes(ctx.phase.id);
     return matrixView(ctx.config, votes, ctx.me?.token ?? null);
   },
   async handleAction(ctx, action) {
+    if (action.type !== "matrix")
+      return { ok: false, reason: "unknown action" };
     if (!action.token) return { ok: false, reason: "missing" };
     const text = String(action.payload?.text ?? "").trim();
     const x = Number(action.payload?.x);
     const y = Number(action.payload?.y);
-    if (!text || Number.isNaN(x) || Number.isNaN(y))
+    const min = typeof ctx.config.min === "number" ? ctx.config.min : 0;
+    const max = typeof ctx.config.max === "number" ? ctx.config.max : 10;
+    if (
+      !text ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      x < min ||
+      x > max ||
+      y < min ||
+      y > max
+    )
       return { ok: false, reason: "missing" };
     await ctx.store.castVote(ctx.phase.id, action.token, {
       text: text.slice(0, 60),
@@ -732,7 +1001,7 @@ const matrix: ModuleServerDef = {
 
 // Concrete-config modules (defs/*) declare ModuleServerDef<TheirConfig>; the
 // registry stores them uniformly, so the value type is widened to <any>.
-export const SERVER_MODULES: Record<ModuleKind, ModuleServerDef<any>> = {
+const RAW_SERVER_MODULES: Record<ModuleKind, ModuleServerDef<any>> = {
   lobby,
   content,
   media: mediaModule,
@@ -777,8 +1046,35 @@ export const SERVER_MODULES: Record<ModuleKind, ModuleServerDef<any>> = {
   actions: actionsModule,
 };
 
+export const SERVER_MODULES: Record<
+  ModuleKind,
+  ModuleServerDef<any>
+> = Object.fromEntries(
+  Object.entries(RAW_SERVER_MODULES).map(([id, module]) => [
+    id,
+    {
+      ...module,
+      schema: qualitySchema(module.id, module.schema),
+    },
+  ]),
+) as Record<ModuleKind, ModuleServerDef<any>>;
+
 export function getServerModule(id: ModuleKind): ModuleServerDef | null {
   return SERVER_MODULES[id] ?? null;
+}
+
+export function effectiveGatherSource(
+  id: ModuleKind,
+  config: object,
+): ModuleCapabilities["gatherSource"] {
+  const definition = SERVER_MODULES[id];
+  if (!definition) return "none";
+  if (
+    definition.capabilities.gatherWhen &&
+    !definition.capabilities.gatherWhen(config as Record<string, unknown>)
+  )
+    return "none";
+  return definition.capabilities.gatherSource;
 }
 
 // readaround needs a server-side readaround source; readaround/submissions also

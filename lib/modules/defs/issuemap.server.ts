@@ -106,7 +106,11 @@ export interface IssueMapView {
 
 function readCache(votes: Record<string, unknown>): IssueMapCache | null {
   const r = votes["__ai__"];
-  if (r && typeof r === "object" && Array.isArray((r as IssueMapCache).issues)) {
+  if (
+    r &&
+    typeof r === "object" &&
+    Array.isArray((r as IssueMapCache).issues)
+  ) {
     return r as IssueMapCache;
   }
   return null;
@@ -119,7 +123,9 @@ function readFocus(votes: Record<string, unknown>): string | null {
 
 function readPinned(votes: Record<string, unknown>): string[] {
   const p = votes["__pinned__"];
-  return Array.isArray(p) ? p.filter((x): x is string => typeof x === "string") : [];
+  return Array.isArray(p)
+    ? p.filter((x): x is string => typeof x === "string")
+    : [];
 }
 
 // ---- prompt construction (Claude call goes through @/lib/ai) --------------
@@ -159,19 +165,27 @@ function mapIssues(parsed: unknown): Issue[] {
   const rawIssues = (parsed as { issues?: unknown }).issues;
   if (!Array.isArray(rawIssues)) return [];
   return rawIssues
-    .filter((i): i is Record<string, unknown> => Boolean(i) && typeof i === "object")
+    .filter(
+      (i): i is Record<string, unknown> => Boolean(i) && typeof i === "object",
+    )
     .map((i, idx) => {
-      const label = String(i.label ?? "").slice(0, 80).trim();
+      const label = String(i.label ?? "")
+        .slice(0, 80)
+        .trim();
       const id =
         typeof i.id === "string" && i.id.trim()
           ? i.id.trim().slice(0, 60)
           : slugify(label) || `issue-${idx + 1}`;
-      const summary = String(i.summary ?? "").slice(0, 280).trim();
+      const summary = String(i.summary ?? "")
+        .slice(0, 280)
+        .trim();
       const positions = Array.isArray(i.positions)
         ? (i.positions as unknown[])
             .map((p) => {
               if (p && typeof p === "object" && "text" in p)
-                return String((p as { text: unknown }).text ?? "").slice(0, 280).trim();
+                return String((p as { text: unknown }).text ?? "")
+                  .slice(0, 280)
+                  .trim();
               if (typeof p === "string") return p.slice(0, 280).trim();
               return "";
             })
@@ -237,7 +251,9 @@ export const issuemapModule: ModuleServerDef<IssueMapConfig> = {
   // The map is room-facing (AI-organised, not raw personal submissions), so the
   // same payload is shown to everyone.
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { usesAi: true, gatherSource: "votes",
+  capabilities: {
+    usesAi: true,
+    gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
@@ -335,11 +351,22 @@ export const issuemapModule: ModuleServerDef<IssueMapConfig> = {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
       const issueId = String(action.payload?.issueId ?? "");
       if (!issueId) return { ok: false, reason: "missing issueId" };
-      const votes = await ctx.store.readVotes(ctx.phase.id);
-      const current = readFocus(votes);
-      const next = current === issueId ? null : issueId;
-      await ctx.store.castVote(ctx.phase.id, "__focus__", next);
-      return { ok: true };
+      const result = await ctx.store.withLock(
+        `issuemap-state:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          if (!readCache(votes)?.issues.some((issue) => issue.id === issueId))
+            return false;
+          const current = readFocus(votes);
+          const next = current === issueId ? null : issueId;
+          await ctx.store.castVote(ctx.phase.id, "__focus__", next);
+          return true;
+        },
+      );
+      if (!result.ok) return { ok: false, reason: "Updating — one moment." };
+      return result.value
+        ? { ok: true }
+        : { ok: false, reason: "unknown issue" };
     }
 
     // Pin / unpin an issue so a re-cluster keeps it.
@@ -347,12 +374,27 @@ export const issuemapModule: ModuleServerDef<IssueMapConfig> = {
       if (ctx.role === "participant") return { ok: false, reason: "forbidden" };
       const issueId = String(action.payload?.issueId ?? "");
       if (!issueId) return { ok: false, reason: "missing issueId" };
-      const votes = await ctx.store.readVotes(ctx.phase.id);
-      const pinned = new Set(readPinned(votes));
-      if (action.type === "pin") pinned.add(issueId);
-      else pinned.delete(issueId);
-      await ctx.store.castVote(ctx.phase.id, "__pinned__", Array.from(pinned));
-      return { ok: true };
+      const result = await ctx.store.withLock(
+        `issuemap-state:${ctx.phase.id}`,
+        async () => {
+          const votes = await ctx.store.readVotes(ctx.phase.id);
+          if (!readCache(votes)?.issues.some((issue) => issue.id === issueId))
+            return false;
+          const pinned = new Set(readPinned(votes));
+          if (action.type === "pin") pinned.add(issueId);
+          else pinned.delete(issueId);
+          await ctx.store.castVote(
+            ctx.phase.id,
+            "__pinned__",
+            Array.from(pinned),
+          );
+          return true;
+        },
+      );
+      if (!result.ok) return { ok: false, reason: "Updating — one moment." };
+      return result.value
+        ? { ok: true }
+        : { ok: false, reason: "unknown issue" };
     }
 
     return { ok: false, reason: "unknown action" };

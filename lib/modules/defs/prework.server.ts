@@ -17,7 +17,12 @@
 // below are shared with prework.client.tsx.
 
 import { z } from "zod";
-import type { ModuleContext, ModuleServerDef, Role, Visibility } from "../types";
+import type {
+  ModuleContext,
+  ModuleServerDef,
+  Role,
+  Visibility,
+} from "../types";
 
 // ---- shared helper (replicated from registry.server.ts) -------------------
 
@@ -101,7 +106,8 @@ export const preworkModule: ModuleServerDef<PreworkConfig> = {
   // Participants contribute; facilitator/cohost watch the running tally; the
   // projector shows anonymous progress only (no raw text ever).
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false, // explicitly async / unhurried — no countdown
@@ -126,9 +132,7 @@ export const preworkModule: ModuleServerDef<PreworkConfig> = {
     }
 
     // Overview (facilitator / cohost / projector / admin): counts only.
-    const phaseSubs = ctx.submissions.filter(
-      (s) => s.phaseId === ctx.phase.id,
-    );
+    const phaseSubs = ctx.submissions.filter((s) => s.phaseId === ctx.phase.id);
     const contributors = new Set<string>();
     for (const s of phaseSubs) if (s.token) contributors.add(s.token);
     return {
@@ -140,12 +144,29 @@ export const preworkModule: ModuleServerDef<PreworkConfig> = {
     };
   },
   async handleAction(ctx, action) {
-    if (action.type !== "submit") return { ok: false, reason: "unknown action" };
+    if (action.type !== "submit")
+      return { ok: false, reason: "unknown action" };
+    if (
+      ctx.config.multiSubmit === false &&
+      ctx.me &&
+      ctx.submissions.some(
+        (submission) =>
+          submission.phaseId === ctx.phase.id &&
+          submission.token === ctx.me!.token,
+      )
+    )
+      return { ok: false, reason: "already submitted" };
     const text = String(action.payload?.text ?? "").trim();
     if (!text) return { ok: false, reason: "empty" };
     if (text.length > 2000) return { ok: false, reason: "too long" };
     const handle = ctx.me?.handle ?? "Anonymous";
-    await ctx.store.addSubmission(handle, text, ctx.phase.id, null, action.token);
+    await ctx.store.addSubmission(
+      handle,
+      text,
+      ctx.phase.id,
+      null,
+      action.token,
+    );
     return { ok: true };
   },
 };

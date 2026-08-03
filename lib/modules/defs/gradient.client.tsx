@@ -3,7 +3,7 @@
 // Renderers for the gradient module. Participant: the proposal, a vertical list
 // of gradient levels as selectable buttons (the current one highlighted), and a
 // reason textarea that appears when the chosen level sits in the dissent band or
-// when requireReasonBelow applies. Projector: a horizontal gradient bar chart
+// when the facilitator requires context for concerns. Projector: a horizontal gradient bar chart
 // with the dissent band tinted red, plus the dissent count — reasons stay with
 // the facilitator and never reach the projector. Pure functions of the
 // server-computed view + the dispatcher.
@@ -17,14 +17,13 @@ import type { GradientView } from "./gradient.server";
 
 // Does choosing this level require / invite a written reason?
 function needsReason(v: GradientView, level: number): boolean {
-  const inBand = v.dissentLevels.includes(level);
-  const required =
-    v.requireReasonBelow !== undefined && level <= v.requireReasonBelow;
-  return inBand || required;
+  return (
+    v.dissentLevels.includes(level) || v.reasonRequiredLevels.includes(level)
+  );
 }
 
 function isRequired(v: GradientView, level: number): boolean {
-  return v.requireReasonBelow !== undefined && level <= v.requireReasonBelow;
+  return v.reasonRequiredLevels.includes(level);
 }
 
 // ---- participant ----------------------------------------------------------
@@ -33,7 +32,9 @@ const GradientParticipant: Renderer = ({ view, act, token, phaseId }) => {
   const v = view as GradientView;
   const dissent = new Set(v.dissentLevels);
 
-  const [selected, setSelected] = useState<number | null>(v.mine?.level ?? null);
+  const [selected, setSelected] = useState<number | null>(
+    v.mine?.level ?? null,
+  );
   const [reason, setReason] = useState<string>(v.mine?.reason ?? "");
   const [err, setErr] = useState<string | null>(null);
   const { status, send } = useSend(act);
@@ -115,7 +116,7 @@ const GradientParticipant: Renderer = ({ view, act, token, phaseId }) => {
               )}
             </p>
             <VoiceTextarea
-            draftKey={`edges_draft:${token}:${phaseId}`}
+              draftKey={`edges_draft:${token}:${phaseId}`}
               value={reason}
               onChange={setReason}
               placeholder="Name the concern so the group can work with it…"

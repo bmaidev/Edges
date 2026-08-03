@@ -126,10 +126,11 @@ export const redistributeModule: ModuleServerDef<RedistributeConfig> = {
     label: "Redistribute",
     sourcePhaseId: "",
     mode: "critique",
-    prompt: "",
+    prompt: "What would make this idea stronger?",
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "submissions",
+  capabilities: {
+    gatherSource: "submissions",
     acceptsActions: true,
     liveResults: true,
     needsTimer: true,
@@ -146,13 +147,13 @@ export const redistributeModule: ModuleServerDef<RedistributeConfig> = {
       const assignedCard = assignFor(ctx, me?.token ?? null);
       const myResponseSubmitted = Boolean(
         me?.token &&
-          assignedCard &&
-          ctx.submissions.some(
-            (s) =>
-              s.phaseId === ctx.phase.id &&
-              s.tag === assignedCard.id &&
-              s.token === me.token,
-          ),
+        assignedCard &&
+        ctx.submissions.some(
+          (s) =>
+            s.phaseId === ctx.phase.id &&
+            s.tag === assignedCard.id &&
+            s.token === me.token,
+        ),
       );
       const view: RedistributeParticipantView = {
         prompt,
@@ -180,7 +181,8 @@ export const redistributeModule: ModuleServerDef<RedistributeConfig> = {
     return view;
   },
   async handleAction(ctx, action) {
-    if (action.type !== "respond") return { ok: false, reason: "unknown action" };
+    if (action.type !== "respond")
+      return { ok: false, reason: "unknown action" };
     const text = String(action.payload?.text ?? "").trim();
     if (!text) return { ok: false, reason: "empty" };
     if (text.length > 2000) return { ok: false, reason: "too long" };

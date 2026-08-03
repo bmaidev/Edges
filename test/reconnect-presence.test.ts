@@ -60,14 +60,22 @@ describe("groups: cohort-freeze helpers", () => {
   it("under hold, only PLACED latecomers become extras; the rest are parked", () => {
     const votes = { __cohort__: ["a", "b"], __placed__: ["m"] };
     // append (default): all latecomers fold in.
-    expect(cohortTokens(votes, ["a", "b", "m", "z"]).extras).toEqual(["m", "z"]);
+    expect(cohortTokens(votes, ["a", "b", "m", "z"]).extras).toEqual([
+      "m",
+      "z",
+    ]);
     // hold: only the placed one (m) folds; z stays held.
-    expect(cohortTokens(votes, ["a", "b", "m", "z"], { hold: true }).extras).toEqual(["m"]);
+    expect(
+      cohortTokens(votes, ["a", "b", "m", "z"], { hold: true }).extras,
+    ).toEqual(["m"]);
   });
 
   it("heldLatecomers = live − cohort − placed (sorted); empty before any freeze", () => {
     const votes = { __cohort__: ["a", "b"], __placed__: ["m"] };
-    expect(heldLatecomers(votes, ["a", "b", "m", "z", "c"])).toEqual(["c", "z"]);
+    expect(heldLatecomers(votes, ["a", "b", "m", "z", "c"])).toEqual([
+      "c",
+      "z",
+    ]);
     expect(heldLatecomers({}, ["a", "b"])).toEqual([]); // no freeze → nothing held
   });
 
@@ -78,11 +86,7 @@ describe("groups: cohort-freeze helpers", () => {
   });
 
   it("appendExtras folds each latecomer into the smallest group, never moving seated members", () => {
-    const seated = [
-      ["a", "b"],
-      ["c", "d"],
-      ["e"],
-    ];
+    const seated = [["a", "b"], ["c", "d"], ["e"]];
     const out = appendExtras(seated, ["x", "y"]);
     // Each extra independently joins the CURRENT smallest group: x → ["e"] (now
     // size 2), then all groups are size 2 so y → the lowest-index one. Seated
@@ -113,7 +117,10 @@ describe("groups: cohort-freeze helpers", () => {
 
 // ---- integration: join-invariance through the real store ------------------
 
-function phase(moduleId: string, config: Record<string, unknown>): PhaseInstance {
+function phase(
+  moduleId: string,
+  config: Record<string, unknown>,
+): PhaseInstance {
   return { id: "p1", moduleId: moduleId as PhaseInstance["moduleId"], config };
 }
 
@@ -162,6 +169,48 @@ describe("World Café: a mid-session join never reshuffles seated tables", () =>
     const votes = await readVotes(P.id, roomId);
     expect(readCohort(votes)).toHaveLength(6);
   });
+
+  it("does not create a new derived table when a late join crosses a size boundary", async () => {
+    const derived = phase("worldcafe", { label: "Café", prompt: "?" });
+    const roomId = await room(derived, 8);
+    const before = (await getPublicState(null, roomId, "projector")).view
+      ?.data as { tableCount: number };
+    expect(before.tableCount).toBe(2);
+
+    await addParticipant("LATE-BOUNDARY", "Latecomer", roomId);
+    const after = (await getPublicState(null, roomId, "projector")).view
+      ?.data as { tableCount: number; tables: { members: string[] }[] };
+    expect(after.tableCount).toBe(2);
+    expect(
+      after.tables.some((table) => table.members.includes("Latecomer")),
+    ).toBe(true);
+  });
+});
+
+describe("Consult: fixed groups survive a join mid-round", () => {
+  const P = phase("consult", {
+    label: "Consult",
+    prompt: "Bring a real challenge",
+  });
+
+  it("keeps seated trios intact and appends the latecomer", async () => {
+    const roomId = await room(P, 6);
+    const before = (await getPublicState(null, roomId, "projector")).view
+      ?.data as { groups: { members: string[] }[] };
+    const seated = before.groups.map((group) => [...group.members]);
+
+    await addParticipant("CONSULT-LATE", "Late consultant", roomId);
+    const after = (await getPublicState(null, roomId, "projector")).view
+      ?.data as { groups: { members: string[] }[] };
+    after.groups.forEach((group, index) => {
+      expect(
+        group.members.filter((member) => member !== "Late consultant"),
+      ).toEqual(seated[index]);
+    });
+    expect(
+      after.groups.some((group) => group.members.includes("Late consultant")),
+    ).toBe(true);
+  });
 });
 
 describe("Stations: intact groups survive a join mid-tour", () => {
@@ -185,9 +234,13 @@ describe("Stations: intact groups survive a join mid-tour", () => {
       ?.data as { rotation: { members: string[] }[] };
 
     after.rotation.forEach((r, i) => {
-      expect(r.members.filter((m) => m !== "Latecomer")).toEqual(beforeSeated[i]);
+      expect(r.members.filter((m) => m !== "Latecomer")).toEqual(
+        beforeSeated[i],
+      );
     });
-    expect(after.rotation.some((r) => r.members.includes("Latecomer"))).toBe(true);
+    expect(after.rotation.some((r) => r.members.includes("Latecomer"))).toBe(
+      true,
+    );
   });
 });
 
@@ -259,7 +312,11 @@ describe("25/10: a join during scoring never changes who holds which card", () =
 // ---- D4 slice 2: explicit latecomer place / hold --------------------------
 
 describe("latecomer hold policy: a latecomer waits until the host places them", () => {
-  const P = phase("onetwofour", { label: "1-2-4-All", prompt: "?", latecomerHold: true });
+  const P = phase("onetwofour", {
+    label: "1-2-4-All",
+    prompt: "?",
+    latecomerHold: true,
+  });
 
   it("holds the latecomer (not seated + waiting state), then place seats them", async () => {
     const roomId = await room(P, 4);

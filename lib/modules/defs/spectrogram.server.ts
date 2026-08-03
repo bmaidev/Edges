@@ -144,7 +144,8 @@ const spectrogram: ModuleServerDef<SpectrogramConfig> = {
     beforeAfter: false,
   },
   defaultVisibility: vis("visible", "visible", "visible", "visible"),
-  capabilities: { gatherSource: "votes",
+  capabilities: {
+    gatherSource: "votes",
     acceptsActions: true,
     liveResults: true,
     needsTimer: false,
@@ -159,10 +160,7 @@ const spectrogram: ModuleServerDef<SpectrogramConfig> = {
     const beforeAfter = Boolean(c.beforeAfter);
     // In buckets mode default to the configured bucket count (Four-Corners
     // style); in continuous mode use ~10 fine bins for the distribution shape.
-    const bins =
-      mode === "buckets"
-        ? Math.max(2, Number(c.buckets) || 4)
-        : 10;
+    const bins = mode === "buckets" ? Math.max(2, Number(c.buckets) || 4) : 10;
 
     const votes = await ctx.store.readVotes(ctx.phase.id);
 
@@ -181,7 +179,12 @@ const spectrogram: ModuleServerDef<SpectrogramConfig> = {
       all.push({
         x: clamp01(p.x),
         reason: typeof p.reason === "string" ? p.reason : undefined,
-        stage: p.stage === "after" ? "after" : p.stage === "before" ? "before" : undefined,
+        stage:
+          p.stage === "after"
+            ? "after"
+            : p.stage === "before"
+              ? "before"
+              : undefined,
       });
     }
 
@@ -236,7 +239,11 @@ const spectrogram: ModuleServerDef<SpectrogramConfig> = {
         ? []
         : active
             .filter((p) => p.reason)
-            .map((p) => ({ x: p.x, reason: p.reason as string, stage: p.stage }));
+            .map((p) => ({
+              x: p.x,
+              reason: p.reason as string,
+              stage: p.stage,
+            }));
 
     return {
       statement,
@@ -267,9 +274,16 @@ const spectrogram: ModuleServerDef<SpectrogramConfig> = {
 
     if (action.type === "place") {
       if (!action.token) return { ok: false, reason: "missing" };
-      const x = clamp01(Number(action.payload?.x));
-      const allowReasons = Boolean((ctx.config as Record<string, unknown>).allowReasons);
-      const beforeAfter = Boolean((ctx.config as Record<string, unknown>).beforeAfter);
+      const rawX = Number(action.payload?.x);
+      if (!Number.isFinite(rawX) || rawX < 0 || rawX > 1)
+        return { ok: false, reason: "bad position" };
+      const x = clamp01(rawX);
+      const allowReasons = Boolean(
+        (ctx.config as Record<string, unknown>).allowReasons,
+      );
+      const beforeAfter = Boolean(
+        (ctx.config as Record<string, unknown>).beforeAfter,
+      );
 
       const value: Placement = { x };
       if (allowReasons) {
