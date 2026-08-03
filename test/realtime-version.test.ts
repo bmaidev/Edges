@@ -139,7 +139,9 @@ describe("participant /state always returns a full body", () => {
       "S",
       room.slug,
     );
-    const res = await stateGET(partReq(room.slug), { params: { room: room.slug } });
+    const res = await stateGET(partReq(room.slug), {
+      params: Promise.resolve({ room: room.slug }),
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get("ETag")).toBeNull();
     const body = await res.json();
@@ -147,7 +149,9 @@ describe("participant /state always returns a full body", () => {
 
     // A second identical poll is still a full 200 (never a 304), so a fresh read
     // always wins and self-heals — never a stale-locked view.
-    const again = await stateGET(partReq(room.slug), { params: { room: room.slug } });
+    const again = await stateGET(partReq(room.slug), {
+      params: Promise.resolve({ room: room.slug }),
+    });
     expect(again.status).toBe(200);
     expect((await again.json()).role).toBe("participant");
   });

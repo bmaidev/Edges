@@ -7,11 +7,12 @@ import {
 import { resolveAdminContext } from "@/lib/auth";
 import { computeAnalytics } from "@/lib/analytics";
 import { computeMethodMetrics, metricsToCsv } from "@/lib/session-metrics";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/admin/analytics?code=ADMIN — cross-session rollup across all rooms
+// GET /api/admin/analytics + X-Edges-Code — cross-session rollup across all rooms
 // (lastRun counts + design label) PLUS the F4 de-identified method-engagement /
 // ended-early summary from the durable SessionMetrics index. Aggregate-only,
 // N<3-suppressed — never any participant data.
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 //   ?export=json → the raw metrics as JSON
 export async function GET(req: NextRequest) {
   const ctx = await resolveAdminContext(
-    req.nextUrl.searchParams.get("code"),
+    requestCode(req),
     req.nextUrl.searchParams.get("workspace"),
   );
   if (!ctx.ok)
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
 // POST { action: "clear" } — wipe THIS workspace's metrics history.
 export async function POST(req: NextRequest) {
   const ctx = await resolveAdminContext(
-    req.nextUrl.searchParams.get("code"),
+    requestCode(req),
     req.nextUrl.searchParams.get("workspace"),
   );
   if (!ctx.ok)

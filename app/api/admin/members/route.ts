@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAdminContext } from "@/lib/auth";
 import { addMember, listMembers, removeMember } from "@/lib/workspaces";
 import { adminMagicLink } from "@/lib/magicLink";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,10 +17,10 @@ function ownerGate(ctx: { ok: boolean; role: string | null; isSuperAdmin: boolea
   return ctx.ok && (ctx.isSuperAdmin || ctx.role === "owner");
 }
 
-// GET /api/admin/members?code=… -> [{ id, name, role, createdAt }] (any member).
+// GET /api/admin/members + X-Edges-Code -> members (any workspace member).
 export async function GET(req: NextRequest) {
   const ctx = await resolveAdminContext(
-    req.nextUrl.searchParams.get("code"),
+    requestCode(req),
     req.nextUrl.searchParams.get("workspace"),
   );
   if (!ctx.ok)

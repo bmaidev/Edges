@@ -4,6 +4,7 @@ import { Printer } from "lucide-react";
 import { Button as UiButton } from "@/components/ui/button";
 import { DEFAULT_MINUTES } from "@/lib/arc";
 import type { FacilitatorState, ModuleKind } from "@/lib/types";
+import { setExpiring } from "@/lib/browser-storage";
 
 // B3 — print the facilitator run-sheet. Builds the one-sheet payload from the
 // facilitator state (sequence + derived runsheets) and hands it to the print page
@@ -36,7 +37,7 @@ export function RunsheetPrint({
       phases: phasePayload,
     };
     try {
-      localStorage.setItem("edges_print", JSON.stringify(payload));
+      setExpiring("edges_print", payload);
     } catch {
       /* ignore */
     }

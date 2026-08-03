@@ -160,7 +160,7 @@ describe("host route gating + parse", () => {
     const { slug, sub, passcodes } = await seeded();
     const res = await hostPOST(
       hostReq(slug, { command: "spotlight", code: passcodes.cohost, id: sub.id }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(200);
     const d = await res.json();
@@ -171,7 +171,7 @@ describe("host route gating + parse", () => {
     const { slug, sub } = await seeded();
     const res = await hostPOST(
       hostReq(slug, { command: "spotlight", code: "not-a-real-code", id: sub.id }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(403);
   });
@@ -181,7 +181,7 @@ describe("host route gating + parse", () => {
     await setSpotlight({ kind: "submission", id: sub.id }, slug);
     const res = await hostPOST(
       hostReq(slug, { command: "spotlight", code: passcodes.facilitator }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(200);
     const d = await res.json();
@@ -193,7 +193,7 @@ describe("host route gating + parse", () => {
     const { slug, passcodes } = await seeded();
     const res = await hostPOST(
       hostReq(slug, { command: "spotlight", code: passcodes.facilitator, text: "Quote", handle: "Dana" }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     const d = await res.json();
     expect(d.state.spotlight).toEqual({ text: "Quote", handle: "Dana" });
@@ -203,7 +203,7 @@ describe("host route gating + parse", () => {
     const { slug, sub, passcodes } = await seeded();
     const res = await hostPOST(
       hostReq(slug, { command: "spotlight", code: passcodes.facilitator, id: sub.id, handle: "Mallory" }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     const d = await res.json();
     expect(d.state.spotlight?.handle).toBeNull();

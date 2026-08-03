@@ -21,8 +21,8 @@ export type ReportEdit =
 // F1 — report sharing preferences. Conservative defaults preserve the off-the-
 // record ethos: no verbatim quotes, no attribution unless the facilitator opts in.
 export interface ReportMeta {
-  showQuotes?: boolean; // include verbatim participant quotes in the shared report
-  attribution?: "anonymous" | "named"; // default "anonymous"
+  showQuotes?: boolean; // retained for legacy API compatibility; always false
+  attribution?: "anonymous" | "named"; // retained for compatibility; always anonymous
 }
 
 function dropAt<T>(list: T[], index: number): T[] {
@@ -76,9 +76,9 @@ export function applyReportEdit(report: SessionReport, edit: ReportEdit): Sessio
 
 // Coerce an untrusted ReportMeta to the safe shape (defaults preserve anonymity).
 export function normalizeReportMeta(raw: unknown): ReportMeta {
-  const m = (raw ?? {}) as Record<string, unknown>;
+  void raw;
   return {
-    showQuotes: m.showQuotes === true,
-    attribution: m.attribution === "named" ? "named" : "anonymous",
+    showQuotes: false,
+    attribution: "anonymous",
   };
 }

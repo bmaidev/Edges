@@ -153,7 +153,7 @@ describe("role scoping + lifecycle", () => {
 });
 
 describe("flows into the archive", () => {
-  it("archiveRoom carries action items verbatim", async () => {
+  it("archiveRoom carries agreed actions but strips structured owner names", async () => {
     const room = "f2-archive";
     const { hashes } = freshPasscodes();
     await createRoomWithSlug(room, "Offsite", "topic", { passcodeHashes: hashes });
@@ -162,7 +162,7 @@ describe("flows into the archive", () => {
     await archiveRoom(room);
     const arch = await getArchive(room);
     expect(arch!.actionItems).toEqual([
-      { text: "Book the venue", ownerName: "Sam", due: undefined, status: "open" },
+      { text: "Book the venue", due: undefined, status: "open" },
     ]);
   });
 });

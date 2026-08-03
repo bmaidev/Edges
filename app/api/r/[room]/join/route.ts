@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addParticipant } from "@/lib/store";
 import { getRoom } from "@/lib/rooms";
+import { rateLimitResponse } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,9 +9,12 @@ export const dynamic = "force-dynamic";
 // POST /api/r/[room]/join { handle } -> { participantToken }
 export async function POST(
   req: NextRequest,
-  { params }: { params: { room: string } },
+  { params }: { params: Promise<{ room: string }> },
 ) {
-  if (!(await getRoom(params.room)))
+  const { room } = await params;
+  const limited = await rateLimitResponse(req, `join:${room}`, { limit: 10 });
+  if (limited) return limited;
+  if (!(await getRoom(room)))
     return NextResponse.json({ error: "No such room" }, { status: 404 });
 
   let handle = "Anonymous";
@@ -23,6 +27,6 @@ export async function POST(
   }
 
   const participantToken = globalThis.crypto.randomUUID();
-  await addParticipant(participantToken, handle, params.room);
+  await addParticipant(participantToken, handle, room);
   return NextResponse.json({ participantToken });
 }

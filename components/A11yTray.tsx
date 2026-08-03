@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { SCALES, type A11yPrefs } from "@/lib/a11y/prefs";
 
 // D2 — the floating "Aa" accessibility control. Keyboard-operable, labelled, and
@@ -16,28 +17,25 @@ export function A11yTray({
   const sizeLabel = (s: number) => (s === 1 ? "A" : s === 1.25 ? "A+" : "A++");
 
   return (
-    <>
-      <button
-        type="button"
-        aria-label="Accessibility options"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="safe-bottom fixed bottom-4 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-sm font-semibold text-white shadow-lg"
-      >
-        Aa
-      </button>
-      {open && (
-        <div
-          role="dialog"
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button
+          type="button"
           aria-label="Accessibility options"
-          className="fixed bottom-16 left-4 z-50 w-64 rounded-xl border border-border bg-surface p-4 shadow-xl"
+          className="safe-bottom fixed bottom-4 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-sm font-semibold text-white shadow-lg"
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Aa
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/20" />
+        <Dialog.Content className="fixed bottom-16 left-4 z-50 w-64 rounded-xl border border-border bg-surface p-4 shadow-xl">
+          <Dialog.Title className="text-xs font-semibold uppercase tracking-wide text-muted">
             Accessibility
-          </p>
-          <p className="mt-1 text-[11px] text-muted">
+          </Dialog.Title>
+          <Dialog.Description className="mt-1 text-[11px] text-muted">
             Only on this device — never shared with the room.
-          </p>
+          </Dialog.Description>
 
           <div className="mt-3">
             <span className="text-xs text-white/80">Text size</span>
@@ -63,9 +61,12 @@ export function A11yTray({
           <Toggle label="High contrast" on={prefs.contrast} onToggle={() => update({ contrast: !prefs.contrast })} />
           <Toggle label="Reduce motion" on={prefs.reduceMotion} onToggle={() => update({ reduceMotion: !prefs.reduceMotion })} />
           <Toggle label="Readable font" on={prefs.readable} onToggle={() => update({ readable: !prefs.readable })} />
-        </div>
-      )}
-    </>
+          <Dialog.Close className="mt-4 min-h-11 w-full rounded-lg border border-border text-sm text-muted hover:border-accent">
+            Close
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

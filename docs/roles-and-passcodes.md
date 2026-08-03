@@ -14,8 +14,9 @@ This page explains both, then lists which URL needs which key.
 
 A **workspace** is your space: your rooms, your branding, your people, your
 reports. You get into it with a **sign-in link**, not a typed password. The link
-looks like `…/admin#k=XXXX` — the code after the `#` stays in your browser and is
-never sent to a server, so it's safe to bookmark. **The link is the key.**
+looks like `…/admin#k=XXXX` — the browser does not include the fragment in the
+HTTP URL; Edges reads and scrubs it, then authenticates with a request header.
+**The link is the key.**
 
 Inside a workspace there are two roles:
 
@@ -45,16 +46,16 @@ room). These set what someone can do in the *live* session:
 
 - **Room admin** — can do everything in the room, including reconfiguring the
   session and launching a custom sequence from the builder.
-- **Facilitator** — runs the room end to end (drive phases, inject content,
-  curate patterns, run AI, see raw notes, end/archive) but can't reconfigure the
-  session structure or launch an arbitrary custom build. (Launching a vetted
-  **template** is fine.)
+- **Facilitator** — runs and designs the room end to end (drive phases, inject
+  content, curate patterns, run AI, see raw notes, configure, and end/archive).
+  Workspace membership, keys, and other rooms remain owner/admin concerns.
 - **Co-host** — a reduced facilitator: can drive the room (advance, timers,
   inject, curate, AI) but can't end it, reconfigure it, or reassign people.
 - **Projector** — the read-only big-screen view (`/r/<room>/screen`). Needs **no
   passcode**; just open the URL on the shared screen.
-- **Participant** — joins with the room link and a handle (no passcode); never
-  sees other people's raw notes.
+- **Participant** — joins with the room link and a handle (no passcode). Most
+  phases show only their own input or aggregates; methods that intentionally
+  rotate/share a note say so in the phase instructions.
 
 ### What each room role can do
 
@@ -68,11 +69,10 @@ room). These set what someone can do in the *live* session:
 | See **raw** submissions (facilitator-only data) | ✓ | ✓ | ✓ | — | — |
 | Reassign participants (lens/side) | ✓ | ✓ | — | — | — |
 | End / archive the session | ✓ | ✓ | — | — | — |
-| Reconfigure the session / launch a custom build | ✓ | — | — | — | — |
+| Reconfigure the session / launch a custom build | ✓ | ✓ | — | — | — |
 
 > The builder's AI design tools (Suggest / Critique) work with a **room admin or
-> facilitator** passcode, but **launching** a custom-built session needs the
-> **room admin** passcode.
+> facilitator** passcode; both can launch a custom-built session in that room.
 
 ---
 
@@ -87,6 +87,7 @@ room). These set what someone can do in the *live* session:
 | `/r/<room>/screen` | The projector | none (read-only) |
 | `/r/<room>/build` | Room admin | the room's admin code (to launch) |
 
-All passcodes are compared in constant time and stored only as SHA-256 hashes;
-plaintext is shown once at creation and never persisted. The same is true of the
-code inside a sign-in link.
+Generated passcodes contain 128 bits of cryptographic randomness. They are
+compared in constant time and stored only as SHA-256 hashes; plaintext is shown
+once at creation and never persisted. The same is true of the code inside a
+sign-in link.

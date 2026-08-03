@@ -29,14 +29,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "load:smoke": "node scripts/load-smoke.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify": "npm run typecheck && npm run lint && npm run test"
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run audit:prod"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
@@ -51,7 +53,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
-    "next": "14.2.33",
+    "next": "15.5.22",
     "pdfjs-dist": "^4.10.38",
     "pusher": "^5.3.4",
     "pusher-js": "^8.5.0",
@@ -69,17 +71,24 @@
     "@types/node": "^20.16.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.33",
-    "jsdom": "^25.0.1",
-    "postcss": "^8.4.49",
+    "eslint-config-next": "15.5.22",
+    "jsdom": "^30.0.1",
+    "postcss": "^8.5.18",
     "prettier": "^3.4.2",
     "prettier-plugin-tailwindcss": "^0.6.9",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.8"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.18",
+      "sharp": "0.35.3"
+    }
   }
 }

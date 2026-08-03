@@ -45,7 +45,7 @@ describe("host route gating", () => {
     const { room, passcodes } = await createRoom("Cofac3", "Topic");
     const res = await hostPOST(
       hostReq(room.slug, { command: "cofacToggle", code: passcodes.cohost, enabled: false }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     expect(res.status).toBe(403);
   });
@@ -59,7 +59,7 @@ describe("host route gating", () => {
         phaseId: "p1",
         kind: "low-response",
       }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     expect(res.status).toBe(200);
     const s = await getState(room.slug);

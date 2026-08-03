@@ -3,24 +3,25 @@ import { getRoom } from "@/lib/rooms";
 import { requireCapability } from "@/lib/auth";
 import { getDesign, listDesignMeta } from "@/lib/userTemplates";
 import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/r/[room]/designs?code=... -> the shared user-template library
+// GET /api/r/[room]/designs + X-Edges-Code -> the shared user-template library
 // (metadata only — never the full phase configs). Any host tier can list + launch
 // (cap `advance`); curating the library (save/delete) is gated separately.
 export async function GET(
   req: NextRequest,
-  { params }: { params: { room: string } },
+  { params }: { params: Promise<{ room: string }> },
 ) {
-  const room = params.room;
+  const { room } = await params;
   const rec = await getRoom(room);
   if (!rec)
     return NextResponse.json({ error: "No such room" }, { status: 404 });
   const { ok } = await requireCapability(
     room,
-    req.nextUrl.searchParams.get("code"),
+    requestCode(req),
     "advance",
   );
   if (!ok) return NextResponse.json({ error: "Forbidden" }, { status: 403 });

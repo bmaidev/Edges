@@ -21,6 +21,8 @@ If you're **running a session** (driving the room live):
   the module flow inside each.
 - **[AI features & privacy](ai-and-privacy.md)** — what the optional AI does
   across setup → live → report, and the full privacy model.
+- **[Production operations](operations.md)** — release gates, monitoring,
+  capacity checks, retention, recovery, and incident response.
 
 ## The shape of it (90 seconds)
 
@@ -41,4 +43,5 @@ If you're **running a session** (driving the room live):
 7. At the end, **Archive** wipes the live data and (if an AI key is set) saves a
    synthesised report you can read back in your console.
 
-Nothing is kept beyond 24 hours, and raw contributions are facilitator-only.
+Live participant data is erased within 24 hours. Durable workspace reports keep
+only de-identified synthesis, counts, curated patterns, and agreed action items.

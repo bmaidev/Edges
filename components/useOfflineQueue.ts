@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getExpiring, removeStored, setExpiring } from "@/lib/browser-storage";
 
 type Action = { type: string; payload?: Record<string, unknown> };
 interface QueuedSend {
@@ -26,7 +27,6 @@ function uuid(): string {
 export function useResilientAct(
   apiBase: string,
   token: string,
-  handle: string,
   phaseId: string,
 ) {
   const key = `edges_queue:${apiBase}`;
@@ -38,7 +38,8 @@ export function useResilientAct(
 
   const persist = useCallback(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(queueRef.current));
+      if (queueRef.current.length) setExpiring(key, queueRef.current);
+      else removeStored(key);
     } catch {
       /* ignore */
     }
@@ -76,8 +77,7 @@ export function useResilientAct(
   // Restore any persisted queue on mount and try to flush.
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(key);
-      if (raw) queueRef.current = JSON.parse(raw);
+      queueRef.current = getExpiring<QueuedSend[]>(key) ?? [];
     } catch {
       /* ignore */
     }
@@ -104,7 +104,7 @@ export function useResilientAct(
   const act = useCallback(
     async (action: Action): Promise<boolean> => {
       const dedupeId = uuid();
-      const body = { ...action, token, handle, dedupeId };
+      const body = { ...action, token, dedupeId };
       // Try live first.
       try {
         const res = await fetch(`${apiBase}/action`, {
@@ -123,7 +123,7 @@ export function useResilientAct(
       persist();
       return true; // saved — the ConnectionStrip explains it'll send
     },
-    [apiBase, token, handle, persist],
+    [apiBase, token, persist],
   );
 
   return { act, pending };

@@ -31,6 +31,7 @@ export interface RoomKeys {
   hostPresence: string; // C5 host presence hash; field = <presenceId> -> JSON
   phaseLog: string; // F4 phase-advance timing log; entries {phaseId, at} (content-free)
   projector: string; // H2 projector liveness; a single epoch-ms "last seen" stamp
+  uploads: string; // Blob URLs created for live presenter media; deleted on End
   ver: string; // R1 monotonic per-room change counter (Redis INCR); the ETag / push payload
 }
 
@@ -53,6 +54,7 @@ export function roomKeys(roomId: string = DEFAULT_ROOM_ID): RoomKeys {
     hostPresence: `${base}:hostPresence:hash`,
     phaseLog: `${base}:phaseLog:list`,
     projector: `${base}:projseen`,
+    uploads: `${base}:uploads:list`,
     ver: `${base}:ver`,
   };
 }

@@ -6,6 +6,7 @@ import {
   deleteWorkspace,
   listWorkspaces,
 } from "@/lib/workspaces";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +16,9 @@ export const dynamic = "force-dynamic";
 // Managing a workspace's rooms is done by entering THAT workspace's admin code
 // (the server scopes every admin route by the code — "the code is the key").
 
-// GET /api/admin/workspaces?code=SUPER -> [{ id, name, createdAt }]
+// GET /api/admin/workspaces + X-Edges-Code -> [{ id, name, createdAt }]
 export async function GET(req: NextRequest) {
-  const ctx = await resolveAdminContext(req.nextUrl.searchParams.get("code"));
+  const ctx = await resolveAdminContext(requestCode(req));
   if (!ctx.ok || !ctx.isSuperAdmin)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   return NextResponse.json({ workspaces: await listWorkspaces() });

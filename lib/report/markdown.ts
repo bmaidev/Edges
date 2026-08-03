@@ -7,7 +7,7 @@ export function reportToMarkdown(a: RoomArchive): string {
   const out: string[] = [
     `# ${a.name || a.sessionName || "Session report"}`,
     "",
-    `${a.participantCount} ${a.participantCount === 1 ? "person" : "people"} · ${a.submissions.length} ${a.submissions.length === 1 ? "contribution" : "contributions"}`,
+    `${a.participantCount} ${a.participantCount === 1 ? "person" : "people"} · ${a.submissionCount} ${a.submissionCount === 1 ? "contribution" : "contributions"}`,
     "",
   ];
   if (r?.summary) out.push(r.summary, "");
@@ -28,7 +28,7 @@ export function reportToMarkdown(a: RoomArchive): string {
   if (a.actionItems?.length) {
     out.push("## Action items");
     for (const it of a.actionItems) {
-      const meta = [it.ownerName, it.due ? `due ${it.due}` : null].filter(Boolean).join(", ");
+      const meta = it.due ? `due ${it.due}` : "";
       out.push(`- [${it.status === "done" ? "x" : " "}] ${it.text}${meta ? ` (${meta})` : ""}`);
     }
     out.push("");

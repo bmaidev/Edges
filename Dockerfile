@@ -3,13 +3,13 @@
 # image carries only the traced runtime, not the whole toolchain.
 
 # 1. Install deps from the lockfile.
-FROM node:24-alpine AS deps
+FROM node:24.15.0-alpine3.23 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # 2. Build the app (emits .next/standalone + .next/static).
-FROM node:24-alpine AS builder
+FROM node:24.15.0-alpine3.23 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -17,7 +17,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # 3. Minimal runtime — copy only the standalone server + static assets + public.
-FROM node:24-alpine AS runner
+FROM node:24.15.0-alpine3.23 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

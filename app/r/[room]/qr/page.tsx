@@ -12,9 +12,9 @@ import type { RoomBranding } from "@/lib/types";
 export default function RoomQrPage({
   params,
 }: {
-  params: Promise<{ room: string }> | { room: string };
+  params: Promise<{ room: string }>;
 }) {
-  const p = params instanceof Promise ? use(params) : params;
+  const p = use(params);
   const [joinUrl, setJoinUrl] = useState("");
   const [branding, setBranding] = useState<RoomBranding | null>(null);
   const [title, setTitle] = useState<string | undefined>(undefined);

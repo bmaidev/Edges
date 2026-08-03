@@ -12,11 +12,12 @@ export default async function TakeawayPage({
   params,
   searchParams,
 }: {
-  params: { room: string };
-  searchParams: { k?: string };
+  params: Promise<{ room: string }>;
+  searchParams: Promise<{ k?: string }>;
 }) {
-  const token = searchParams.k ?? "";
-  const snapshot = await getTakeaway(params.room, token);
+  const [{ room }, query] = await Promise.all([params, searchParams]);
+  const token = query.k ?? "";
+  const snapshot = await getTakeaway(room, token);
 
   if (!snapshot) {
     return (

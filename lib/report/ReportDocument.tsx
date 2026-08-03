@@ -36,8 +36,8 @@ export function ReportDocument({
         <p className="mt-2 text-sm text-[#666]">
           {archive.participantCount} {archive.participantCount === 1 ? "person" : "people"}
           {" · "}
-          {archive.submissions.length}{" "}
-          {archive.submissions.length === 1 ? "contribution" : "contributions"}
+          {archive.submissionCount}{" "}
+          {archive.submissionCount === 1 ? "contribution" : "contributions"}
           {" · "}
           {date}
         </p>
@@ -68,10 +68,9 @@ export function ReportDocument({
                 <span className={a.status === "done" ? "text-[#888] line-through" : ""}>
                   {a.text}
                 </span>
-                {(a.ownerName || a.due) && (
+                {a.due && (
                   <span className="text-[#666]">
-                    {" — "}
-                    {[a.ownerName, a.due ? `due ${a.due}` : null].filter(Boolean).join(", ")}
+                    {` — due ${a.due}`}
                   </span>
                 )}
               </li>

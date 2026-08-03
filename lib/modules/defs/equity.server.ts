@@ -105,7 +105,7 @@ export const equityModule: ModuleServerDef<EquityConfig> = {
   },
   computeView(ctx: ModuleContext): EquityView {
     // Hard guard: never compute or return the analytics for participants.
-    if (ctx.role === "participant") {
+    if (ctx.role === "participant" || ctx.role === "projector") {
       return { facilitatorOnly: true };
     }
 

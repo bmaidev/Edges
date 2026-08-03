@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { instanceConfig } from "@/lib/instance-config";
 import { GET as healthGET } from "@/app/api/health/route";
+import { readinessStatus } from "@/lib/readiness";
 import { GET as configGET } from "@/app/api/admin/config/route";
 import { createWorkspace } from "@/lib/workspaces";
 
@@ -76,6 +77,21 @@ describe("/api/health", () => {
     const d = await res.json();
     expect(d.ok).toBe(true);
     expect(typeof d.storage).toBe("boolean");
+  });
+
+  it("fails readiness when production storage is missing or unreachable", () => {
+    expect(readinessStatus({ production: true, configured: false, reachable: true })).toEqual({
+      ok: false,
+      status: 503,
+    });
+    expect(readinessStatus({ production: true, configured: true, reachable: false })).toEqual({
+      ok: false,
+      status: 503,
+    });
+    expect(readinessStatus({ production: true, configured: true, reachable: true })).toEqual({
+      ok: true,
+      status: 200,
+    });
   });
 });
 

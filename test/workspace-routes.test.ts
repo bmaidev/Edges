@@ -65,7 +65,7 @@ describe("admin/rooms/[slug] — cross-workspace denial (404, not 403)", () => {
     const { room } = await createRoom("Default-only room", "t"); // default workspace
     const res = await roomGET(
       getReq(`/${room.slug}?code=${encodeURIComponent(ws.adminCode)}`),
-      { params: { slug: room.slug } },
+      { params: Promise.resolve({ slug: room.slug }) },
     );
     expect(res.status).toBe(404); // existence not disclosed across tenants
   });
@@ -74,7 +74,7 @@ describe("admin/rooms/[slug] — cross-workspace denial (404, not 403)", () => {
     const { room } = await createRoom("Readable by super", "t");
     const res = await roomGET(
       getReq(`/${room.slug}?code=${encodeURIComponent(SUPER)}`),
-      { params: { slug: room.slug } },
+      { params: Promise.resolve({ slug: room.slug }) },
     );
     expect(res.status).toBe(200);
   });
@@ -84,7 +84,7 @@ describe("admin/rooms/[slug] — cross-workspace denial (404, not 403)", () => {
     const { room } = await createRoom("Protected", "t");
     const res = await roomDELETE(
       getReq(`/${room.slug}?code=${encodeURIComponent(ws.adminCode)}`),
-      { params: { slug: room.slug } },
+      { params: Promise.resolve({ slug: room.slug }) },
     );
     expect(res.status).toBe(404);
   });

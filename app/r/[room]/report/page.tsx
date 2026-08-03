@@ -3,9 +3,8 @@ import { ReportDocument } from "@/lib/report/ReportDocument";
 import type { Metadata } from "next";
 
 // F1 — the token-gated PUBLIC report (a kept link the facilitator shares). Server-
-// rendered: ReportDocument is a pure component, so the archive (which holds raw
-// submissions) renders to synthesis-only HTML — the raw responses never reach the
-// client. Dynamic + noindex so a bad link can't be served stale or indexed.
+// rendered: ReportDocument is a pure component and the durable archive itself is
+// synthesis-only. Dynamic + noindex so a bad link can't be served stale/indexed.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -14,11 +13,12 @@ export default async function PublicReportPage({
   params,
   searchParams,
 }: {
-  params: { room: string };
-  searchParams: { k?: string };
+  params: Promise<{ room: string }>;
+  searchParams: Promise<{ k?: string }>;
 }) {
-  const token = searchParams.k ?? "";
-  const archive = await getArchive(params.room);
+  const [{ room }, query] = await Promise.all([params, searchParams]);
+  const token = query.k ?? "";
+  const archive = await getArchive(room);
 
   if (!archive || !archive.reportToken || archive.reportToken !== token) {
     return (
@@ -30,8 +30,8 @@ export default async function PublicReportPage({
     );
   }
 
-  const room = await getRoom(params.room);
-  const t = room?.theme;
+  const roomRecord = await getRoom(room);
+  const t = roomRecord?.theme;
   const branding = t
     ? { logoUrl: t.logoUrl, accent: t.palette?.accent, headline: t.headline }
     : undefined;

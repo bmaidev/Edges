@@ -5,6 +5,7 @@ import type { Analytics } from "@/lib/analytics";
 import type { MetricsSummary } from "@/lib/session-metrics";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
 import type { ModuleKind } from "@/lib/types";
+import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
 
 type AnalyticsData = Analytics & { metrics?: MetricsSummary };
 
@@ -17,7 +18,7 @@ export function AnalyticsPanel({ code }: { code: string }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/analytics?code=${encodeURIComponent(code)}`);
+      const res = await authFetch("/api/admin/analytics", code);
       if (res.ok) setData(await res.json());
     } finally {
       setLoading(false);
@@ -87,22 +88,36 @@ export function AnalyticsPanel({ code }: { code: string }) {
               Method engagement
             </h3>
             <div className="flex items-center gap-3 text-xs">
-              <a
-                href={`/api/admin/analytics?code=${encodeURIComponent(code)}&export=csv`}
+              <button
+                type="button"
+                onClick={() =>
+                  downloadAuthenticated(
+                    "/api/admin/analytics?export=csv",
+                    code,
+                    "edges-metrics.csv",
+                  )
+                }
                 className="text-accent underline"
               >
                 CSV
-              </a>
-              <a
-                href={`/api/admin/analytics?code=${encodeURIComponent(code)}&export=json`}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  downloadAuthenticated(
+                    "/api/admin/analytics?export=json",
+                    code,
+                    "edges-metrics.json",
+                  )
+                }
                 className="text-accent underline"
               >
                 JSON
-              </a>
+              </button>
               <button
                 onClick={async () => {
                   if (!window.confirm("Clear all session metrics history? This can't be undone.")) return;
-                  await fetch(`/api/admin/analytics?code=${encodeURIComponent(code)}`, {
+                  await authFetch("/api/admin/analytics", code, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ action: "clear" }),

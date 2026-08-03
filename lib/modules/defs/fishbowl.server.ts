@@ -148,7 +148,8 @@ export const fishbowlModule: ModuleServerDef<FishbowlConfig> = {
     // occupants + facilitator + projector. (ctx.submissions is populated for
     // staff roles; participants seated in the circle won't have raw access here,
     // so the list is simply empty for them — the projector carries the feed.)
-    const questions: FishbowlQuestion[] = allowQuestions
+    const maySeeQuestions = isStaff || ctx.role === "projector" || amSeated;
+    const questions: FishbowlQuestion[] = allowQuestions && maySeeQuestions
       ? ctx.submissions
           .filter((s) => s.phaseId === ctx.phase.id && s.tag === "question")
           .sort((a, b) => a.createdAt - b.createdAt)

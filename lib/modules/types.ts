@@ -77,7 +77,10 @@ export interface ModuleContext {
   participants: Participant[];
   visibleContent: ContentItem[];
   patterns: Pattern[];
-  submissions: Submission[]; // facilitator-only data; [] for participant role
+  // Server-side working data. A module may use this to derive a role-safe view,
+  // but the central visibility gate runs before any payload is returned. Module
+  // authors must expose only what that facilitation method intentionally shares.
+  submissions: Submission[];
   me: Participant | null; // the calling participant, if any
   store: ModuleStore;
 }

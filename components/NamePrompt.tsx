@@ -73,7 +73,7 @@ export function NamePrompt({
       </button>
       <button
         onClick={markAsked}
-        className="px-1 text-xs text-muted hover:text-white"
+        className="min-h-8 px-1 text-xs text-muted hover:text-white"
       >
         Skip
       </button>

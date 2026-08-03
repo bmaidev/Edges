@@ -20,7 +20,7 @@ import {
   stripRunsheet,
 } from "./modules/runsheet";
 import { resolveAttribution } from "./modules/attribution";
-import { publishRoomChange, publishRoomState } from "./realtime";
+import { publishRoomChange } from "./realtime";
 import { HEARTBEAT_THROTTLE_MS, isDriverLive, liveRoster } from "./presence";
 import { computeCofac } from "./cofac";
 import {
@@ -33,6 +33,7 @@ import type {
   ModuleContext,
   ModuleStore,
 } from "./modules/types";
+import { resolveVisibility } from "./modules/types";
 import type {
   AllocationSummary,
   ContentItem,
@@ -68,6 +69,7 @@ interface Backend {
   // key — the basis for a real distributed lock (Redis SET NX EX). The memory
   // fallback is atomic by virtue of JS's single thread.
   setNX(key: string, value: unknown, ttlSeconds: number): Promise<boolean>;
+  delIfValue(key: string, value: string): Promise<void>;
   del(...keys: string[]): Promise<void>;
   // Atomic append (Redis RPUSH) — concurrency-safe for many writers.
   rpush<T>(key: string, value: T): Promise<void>;
@@ -85,6 +87,9 @@ interface Backend {
   // counter. Returns the value AFTER incrementing. Concurrency-safe: 300 writers
   // bumping the same room each get a distinct, strictly-increasing number.
   incr(key: string, ttlSeconds: number): Promise<number>;
+  // Atomic fixed-window counter for API throttling. The expiry is set only when
+  // the window is created, so sustained traffic cannot extend it forever.
+  rateLimit(key: string, windowSeconds: number): Promise<number>;
 }
 
 // Defensive: list/hash values may come back as objects (auto-deserialized) or
@@ -118,6 +123,13 @@ if (useKv) {
       // setNX backs locks + throttles, never a view change — so it never bumps.
       const res = await client.set(key, value, { nx: true, ex: ttlSeconds });
       return res === "OK" || res === true;
+    },
+    async delIfValue(key: string, value: string) {
+      await client.eval(
+        "if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end",
+        [key],
+        [value],
+      );
     },
     async del(...keys: string[]) {
       if (keys.length) await client.del(...keys);
@@ -164,12 +176,23 @@ if (useKv) {
       await client.expire(key, ttlSeconds);
       return next;
     },
+    async rateLimit(key: string, windowSeconds: number) {
+      return Number(
+        await client.eval(
+          "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n",
+          [key],
+          [String(windowSeconds)],
+        ),
+      );
+    },
   };
 } else {
   // Pin to globalThis so all route-module instances share one map in dev
   // (Next can re-instantiate modules per route). Prod uses KV, never this.
   const g = globalThis as unknown as { __edgesMem?: Map<string, unknown> };
   const mem = (g.__edgesMem ??= new Map<string, unknown>());
+  const nxExpiries = new Map<string, number>();
+  const rateWindows = new Map<string, { count: number; expiresAt: number }>();
   backend = {
     async get<T>(key: string) {
       return (mem.get(key) as T) ?? null;
@@ -178,15 +201,29 @@ if (useKv) {
       mem.set(key, value);
       await maybeBumpFromKey(key);
     },
-    async setNX(key: string, value: unknown) {
+    async setNX(key: string, value: unknown, ttlSeconds: number) {
       // Atomic in dev: JS is single-threaded, so the has()/set() pair can't be
-      // interleaved. TTL is a no-op here (dev resets on reload; prod uses KV).
+      // interleaved. Honor the TTL so a crashed dev/test lock also self-heals.
+      if ((nxExpiries.get(key) ?? Infinity) <= Date.now()) {
+        mem.delete(key);
+        nxExpiries.delete(key);
+      }
       if (mem.has(key)) return false;
       mem.set(key, value);
+      nxExpiries.set(key, Date.now() + ttlSeconds * 1000);
       return true;
     },
+    async delIfValue(key: string, value: string) {
+      if (mem.get(key) === value) {
+        mem.delete(key);
+        nxExpiries.delete(key);
+      }
+    },
     async del(...keys: string[]) {
-      keys.forEach((k) => mem.delete(k));
+      keys.forEach((k) => {
+        mem.delete(k);
+        nxExpiries.delete(k);
+      });
     },
     async rpush<T>(key: string, value: T) {
       const arr = (mem.get(key) as T[]) ?? [];
@@ -226,6 +263,15 @@ if (useKv) {
       mem.set(key, next);
       return next;
     },
+    async rateLimit(key: string, windowSeconds: number) {
+      const now = Date.now();
+      const current = rateWindows.get(key);
+      const next = !current || current.expiresAt <= now
+        ? { count: 1, expiresAt: now + windowSeconds * 1000 }
+        : { ...current, count: current.count + 1 };
+      rateWindows.set(key, next);
+      return next.count;
+    },
   };
 }
 
@@ -236,14 +282,14 @@ function newId(): string {
 // ---- R1 realtime: monotonic per-room change counter ------------------------
 //
 // A single Redis INCR per room is the backbone of the push tier. It is bumped on
-// every participant-VISIBLE write (filtered by key suffix below) and read — as
-// one cheap GET — to answer conditional /state polls (304) and to fan out a
-// "room changed" push. Liveness/throttle/lock keys are deliberately excluded so
-// 300 heartbeats a beat don't churn the counter and defeat the 304s.
+// every participant-VISIBLE write (filtered by key suffix below) and fans out a
+// content-free "room changed" tick. Liveness/throttle/lock keys are deliberately
+// excluded so 300 heartbeats a beat don't churn the counter.
 //
 // Correctness rule: the INCR is AWAITED inside the write (so a poll immediately
 // after a write always sees the new version), while the push is best-effort. The
-// counter — not the push — is the source of truth, so nothing is ever missed.
+// full role-scoped poll — not the push — is the source of truth, so nothing is
+// ever missed.
 
 const BUMP_SUFFIXES: ReadonlySet<string> = new Set([
   "state",
@@ -256,8 +302,8 @@ const BUMP_SUFFIXES: ReadonlySet<string> = new Set([
 ]);
 
 // At most one push per room per second: a vote/submit burst from 300 phones bumps
-// the counter 300× (the ETag stays exact) but coalesces to ~1 push/s. The backstop
-// poll catches any write throttled away from a push, so the tail still converges.
+// the counter 300× but coalesces to ~1 push/s. The backstop poll catches any write
+// throttled away from a push, so the tail still converges.
 const PUBLISH_THROTTLE_SECONDS = 1;
 
 // Parse `room:<id>:<suffix>` → its parts. Room ids (slugs) carry no colon, so the
@@ -282,13 +328,26 @@ export async function bumpRoomVersion(
 ): Promise<number> {
   const ver = await backend.incr(roomKeys(roomId).ver, TTL_SECONDS);
   // Best-effort, throttled fan-out. The push carries the version for diagnostics,
-  // but a client re-fetches on ANY push (the conditional poll collapses a no-op to
-  // a 304), so a stale/duplicate/dropped push can never cause a missed update.
+  // but a client re-fetches on ANY push, so a stale/duplicate/dropped push can
+  // never cause a missed update; the steady full poll remains the backstop.
   void backend
     .setNX(`lock:${roomId}:pubcd`, 1, PUBLISH_THROTTLE_SECONDS)
     .then((fresh) => (fresh ? publishRoomChange(roomId, ver) : undefined))
     .catch(() => {});
   return ver;
+}
+
+export async function consumeRateLimit(
+  scope: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<{ allowed: boolean; remaining: number; retryAfter: number }> {
+  const count = await backend.rateLimit(`rate:${scope}`, windowSeconds);
+  return {
+    allowed: count <= limit,
+    remaining: Math.max(0, limit - count),
+    retryAfter: windowSeconds,
+  };
 }
 
 // Called from inside every mutating backend op. Cheap and total: a non-room or
@@ -300,8 +359,8 @@ async function maybeBumpFromKey(key: string): Promise<void> {
   try {
     await bumpRoomVersion(parsed.roomId);
   } catch (e) {
-    // A failed bump must never fail the underlying write. Worst case the version
-    // lags by one and a client gets a stale 304 until the next write/backstop.
+    // A failed bump must never fail the underlying write. Worst case a realtime
+    // tick is missed and the next steady poll carries the fresh full state.
     const msg = e instanceof Error ? e.message : "error";
     console.error(`[realtime] bump failed for ${parsed.roomId}: ${msg}`);
   }
@@ -334,7 +393,7 @@ export async function getState(
   return s ?? DEFAULT_STATE;
 }
 
-async function writeState(
+async function writeStateUnlocked(
   next: SessionState,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
@@ -345,39 +404,40 @@ async function writeState(
   const rev = Math.max(Date.now(), (prev?.rev ?? 0) + 1);
   const withRev = { ...next, rev };
   await backend.set(roomKeys(roomId).state, withRev);
-  // R2 — writeState is the single chokepoint for every state change (phase
-  // advance, timer, spotlight, mode, end...). Deliver the fresh authoritative
-  // participant + projector views to live screens NOW, so they apply the change
-  // directly instead of re-reading the eventually-consistent store (whose read
-  // replicas lag writes by seconds — the root of the "advance then desync"). The
-  // views are built from `withRev` (the just-written state, passed as the
-  // override) so they carry the change even though sibling collections may still
-  // lag. Fire-and-forget: the 2s poll remains the backstop, and the facilitator's
-  // own action response already gives it read-your-writes. Awaited (not fire-and-
-  // forget) so the push actually lands before the serverless function can freeze
-  // after the response — deliverFreshState swallows its own errors, so it can
-  // never delay or break the write beyond the bounded Pusher round-trip.
-  await deliverFreshState(roomId, withRev);
   return withRev;
 }
 
-// R2 — compute the fresh participant + projector views (from the just-written
-// state) and push them. Hoisted so writeState (above) can call it before
-// getPublicState is defined below. Best-effort; never throws into the write path.
-async function deliverFreshState(
+async function withStateLock<T>(
   roomId: string,
-  state: SessionState,
-): Promise<void> {
-  try {
-    const [participantView, projectorView] = await Promise.all([
-      getPublicState(null, roomId, "participant", state),
-      getPublicState(null, roomId, "projector", state),
-    ]);
-    await publishRoomState(roomId, participantView, projectorView);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "error";
-    console.error(`[realtime] deliverFreshState failed for ${roomId}: ${msg}`);
+  operation: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const result = await withLock(
+      roomId,
+      "state",
+      operation,
+      { ttlSeconds: 10 },
+    );
+    if (result.ok) return result.value;
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
+  throw new Error("Room state is busy; retry the action.");
+}
+
+async function mutateState(
+  roomId: string,
+  update: (current: SessionState) => SessionState | Promise<SessionState>,
+): Promise<SessionState> {
+  return withStateLock(roomId, async () =>
+    writeStateUnlocked(await update(await getState(roomId)), roomId),
+  );
+}
+
+async function replaceStateLocked(
+  next: SessionState,
+  roomId: string,
+): Promise<SessionState> {
+  return mutateState(roomId, () => next);
 }
 
 // Convert a built-in mode's phases into the in-state PhaseInstance[] form.
@@ -428,10 +488,8 @@ export async function setMode(
   mode: ModeId,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
   const phases = modePhaseInstances(mode);
-  return writeState(
-    {
+  return mutateState(roomId, (state) => ({
       ...state,
       mode,
       sessionName: getMode(mode)?.name,
@@ -442,9 +500,7 @@ export async function setMode(
       readaroundIndex: 0,
       spotlight: null, // C4 — a relaunch clears any lingering spotlight
       ended: false,
-    },
-    roomId,
-  );
+    }));
 }
 
 // The current effective build (name + full phase configs) for a room, however it
@@ -471,9 +527,7 @@ export async function setPhases(
   sessionName: string,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  const written = await writeState(
-    {
+  const written = await mutateState(roomId, (state) => ({
       ...state,
       mode: null,
       sessionName,
@@ -484,9 +538,7 @@ export async function setPhases(
       readaroundIndex: 0,
       spotlight: null, // C4 — a relaunch clears any lingering spotlight
       ended: false,
-    },
-    roomId,
-  );
+    }));
   await runOnEnter(roomId, written); // D4 — freeze a rotation first-phase's cohort
   return written;
 }
@@ -503,10 +555,8 @@ export async function setPhase(
   // write as the phase change (one rev, no flap window).
   opts: { release?: boolean; claimDriver?: import("./types").DriverInfo } = {},
 ): Promise<SessionState> {
-  const state = await getState(roomId);
   if (opts.release !== false) await releaseQueuedContent(roomId);
-  const written = await writeState(
-    {
+  const written = await mutateState(roomId, (state) => ({
       ...state,
       phaseId,
       timerEndsAt: null,
@@ -514,9 +564,7 @@ export async function setPhase(
       readaroundIndex: 0,
       spotlight: null, // C4 — advancing clears any spotlight from the prior phase
       ...(opts.claimDriver ? { driver: opts.claimDriver } : {}), // C5 — co-claim
-    },
-    roomId,
-  );
+    }));
   await runOnEnter(roomId, written); // D4 — let the entered module freeze its cohort
   // F4 — append a content-free phase-entry stamp (phaseId + time) so the host can
   // review plan-vs-actual phase timing after the run. Best-effort: a logging hiccup
@@ -547,8 +595,7 @@ export async function setSpotlight(
   ref: SpotlightRef | null,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  return writeState({ ...state, spotlight: ref ?? null }, roomId);
+  return mutateState(roomId, (state) => ({ ...state, spotlight: ref ?? null }));
 }
 
 // C7 — the lead's co-facilitator controls. A partial patch (enable and/or tune),
@@ -558,11 +605,12 @@ export async function setCofac(
   patch: { enabled?: boolean; sensitivity?: import("./cofac").CofacSensitivity },
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  const next = { ...state };
-  if ("enabled" in patch) next.cofacEnabled = patch.enabled;
-  if ("sensitivity" in patch) next.cofacSensitivity = patch.sensitivity;
-  return writeState(next, roomId);
+  return mutateState(roomId, (state) => {
+    const next = { ...state };
+    if ("enabled" in patch) next.cofacEnabled = patch.enabled;
+    if ("sensitivity" in patch) next.cofacSensitivity = patch.sensitivity;
+    return next;
+  });
 }
 
 // C7 — persist a nudge dismissal ({phaseId, kind}) so it stays gone for that phase
@@ -573,11 +621,12 @@ export async function dismissCofac(
   kind: string,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  const prev = state.cofacDismissed ?? [];
-  if (prev.some((d) => d.phaseId === phaseId && d.kind === kind)) return state;
-  const next = [...prev, { phaseId, kind }].slice(-20);
-  return writeState({ ...state, cofacDismissed: next }, roomId);
+  return mutateState(roomId, (state) => {
+    const prev = state.cofacDismissed ?? [];
+    if (prev.some((d) => d.phaseId === phaseId && d.kind === kind)) return state;
+    const next = [...prev, { phaseId, kind }].slice(-20);
+    return { ...state, cofacDismissed: next };
+  });
 }
 
 // E1 — author the front-of-room lobby: the begin-cue line and whether the live
@@ -588,12 +637,13 @@ export async function setLobbyCue(
   patch: { cue?: string | null; countVisible?: boolean },
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  const next = { ...state };
-  if ("cue" in patch)
-    next.lobbyCue = patch.cue ? patch.cue.slice(0, 200) : null;
-  if ("countVisible" in patch) next.lobbyCountVisible = patch.countVisible;
-  return writeState(next, roomId);
+  return mutateState(roomId, (state) => {
+    const next = { ...state };
+    if ("cue" in patch)
+      next.lobbyCue = patch.cue ? patch.cue.slice(0, 200) : null;
+    if ("countVisible" in patch) next.lobbyCountVisible = patch.countVisible;
+    return next;
+  });
 }
 
 // D2 — toggle the projector into high-contrast / colour-safe mode for the whole
@@ -603,8 +653,7 @@ export async function setProjectorA11y(
   on: boolean,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  return writeState({ ...state, projectorA11y: on }, roomId);
+  return mutateState(roomId, (state) => ({ ...state, projectorA11y: on }));
 }
 
 // C6 — silence (or restore) the timer chime for the WHOLE room. Distinct from the
@@ -614,8 +663,7 @@ export async function setTimerSound(
   off: boolean,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  return writeState({ ...state, timerSoundOff: off }, roomId);
+  return mutateState(roomId, (state) => ({ ...state, timerSoundOff: off }));
 }
 
 // C5 — claim / hand off / release the driving baton. A read-modify-writeState, so
@@ -626,8 +674,7 @@ export async function setDriver(
   driver: import("./types").DriverInfo | null,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  return writeState({ ...state, driver: driver ?? null }, roomId);
+  return mutateState(roomId, (state) => ({ ...state, driver: driver ?? null }));
 }
 
 // E3 — summon a calm ambient break/hold over the live sequence. Snapshots the
@@ -641,15 +688,14 @@ export async function setAmbient(
   note: string | undefined,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  const already = state.phaseId === AMBIENT_PHASE_ID && state.ambient;
   // A positive duration makes it a TIMED scene (kind "break" → endsAt); otherwise
   // it's open-ended (kind "hold"). The scene controls the VISUAL independently.
   const timed = Boolean(durationSec && durationSec > 0);
   const kind: "break" | "hold" = timed ? "break" : "hold";
   const endsAt = timed ? Date.now() + Math.floor(durationSec!) * 1000 : null;
-  return writeState(
-    {
+  return mutateState(roomId, (state) => {
+    const already = state.phaseId === AMBIENT_PHASE_ID && state.ambient;
+    return {
       ...state,
       phaseId: AMBIENT_PHASE_ID,
       ambient: {
@@ -663,9 +709,8 @@ export async function setAmbient(
       },
       timerEndsAt: endsAt,
       timerRemainingMs: null,
-    },
-    roomId,
-  );
+    };
+  });
 }
 
 // E3 — leave the ambient screen, restoring the EXACT prior phase + timer. Crucially
@@ -674,18 +719,16 @@ export async function setAmbient(
 export async function resumeAmbient(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  if (!state.ambient) return state;
-  return writeState(
-    {
+  return mutateState(roomId, (state) => {
+    if (!state.ambient) return state;
+    return {
       ...state,
       phaseId: state.ambient.returnPhaseId,
       timerEndsAt: state.ambient.returnTimerEndsAt,
       timerRemainingMs: null,
       ambient: null,
-    },
-    roomId,
-  );
+    };
+  });
 }
 
 // C1 — every timer mutation is a read-compute-write of the state key, so two
@@ -713,11 +756,11 @@ export async function setTimer(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   return withTimerLock(roomId, async () => {
-    const state = await getState(roomId);
-    return writeState(
-      { ...state, timerEndsAt: endsAt, timerRemainingMs: null },
-      roomId,
-    );
+    return mutateState(roomId, (state) => ({
+      ...state,
+      timerEndsAt: endsAt,
+      timerRemainingMs: null,
+    }));
   });
 }
 
@@ -728,18 +771,16 @@ export async function addTime(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   return withTimerLock(roomId, async () => {
-    const state = await getState(roomId);
-    if (state.timerEndsAt != null)
-      return writeState(
-        { ...state, timerEndsAt: state.timerEndsAt + addMs },
-        roomId,
-      );
-    if (state.timerRemainingMs != null)
-      return writeState(
-        { ...state, timerRemainingMs: Math.max(0, state.timerRemainingMs + addMs) },
-        roomId,
-      );
-    return state; // idle
+    return mutateState(roomId, (state) => {
+      if (state.timerEndsAt != null)
+        return { ...state, timerEndsAt: state.timerEndsAt + addMs };
+      if (state.timerRemainingMs != null)
+        return {
+          ...state,
+          timerRemainingMs: Math.max(0, state.timerRemainingMs + addMs),
+        };
+      return state;
+    });
   });
 }
 
@@ -748,13 +789,11 @@ export async function pauseTimer(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   return withTimerLock(roomId, async () => {
-    const state = await getState(roomId);
-    if (state.timerEndsAt == null) return state; // not running
-    const remaining = Math.max(0, state.timerEndsAt - Date.now());
-    return writeState(
-      { ...state, timerEndsAt: null, timerRemainingMs: remaining },
-      roomId,
-    );
+    return mutateState(roomId, (state) => {
+      if (state.timerEndsAt == null) return state;
+      const remaining = Math.max(0, state.timerEndsAt - Date.now());
+      return { ...state, timerEndsAt: null, timerRemainingMs: remaining };
+    });
   });
 }
 
@@ -763,12 +802,14 @@ export async function resumeTimer(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   return withTimerLock(roomId, async () => {
-    const state = await getState(roomId);
-    if (state.timerRemainingMs == null) return state; // not paused
-    return writeState(
-      { ...state, timerEndsAt: Date.now() + state.timerRemainingMs, timerRemainingMs: null },
-      roomId,
-    );
+    return mutateState(roomId, (state) => {
+      if (state.timerRemainingMs == null) return state;
+      return {
+        ...state,
+        timerEndsAt: Date.now() + state.timerRemainingMs,
+        timerRemainingMs: null,
+      };
+    });
   });
 }
 
@@ -781,7 +822,7 @@ export async function replaceState(
   next: SessionState,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  return writeState(next, roomId);
+  return replaceStateLocked(next, roomId);
 }
 
 // F2 — mutate the action-item register. The ONLY writer is writeState (via this
@@ -801,9 +842,8 @@ export async function mutateActionItems(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
   const apply = async () => {
-      const state = await getState(roomId);
-      if (op.kind === "promote")
-        return writeState({ ...state, actionItemsPromoted: op.on }, roomId);
+    return mutateState(roomId, (state) => {
+      if (op.kind === "promote") return { ...state, actionItemsPromoted: op.on };
       const items = [...(state.actionItems ?? [])];
       const now = Date.now();
       if (op.kind === "add") {
@@ -835,7 +875,8 @@ export async function mutateActionItems(
             };
         }
       }
-      return writeState({ ...state, actionItems: items }, roomId);
+      return { ...state, actionItems: items };
+    });
   };
   // Retry on contention (don't drop a captured item) — same philosophy as the
   // timer lock; each op is one get+write, so contention clears in ms.
@@ -878,8 +919,10 @@ export async function setReadaroundIndex(
   index: number,
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<SessionState> {
-  const state = await getState(roomId);
-  return writeState({ ...state, readaroundIndex: Math.max(0, index) }, roomId);
+  return mutateState(roomId, (state) => ({
+    ...state,
+    readaroundIndex: Math.max(0, index),
+  }));
 }
 
 // ---- Participants (Redis hash: token -> record) ---------------------------
@@ -1152,7 +1195,7 @@ export async function placeLatecomer(
   const placed = new Set(readPlaced(votes));
   for (const t of tokens) placed.add(t);
   await castVote(phaseId, PLACED_KEY, Array.from(placed), roomId);
-  return writeState({ ...(await getState(roomId)) }, roomId);
+  return mutateState(roomId, (state) => state);
 }
 
 // D4 — send a placed latecomer back to "held" (the facilitator changed their mind
@@ -1166,7 +1209,7 @@ export async function holdLatecomer(
   const drop = new Set(tokens);
   const placed = readPlaced(votes).filter((t) => !drop.has(t));
   await castVote(phaseId, PLACED_KEY, placed, roomId);
-  return writeState({ ...(await getState(roomId)) }, roomId);
+  return mutateState(roomId, (state) => state);
 }
 
 // ---- Word cloud (append-only list, entries carry phaseId) -----------------
@@ -1184,6 +1227,30 @@ export async function addWord(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<void> {
   await backend.rpush<WordEntry>(roomKeys(roomId).words, { phaseId, token, word });
+}
+
+export async function trackRoomUpload(
+  url: string,
+  roomId: string = DEFAULT_ROOM_ID,
+): Promise<void> {
+  if (url) await backend.rpush(roomKeys(roomId).uploads, url);
+}
+
+async function deleteRoomUploads(roomId: string): Promise<void> {
+  const key = roomKeys(roomId).uploads;
+  const urls = await backend.lrange<string>(key);
+  if (urls.length) {
+    if (!process.env.BLOB_READ_WRITE_TOKEN) return;
+    try {
+      const { del } = await import("@vercel/blob");
+      await del(urls);
+    } catch {
+      // Do not block a privacy wipe if the blob provider is temporarily down.
+      // The key retains a 24h TTL and operators can retry from provider tooling.
+      return;
+    }
+  }
+  await backend.del(key);
 }
 
 export async function readWords(
@@ -1358,8 +1425,7 @@ export async function clearPhaseData(
     KEYS.words,
     words.filter((w) => w.phaseId !== phaseId),
   );
-  const state = await getState(roomId);
-  return writeState({ ...state }, roomId); // rev bump so clients re-sync
+  return mutateState(roomId, (state) => state); // rev bump so clients re-sync
 }
 
 // The depth-1 nav undo snapshot. NAV-ONLY by design: it records where the room
@@ -1413,17 +1479,13 @@ export async function undoLastAction(
     );
   }
 
-  const state = await getState(roomId);
-  const restored = await writeState(
-    {
+  const restored = await mutateState(roomId, (state) => ({
       ...state,
       phaseId: snap.prevPhaseId,
       timerEndsAt: snap.prevTimerEndsAt,
       timerRemainingMs: snap.prevTimerRemainingMs,
       readaroundIndex: snap.prevReadaroundIndex,
-    },
-    roomId,
-  );
+    }));
   await clearUndo(roomId);
   return { state: restored, undone: true };
 }
@@ -1450,6 +1512,7 @@ export async function migrateRoomState(
 
 export async function purgeRoom(roomId: string): Promise<void> {
   const KEYS = roomKeys(roomId);
+  await deleteRoomUploads(roomId);
   await backend.del(
     KEYS.state,
     KEYS.participants,
@@ -1468,20 +1531,23 @@ export async function endSession(
   roomId: string = DEFAULT_ROOM_ID,
 ): Promise<void> {
   const KEYS = roomKeys(roomId);
-  await backend.del(
-    KEYS.participants,
-    KEYS.submissions,
-    KEYS.content,
-    KEYS.patterns,
-    KEYS.votes,
-    KEYS.words,
-    KEYS.seen,
-    KEYS.undo,
-    KEYS.hostPresence, // C5 — the "burn now" wipe clears co-facilitator presence too
-    KEYS.phaseLog, // F4 — the timing log is off-the-record too; wiped with the rest
-    KEYS.projector, // H2 — drop projector liveness so a new run starts clean
-  );
-  await writeState({ ...DEFAULT_STATE, ended: true }, roomId);
+  await withStateLock(roomId, async () => {
+    await deleteRoomUploads(roomId);
+    await backend.del(
+      KEYS.participants,
+      KEYS.submissions,
+      KEYS.content,
+      KEYS.patterns,
+      KEYS.votes,
+      KEYS.words,
+      KEYS.seen,
+      KEYS.undo,
+      KEYS.hostPresence, // C5 — the "burn now" wipe clears co-facilitator presence too
+      KEYS.phaseLog, // F4 — the timing log is off-the-record too; wiped with the rest
+      KEYS.projector, // H2 — drop projector liveness so a new run starts clean
+    );
+    await writeStateUnlocked({ ...DEFAULT_STATE, ended: true }, roomId);
+  });
 }
 
 // ---- F3 take-away (the participant keep-recap) -----------------------------
@@ -1510,27 +1576,27 @@ export async function publishAndEnd(
   token: string,
   snapshot: TakeawaySnapshot,
 ): Promise<void> {
-  await backend.set(takeawayKey(roomId, token), snapshot); // inherits 24h TTL
   const KEYS = roomKeys(roomId);
-  await backend.del(
-    KEYS.participants,
-    KEYS.submissions,
-    KEYS.content,
-    KEYS.patterns,
-    KEYS.votes,
-    KEYS.words,
-    KEYS.seen,
-    KEYS.undo,
-    KEYS.hostPresence, // C5
-  );
-  await writeState(
-    {
+  await withStateLock(roomId, async () => {
+    await deleteRoomUploads(roomId);
+    await backend.set(takeawayKey(roomId, token), snapshot); // inherits 24h TTL
+    await backend.del(
+      KEYS.participants,
+      KEYS.submissions,
+      KEYS.content,
+      KEYS.patterns,
+      KEYS.votes,
+      KEYS.words,
+      KEYS.seen,
+      KEYS.undo,
+      KEYS.hostPresence, // C5
+    );
+    await writeStateUnlocked({
       ...DEFAULT_STATE,
       ended: true,
       publishedTakeaway: { token, publishedAt: snapshot.publishedAt },
-    },
-    roomId,
-  );
+    }, roomId);
+  });
 }
 
 // ---- Composed views -------------------------------------------------------
@@ -1554,12 +1620,15 @@ export async function withLock<T>(
   opts: { ttlSeconds?: number } = {},
 ): Promise<{ ok: true; value: T } | { ok: false; busy: true }> {
   const key = `lock:${roomId}:${name}`;
-  const got = await backend.setNX(key, { at: Date.now() }, opts.ttlSeconds ?? 5);
+  const owner = globalThis.crypto.randomUUID();
+  const got = await backend.setNX(key, owner, opts.ttlSeconds ?? 5);
   if (!got) return { ok: false, busy: true };
   try {
     return { ok: true, value: await fn() };
   } finally {
-    await backend.del(key);
+    // Compare-and-delete prevents a slow holder whose TTL expired from deleting
+    // a newer holder's lock.
+    await backend.delIfValue(key, owner);
   }
 }
 
@@ -1722,30 +1791,34 @@ export async function getPublicState(
   let coordinator: CoordinatorInfo | null = null;
   let readaround: PublicState["readaround"] = null;
 
+  let moduleVisible = false;
   if (ctx && moduleId) {
     const mod = getServerModule(moduleId);
     if (mod) {
+      moduleVisible = resolveVisibility(mod, role) !== "hidden";
       // A throwing computeView must never 500 the whole /state poll — that would
       // freeze every screen (and trap the facilitator on the broken phase, unable
       // to advance past it). Degrade to a null view; the sequence + controls still
       // return, so the room can move on. Content-free log (never view data).
-      try {
-        const data = await mod.computeView(ctx);
-        view = { moduleId, data };
-        // Project legacy fields the facilitator console still reads.
-        if (moduleId === "allocate") {
-          const d = data as { kind: "lens" | "side"; counts: Record<string, number>; mine: string | null };
-          allocation = { kind: d.kind, counts: d.counts, mine: d.mine };
-        } else if (moduleId === "coordinator") {
-          const d = data as { kind: "lens-triad" | "pair"; members?: string[] };
-          coordinator = { kind: d.kind, members: d.members };
-        } else if (moduleId === "readaround") {
-          readaround = data as PublicState["readaround"];
+      if (moduleVisible) {
+        try {
+          const data = await mod.computeView(ctx);
+          view = { moduleId, data };
+          // Project legacy fields the facilitator console still reads.
+          if (moduleId === "allocate") {
+            const d = data as { kind: "lens" | "side"; counts: Record<string, number>; mine: string | null };
+            allocation = { kind: d.kind, counts: d.counts, mine: d.mine };
+          } else if (moduleId === "coordinator") {
+            const d = data as { kind: "lens-triad" | "pair"; members?: string[] };
+            coordinator = { kind: d.kind, members: d.members };
+          } else if (moduleId === "readaround") {
+            readaround = data as PublicState["readaround"];
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "error";
+          console.error(`[computeView] ${moduleId} failed: ${msg}`);
+          view = { moduleId, data: null };
         }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "error";
-        console.error(`[computeView] ${moduleId} failed: ${msg}`);
-        view = { moduleId, data: null };
       }
     }
   }
@@ -1899,6 +1972,11 @@ export async function dispatchAction(
   const mod = getServerModule(ctx.phase.moduleId);
   if (!mod || !mod.handleAction)
     return { ok: false, reason: "not actionable", status: 409 };
+  const visibility = resolveVisibility(mod, role);
+  if (visibility === "hidden" || visibility === "readonly")
+    return { ok: false, reason: "forbidden", status: 403 };
+  if (role === "participant" && !ctx.me)
+    return { ok: false, reason: "join required", status: 401 };
   const result = await mod.handleAction(ctx, action);
   return { ...result, status: result.ok ? 200 : result.reason === "full" ? 409 : 400 };
 }

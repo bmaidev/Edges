@@ -67,6 +67,24 @@ describe("capture module — submit", () => {
     expect(await listSubmissions(roomId)).toHaveLength(0);
   });
 
+  it("requires a joined participant token and ignores a forged handle", async () => {
+    const roomId = await setup();
+    const denied = await dispatchAction(
+      roomId,
+      { type: "submit", token: "not-joined", handle: "Mallory", payload: { text: "forged" } },
+      "participant",
+    );
+    expect(denied).toMatchObject({ ok: false, reason: "join required", status: 401 });
+
+    const accepted = await dispatchAction(
+      roomId,
+      { type: "submit", token: "tok-a", handle: "Mallory", payload: { text: "real" } },
+      "participant",
+    );
+    expect(accepted.ok).toBe(true);
+    expect((await listSubmissions(roomId))[0].handle).toBe("Alice");
+  });
+
   it("strips the handle when anonymity is anonymous (off-the-record)", async () => {
     const roomId = await setup({ ...PHASE.config, anonymity: "anonymous" });
     const res = await dispatchAction(

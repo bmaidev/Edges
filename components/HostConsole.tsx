@@ -13,7 +13,10 @@ import { FacilitatorPresenceStrip } from "@/components/FacilitatorPresenceStrip"
 import { NamePrompt } from "@/components/NamePrompt";
 import { DriverChip } from "@/components/DriverChip";
 import { CofacBanner } from "@/components/CofacBanner";
-import { RoomHealthChip, advanceHealthCaption } from "@/components/RoomHealthSheet";
+import {
+  RoomHealthChip,
+  advanceHealthCaption,
+} from "@/components/RoomHealthSheet";
 import { TourCoach } from "@/components/TourCoach";
 import { FacilitateCockpit } from "@/components/FacilitateCockpit";
 import { ConfirmSheet } from "@/components/recovery/ConfirmSheet";
@@ -28,6 +31,7 @@ import {
 import { ParticipationSignal } from "@/lib/modules/render-kit";
 import { ConnectionChip } from "@/components/ConnectionStrip";
 import { useConnection } from "@/components/useConnection";
+import { authFetch } from "@/lib/client-auth";
 import { PreflightPill, PreflightSheet } from "@/components/PreflightPanel";
 import { HandoverPanel } from "@/components/HandoverPanel";
 import { ActionItemsPanel } from "@/components/ActionItemsPanel";
@@ -117,7 +121,13 @@ const RESULT_MODULES: ModuleKind[] = [
 ];
 
 const PHASE_NA = "—";
-const CONTENT_TYPES: ContentType[] = ["case", "lens", "prompt", "argument", "note"];
+const CONTENT_TYPES: ContentType[] = [
+  "case",
+  "lens",
+  "prompt",
+  "argument",
+  "note",
+];
 // Per-type colour so the content list is scannable by kind at a glance. Tinted
 // backgrounds (not full-saturation) so they stay calm on any room theme.
 const TYPE_BADGE: Record<ContentType, string> = {
@@ -136,7 +146,10 @@ const TYPE_HINT: Record<ContentType, string> = {
 };
 
 // Command dispatcher → POST {apiBase}/host { command, code, ...args }.
-export type Cmd = (command: string, args?: Record<string, unknown>) => Promise<Response>;
+export type Cmd = (
+  command: string,
+  args?: Record<string, unknown>,
+) => Promise<Response>;
 
 // Room-scoped facilitator/co-host console. Drives any room via the host
 // command API; role (from the state response) gates which controls show.
@@ -154,10 +167,16 @@ export function HostConsole({
   const [cmdError, setCmdError] = useState<string | null>(null);
   const [tour, setTour] = useState(false);
   // C3 recovery UI state.
-  const [undoToast, setUndoToast] = useState<{ label: string; key: number } | null>(null);
-  const [confirm, setConfirm] = useState<
-    { kind: "reset" | "reopen"; phaseId: string; label: string; count: number } | null
-  >(null);
+  const [undoToast, setUndoToast] = useState<{
+    label: string;
+    key: number;
+  } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    kind: "reset" | "reopen";
+    phaseId: string;
+    label: string;
+    count: number;
+  } | null>(null);
   const [showPreflight, setShowPreflight] = useState(false); // H2 sheet
   const [nudgeMsg, setNudgeMsg] = useState<string | null>(null); // C2 nudge toast
   type Tab = "run" | "preview" | "content" | "patterns" | "session";
@@ -170,7 +189,7 @@ export function HostConsole({
     const t = bootToken(slug);
     if (t) setCode(t);
   }, [slug]);
-  // A3 tour deep-link: `?tour=1` enables the coach; `?code=` carries the demo
+  // A3 tour deep-link: `?tour=1` enables the coach; `#k=` carries the demo
   // facilitator passcode so the second gate is skipped — stripped immediately via
   // history.replaceState so the low-value disposable code never lingers in the bar.
   useEffect(() => {
@@ -233,13 +252,18 @@ export function HostConsole({
           // just-written state, no read-back). Apply it directly so the change
           // shows instantly and a later stale read can't revert it — correct
           // even on an eventually-consistent store. Other commands just re-poll.
-          const d = await res.clone().json().catch(() => null);
+          const d = await res
+            .clone()
+            .json()
+            .catch(() => null);
           if (d?.state && typeof d.state.rev === "number") apply(d.state);
           else refresh();
         }
         return res;
       } catch {
-        setCmdError("That took too long or the connection dropped — try again.");
+        setCmdError(
+          "That took too long or the connection dropped — try again.",
+        );
         setTimeout(() => setCmdError(null), 4000);
         return new Response(null, { status: 599 });
       } finally {
@@ -253,7 +277,9 @@ export function HostConsole({
     return (
       <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-8">
         <h1 className="text-xl font-semibold">{roomName ?? "Host console"}</h1>
-        <p className="text-sm text-muted">Enter your passcode (facilitator or co-host).</p>
+        <p className="text-sm text-muted">
+          Enter your passcode (facilitator or co-host).
+        </p>
         <input
           type="password"
           value={codeInput}
@@ -314,174 +340,230 @@ export function HostConsole({
     );
 
   const hasModuleControls =
-    Boolean(s.moduleId && getClientRenderer(s.moduleId, "facilitator") && s.view) &&
+    Boolean(
+      s.moduleId && getClientRenderer(s.moduleId, "facilitator") && s.view,
+    ) &&
     !(
       s.moduleId === "capture" &&
-      !((s.view?.data as { constraintDeck?: string[] })?.constraintDeck?.length)
+      !(s.view?.data as { constraintDeck?: string[] })?.constraintDeck?.length
     );
-  const hasResults = Boolean(s.moduleId && RESULT_MODULES.includes(s.moduleId) && s.view);
+  const hasResults = Boolean(
+    s.moduleId && RESULT_MODULES.includes(s.moduleId) && s.view,
+  );
   const isAllocate = s.primitive === "allocate" && role !== "cohost";
   const isReadaround = s.primitive === "readaround";
   const isSubmissions = s.primitive === "capture" || s.primitive === "qna";
   const runHasContent =
-    hasModuleControls || hasResults || isAllocate || isReadaround || isSubmissions;
+    hasModuleControls ||
+    hasResults ||
+    isAllocate ||
+    isReadaround ||
+    isSubmissions;
 
   // Patterns is only meaningful when a phase consumes curated patterns (a
   // read-around sourced from patterns) or some already exist — otherwise the tab
   // is just noise, so hide it.
   const showPatterns = s.usesPatterns || (s.patterns?.length ?? 0) > 0;
   const TABS: { id: Tab; label: string; show: boolean; hint: string }[] = [
-    { id: "run", label: "Run", show: true, hint: "Drive the current phase — your run-sheet, controls and live responses" },
-    { id: "preview", label: "What they see", show: true, hint: "Live mirror of the participant and projector screens" },
-    { id: "content", label: "Content", show: true, hint: "Cases, lenses, prompts & notes you can push to the room" },
-    { id: "patterns", label: "Patterns", show: showPatterns, hint: "AI-surfaced patterns across the room's responses" },
-    { id: "session", label: "Session", show: role !== "cohost", hint: "Room settings, recovery, handover report & danger zone" },
+    {
+      id: "run",
+      label: "Run",
+      show: true,
+      hint: "Drive the current phase — your run-sheet, controls and live responses",
+    },
+    {
+      id: "preview",
+      label: "What they see",
+      show: true,
+      hint: "Live mirror of the participant and projector screens",
+    },
+    {
+      id: "content",
+      label: "Content",
+      show: true,
+      hint: "Cases, lenses, prompts & notes you can push to the room",
+    },
+    {
+      id: "patterns",
+      label: "Patterns",
+      show: showPatterns,
+      hint: "AI-surfaced patterns across the room's responses",
+    },
+    {
+      id: "session",
+      label: "Session",
+      show: role !== "cohost",
+      hint: "Room settings, recovery, handover report & danger zone",
+    },
   ];
   // Never strand the user on a tab that's now hidden.
   const activeTab: Tab = TABS.some((t) => t.id === tab && t.show) ? tab : "run";
 
   return (
     <TooltipProvider delayDuration={250} skipDelayDuration={400}>
-    <main className="mx-auto w-full max-w-2xl pb-24 lg:max-w-5xl">
-      {coach}
-      {confirm && (
-        <ConfirmSheet
-          title={confirm.kind === "reset" ? "Re-run this phase?" : `Re-open “${confirm.label}”?`}
-          count={confirm.count}
-          confirmLabel={confirm.kind === "reset" ? "Re-run it" : "Re-open it"}
-          onCancel={() => setConfirm(null)}
-          onConfirm={() => {
-            cmd(confirm.kind === "reset" ? "resetPhase" : "reopenPhase", {
-              phaseId: confirm.phaseId,
-            });
-            setConfirm(null);
-            setUndoToast(null);
-          }}
-        />
-      )}
-      <div className="sticky top-0 z-10 border-b border-border bg-bg/95 backdrop-blur">
-        <SessionHeader state={s} cmd={cmd} role={role} />
-        {/* C5 — who else is driving right now (self-hides when you're solo). */}
-        <div className="px-4">
-          <FacilitatorPresenceStrip
-            presence={s.presence ?? []}
-            myId={me.presenceId}
-            myName={me.name}
-            onRename={me.setName}
-          />
-          <DriverChip
-            driver={s.driver}
-            driverStale={Boolean(s.driverStale)}
-            presence={s.presence ?? []}
-            myId={me.presenceId}
-            myName={me.name}
-            cmd={cmd}
-          />
-        </div>
-        <PhaseStepper
-          state={s}
-          cmd={cmd}
-          me={{ presenceId: me.presenceId, name: me.name }}
-          onMoved={(label) => setUndoToast({ label, key: Date.now() })}
-        />
-        {undoToast && (
-          <UndoToast
-            key={undoToast.key}
-            label={undoToast.label}
-            onUndo={() => {
-              cmd("undo");
+      <main className="mx-auto w-full max-w-2xl pb-24 lg:max-w-5xl">
+        {coach}
+        {confirm && (
+          <ConfirmSheet
+            title={
+              confirm.kind === "reset"
+                ? "Re-run this phase?"
+                : `Re-open “${confirm.label}”?`
+            }
+            count={confirm.count}
+            confirmLabel={confirm.kind === "reset" ? "Re-run it" : "Re-open it"}
+            onCancel={() => setConfirm(null)}
+            onConfirm={() => {
+              cmd(confirm.kind === "reset" ? "resetPhase" : "reopenPhase", {
+                phaseId: confirm.phaseId,
+              });
+              setConfirm(null);
               setUndoToast(null);
             }}
-            onDismiss={() => setUndoToast(null)}
           />
         )}
-        {/* C7 — a deterministic co-facilitator nudge (advisory; counts/timing only). */}
-        <CofacBanner cofac={s.cofac ?? null} phaseId={s.phaseId ?? ""} cmd={cmd} />
-        {/* H1 — a soft "people look disconnected" caption near Advance. */}
-        {advanceHealthCaption(s.roomHealth) && (
-          <p className="mx-2 mb-2 text-xs text-[#ffd27a]">{advanceHealthCaption(s.roomHealth)}</p>
-        )}
-        {/* Navigation (a segmented control) is kept visually distinct from the
+        <div className="sticky top-0 z-10 border-b border-border bg-bg/95 backdrop-blur">
+          <SessionHeader state={s} cmd={cmd} role={role} />
+          {/* C5 — who else is driving right now (self-hides when you're solo). */}
+          <div className="px-4">
+            <FacilitatorPresenceStrip
+              presence={s.presence ?? []}
+              myId={me.presenceId}
+              myName={me.name}
+              onRename={me.setName}
+            />
+            <DriverChip
+              driver={s.driver}
+              driverStale={Boolean(s.driverStale)}
+              presence={s.presence ?? []}
+              myId={me.presenceId}
+              myName={me.name}
+              cmd={cmd}
+            />
+          </div>
+          <PhaseStepper
+            state={s}
+            cmd={cmd}
+            me={{ presenceId: me.presenceId, name: me.name }}
+            onMoved={(label) => setUndoToast({ label, key: Date.now() })}
+            onWrapUp={() => {
+              setTab("session");
+              window.setTimeout(
+                () =>
+                  document
+                    .getElementById("wrap-up")
+                    ?.scrollIntoView({ behavior: "smooth" }),
+                0,
+              );
+            }}
+          />
+          {undoToast && (
+            <UndoToast
+              key={undoToast.key}
+              label={undoToast.label}
+              onUndo={() => {
+                cmd("undo");
+                setUndoToast(null);
+              }}
+              onDismiss={() => setUndoToast(null)}
+            />
+          )}
+          {/* C7 — a deterministic co-facilitator nudge (advisory; counts/timing only). */}
+          <CofacBanner
+            cofac={s.cofac ?? null}
+            phaseId={s.phaseId ?? ""}
+            cmd={cmd}
+          />
+          {/* H1 — a soft "people look disconnected" caption near Advance. */}
+          {advanceHealthCaption(s.roomHealth) && (
+            <p className="mx-2 mb-2 text-xs text-[#ffd27a]">
+              {advanceHealthCaption(s.roomHealth)}
+            </p>
+          )}
+          {/* Navigation (a segmented control) is kept visually distinct from the
             status cluster + cockpit entry, so the row reads as "where am I" on the
             left and "how's the room / go live" on the right. */}
-        <div className="flex items-center gap-3 px-3 pt-0.5">
-          <div className="inline-flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-surface/40 p-0.5">
-            {TABS.filter((t) => t.show).map((t) => (
-              <Tip key={t.id} content={t.hint} side="bottom">
-                <button
-                  data-tour-id={`tab-${t.id}`}
-                  onClick={() => setTab(t.id)}
-                  className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    activeTab === t.id
-                      ? "bg-accent text-bg shadow-sm"
-                      : "text-white/55 hover:text-white/85"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              </Tip>
-            ))}
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-2.5 pl-1">
-            {/* H2 — quiet pre-flight pill; appears only when something needs a look. */}
-            {s.readiness &&
-              s.readiness.checks.some(
-                (c) => c.severity === "blocker" || c.severity === "warning",
-              ) && (
-                <PreflightPill
-                  readiness={s.readiness}
-                  onOpen={() => setShowPreflight(true)}
-                />
-              )}
-            {/* H1 — room-wide "who's still with you" (tap to see who dropped). */}
-            {s.roomHealth && <RoomHealthChip health={s.roomHealth} />}
-            {/* H1 — this device's honest connection state. */}
-            <ConnectionChip conn={conn} />
-            {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
-            <Tip content="Open the full-screen cockpit — a distraction-free view for driving live" side="bottom">
-              <UiButton
-                asChild
-                variant="outline"
-                size="sm"
-                className="border-accent/45 text-accent hover:bg-accent/10"
+          <div className="flex flex-col gap-2 px-3 pt-0.5 sm:flex-row sm:items-center sm:gap-3">
+            <div className="inline-flex w-full min-w-0 items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-surface/40 p-0.5 sm:w-auto">
+              {TABS.filter((t) => t.show).map((t) => (
+                <Tip key={t.id} content={t.hint} side="bottom">
+                  <button
+                    data-tour-id={`tab-${t.id}`}
+                    onClick={() => setTab(t.id)}
+                    className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      activeTab === t.id
+                        ? "bg-accent text-bg shadow-sm"
+                        : "text-white/55 hover:text-white/85"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                </Tip>
+              ))}
+            </div>
+            <div className="flex w-full shrink-0 items-center justify-end gap-2.5 pb-1 sm:ml-auto sm:w-auto sm:pb-0 sm:pl-1">
+              {/* H2 — quiet pre-flight pill; appears only when something needs a look. */}
+              {s.readiness &&
+                s.readiness.checks.some(
+                  (c) => c.severity === "blocker" || c.severity === "warning",
+                ) && (
+                  <PreflightPill
+                    readiness={s.readiness}
+                    onOpen={() => setShowPreflight(true)}
+                  />
+                )}
+              {/* H1 — room-wide "who's still with you" (tap to see who dropped). */}
+              {s.roomHealth && <RoomHealthChip health={s.roomHealth} />}
+              {/* H1 — this device's honest connection state. */}
+              <ConnectionChip conn={conn} />
+              {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
+              <Tip
+                content="Open the full-screen cockpit — a distraction-free view for driving live"
+                side="bottom"
               >
-                <a href={`/r/${slug}/facilitate`}>
-                  <Maximize2 /> Facilitate
-                </a>
-              </UiButton>
-            </Tip>
+                <UiButton
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="border-accent/45 text-accent hover:bg-accent/10"
+                >
+                  <a href={`/r/${slug}/facilitate`}>
+                    <Maximize2 /> Facilitate
+                  </a>
+                </UiButton>
+              </Tip>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* C5 — one-time, skippable ask for this operator's name (cross-room: once
+        {/* C5 — one-time, skippable ask for this operator's name (cross-room: once
           set on this device it's reused in every room, so it's never re-asked). */}
-      <div className="px-4 pt-3">
-        <NamePrompt name={me.name} onSubmit={me.setName} />
-      </div>
-
-      {showPreflight && s.readiness && (
-        <PreflightSheet
-          readiness={s.readiness}
-          role={role}
-          onClose={() => setShowPreflight(false)}
-          onRecheck={() => refresh()}
-          onRemedy={(t) => {
-            setTab(t);
-            setShowPreflight(false);
-          }}
-        />
-      )}
-
-      {cmdError && (
-        <div className="bg-[#5a2a2a] px-4 py-2 text-center text-sm text-[#ffd7d7]">
-          {cmdError}
+        <div className="px-4 pt-3">
+          <NamePrompt name={me.name} onSubmit={me.setName} />
         </div>
-      )}
 
-      <div className="flex flex-col gap-6 p-4">
-        {activeTab === "run" && (
-          <div className="flex flex-col gap-5">
+        {showPreflight && s.readiness && (
+          <PreflightSheet
+            readiness={s.readiness}
+            role={role}
+            onClose={() => setShowPreflight(false)}
+            onRecheck={() => refresh()}
+            onRemedy={(t) => {
+              setTab(t);
+              setShowPreflight(false);
+            }}
+          />
+        )}
+
+        {cmdError && (
+          <div className="bg-[#5a2a2a] px-4 py-2 text-center text-sm text-[#ffd7d7]">
+            {cmdError}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-6 p-4">
+          {activeTab === "run" && (
+            <div className="flex flex-col gap-5">
               {/* B3 — your private script for this phase + a peek at what's next. */}
               <RunSheetPanel
                 runsheet={s.runsheets?.[s.phaseId ?? ""]}
@@ -502,20 +584,28 @@ export function HostConsole({
                   <ParticipationSignal
                     s={s.participation}
                     onNudge={
-                      (s.config as { nudgeable?: boolean } | null)?.nudgeable === false
+                      (s.config as { nudgeable?: boolean } | null)
+                        ?.nudgeable === false
                         ? undefined
                         : async () => {
-                            const res = await cmd("nudgeRoom", { phaseId: s.phaseId });
+                            const res = await cmd("nudgeRoom", {
+                              phaseId: s.phaseId,
+                            });
                             const d = await res.json().catch(() => ({}));
-                            if (d.alreadyNudged) setNudgeMsg("Already nudged — give it a moment");
+                            if (d.alreadyNudged)
+                              setNudgeMsg("Already nudged — give it a moment");
                             else if (d.ok)
-                              setNudgeMsg(`Nudged ${d.nudged} ${d.nudged === 1 ? "phone" : "phones"}`);
+                              setNudgeMsg(
+                                `Nudged ${d.nudged} ${d.nudged === 1 ? "phone" : "phones"}`,
+                              );
                             else setNudgeMsg(d.reason ?? null);
                             setTimeout(() => setNudgeMsg(null), 3000);
                           }
                     }
                   />
-                  {nudgeMsg && <p className="text-xs text-accent">{nudgeMsg}</p>}
+                  {nudgeMsg && (
+                    <p className="text-xs text-accent">{nudgeMsg}</p>
+                  )}
                 </div>
               )}
               {/* C3 — flag leftover answers from an earlier run before they
@@ -553,12 +643,18 @@ export function HostConsole({
                 ))}
               {role === "cohost" && (
                 <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted">
-                  Co-host mode — you can drive the room, but ending, reconfiguring,
-                  and reassigning are reserved for the lead facilitator.
+                  Co-host mode — you can drive the room, but ending,
+                  reconfiguring, and reassigning are reserved for the lead
+                  facilitator.
                 </p>
               )}
               {hasModuleControls && (
-                <ModuleControlPanel state={s} cmd={cmd} apiBase={apiBase} code={code} />
+                <ModuleControlPanel
+                  state={s}
+                  cmd={cmd}
+                  apiBase={apiBase}
+                  code={code}
+                />
               )}
               {hasResults && <ResultsPanel state={s} />}
               {isAllocate && <AllocationsPanel state={s} cmd={cmd} />}
@@ -568,71 +664,79 @@ export function HostConsole({
               <ActionItemsPanel state={s} cmd={cmd} />
               {!runHasContent && (
                 <div className="rounded-xl border border-border bg-surface p-4 text-sm text-muted">
-                  Nothing to drive in this phase — it’s display-only for the room.
-                  Use <span className="text-accent">Advance</span> above when you’re
-                  ready, or the <span className="text-accent">What they see</span>{" "}
-                  tab to preview it.
+                  Nothing to drive in this phase — it’s display-only for the
+                  room. Use <span className="text-accent">Advance</span> above
+                  when you’re ready, or the{" "}
+                  <span className="text-accent">What they see</span> tab to
+                  preview it.
                 </div>
               )}
-          </div>
-        )}
-        {activeTab === "preview" && <PreviewPanel state={s} />}
-        {activeTab === "content" && <InjectPanel state={s} cmd={cmd} />}
-        {activeTab === "patterns" && <PatternPanel state={s} cmd={cmd} />}
-        {activeTab === "session" && role !== "cohost" && (
-          <div className="flex flex-col gap-8">
-            <SessionSection title="Pacing & recovery">
-              {/* B1 — the agenda arc during the run: does it still breathe? */}
-              <HostArcStrip state={s} />
-              {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
-              <PhaseTimingPanel state={s} />
-              {/* Re-open an earlier phase to run it again (clears its old answers). */}
-              <RecoveryControls
-                state={s}
-                onReopen={(phaseId, label, count) =>
-                  setConfirm({ kind: "reopen", phaseId, label, count })
-                }
-              />
-            </SessionSection>
+            </div>
+          )}
+          {activeTab === "preview" && <PreviewPanel state={s} />}
+          {activeTab === "content" && <InjectPanel state={s} cmd={cmd} />}
+          {activeTab === "patterns" && <PatternPanel state={s} cmd={cmd} />}
+          {activeTab === "session" && role !== "cohost" && (
+            <div className="flex flex-col gap-8">
+              <SessionSection title="Pacing & recovery">
+                {/* B1 — the agenda arc during the run: does it still breathe? */}
+                <HostArcStrip state={s} />
+                {/* F4 — plan-vs-actual phase timing (appears once the room advances). */}
+                <PhaseTimingPanel state={s} />
+                {/* Re-open an earlier phase to run it again (clears its old answers). */}
+                <RecoveryControls
+                  state={s}
+                  onReopen={(phaseId, label, count) =>
+                    setConfirm({ kind: "reopen", phaseId, label, count })
+                  }
+                />
+              </SessionSection>
 
-            <SessionSection title="Room settings">
-              {/* D2 / C6 — big-screen + timer-chime toggles for the whole room. */}
-              <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface/50 p-4">
-                <SettingToggle
-                  label="High-contrast big screen (colour-safe, for the whole room)"
-                  checked={s.projectorA11y === true}
-                  onChange={(on) => cmd("setProjectorA11y", { on })}
+              <SessionSection title="Room settings">
+                {/* D2 / C6 — big-screen + timer-chime toggles for the whole room. */}
+                <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface/50 p-4">
+                  <SettingToggle
+                    label="High-contrast big screen (colour-safe, for the whole room)"
+                    checked={s.projectorA11y === true}
+                    onChange={(on) => cmd("setProjectorA11y", { on })}
+                  />
+                  <SettingToggle
+                    label="Mute the timer chime for the whole room"
+                    checked={s.timerSoundOff === true}
+                    onChange={(off) => cmd("setTimerSound", { off })}
+                  />
+                </div>
+                {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
+                <CofacSettings
+                  enabled={s.cofacEnabled ?? true}
+                  sensitivity={s.cofacSensitivity ?? "standard"}
+                  cmd={cmd}
                 />
-                <SettingToggle
-                  label="Mute the timer chime for the whole room"
-                  checked={s.timerSoundOff === true}
-                  onChange={(off) => cmd("setTimerSound", { off })}
-                />
+              </SessionSection>
+
+              <SessionSection title="People">
+                {/* D4 — who's in the room: live/quiet dots + join order. */}
+                <RoomRoster state={s} />
+              </SessionSection>
+
+              <div id="wrap-up" className="scroll-mt-96 sm:scroll-mt-64">
+                <SessionSection title="Wrap up & export">
+                  <HandoverPanel state={s} apiBase={apiBase} code={code} />
+                  <RunsheetPrint state={s} slug={slug} />
+                  {/* F3 — review/curate the participant take-away before ending. */}
+                  <TakeawayReview
+                    state={s}
+                    apiBase={apiBase}
+                    code={code}
+                    cmd={cmd}
+                  />
+                  <SessionControls cmd={cmd} />
+                </SessionSection>
               </div>
-              {/* C7 — the lead's co-facilitator off-switch + sensitivity dial. */}
-              <CofacSettings
-                enabled={s.cofacEnabled ?? true}
-                sensitivity={s.cofacSensitivity ?? "standard"}
-                cmd={cmd}
-              />
-            </SessionSection>
-
-            <SessionSection title="People">
-              {/* D4 — who's in the room: live/quiet dots + join order. */}
-              <RoomRoster state={s} />
-            </SessionSection>
-
-            <SessionSection title="Wrap up & export">
-              <HandoverPanel state={s} apiBase={apiBase} code={code} />
-              <RunsheetPrint state={s} slug={slug} />
-              {/* F3 — review/curate the participant take-away before ending. */}
-              <TakeawayReview state={s} apiBase={apiBase} code={code} cmd={cmd} />
-              <SessionControls cmd={cmd} />
-            </SessionSection>
-          </div>
-        )}
-      </div>
-    </main>
+            </div>
+          )}
+        </div>
+      </main>
     </TooltipProvider>
   );
 }
@@ -654,15 +758,19 @@ function RecoveryControls({
     <div className="rounded-xl border border-border bg-surface p-4">
       <p className="text-sm font-semibold">Recover a phase</p>
       <p className="mt-1 text-xs text-muted">
-        Re-open an earlier phase to run it again. Its old responses are cleared so
-        it starts clean — the other phases are untouched.
+        Re-open an earlier phase to run it again. Its old responses are cleared
+        so it starts clean — the other phases are untouched.
       </p>
       <div className="mt-3 flex flex-col gap-2">
         {past.map((p) => (
           <button
             key={p.id}
             onClick={() =>
-              onReopen(p.id, p.label, phaseAnswerCount(state.submissions ?? [], p.id))
+              onReopen(
+                p.id,
+                p.label,
+                phaseAnswerCount(state.submissions ?? [], p.id),
+              )
             }
             className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:border-accent"
           >
@@ -678,8 +786,12 @@ function RecoveryControls({
 // What participants (and the projector) see for the current phase, read-only —
 // so the facilitator is never guessing what's on the room's screens.
 function PreviewPanel({ state }: { state: FacilitatorState }) {
-  const P = state.moduleId ? getClientRenderer(state.moduleId, "participant") : null;
-  const J = state.moduleId ? getClientRenderer(state.moduleId, "projector") : null;
+  const P = state.moduleId
+    ? getClientRenderer(state.moduleId, "participant")
+    : null;
+  const J = state.moduleId
+    ? getClientRenderer(state.moduleId, "projector")
+    : null;
   const noop = async () => false;
   return (
     <div className="flex flex-col gap-5">
@@ -696,9 +808,17 @@ function PreviewPanel({ state }: { state: FacilitatorState }) {
               <ErrorBoundary
                 label={`preview-participant:${state.moduleId}`}
                 resetKey={state.phaseId ?? ""}
-                fallback={<p className="p-4 text-sm text-muted">Preview unavailable.</p>}
+                fallback={
+                  <p className="p-4 text-sm text-muted">Preview unavailable.</p>
+                }
               >
-                <P view={state.view.data} token="" handle="" phaseId={state.phaseId ?? ""} act={noop} />
+                <P
+                  view={state.view.data}
+                  token=""
+                  handle=""
+                  phaseId={state.phaseId ?? ""}
+                  act={noop}
+                />
               </ErrorBoundary>
             </div>
           ) : (
@@ -718,9 +838,17 @@ function PreviewPanel({ state }: { state: FacilitatorState }) {
               <ErrorBoundary
                 label={`preview-projector:${state.moduleId}`}
                 resetKey={state.phaseId ?? ""}
-                fallback={<p className="p-4 text-sm text-muted">Preview unavailable.</p>}
+                fallback={
+                  <p className="p-4 text-sm text-muted">Preview unavailable.</p>
+                }
               >
-                <J view={state.view.data} token="" handle="" phaseId={state.phaseId ?? ""} act={noop} />
+                <J
+                  view={state.view.data}
+                  token=""
+                  handle=""
+                  phaseId={state.phaseId ?? ""}
+                  act={noop}
+                />
               </ErrorBoundary>
             </div>
           </div>
@@ -744,7 +872,11 @@ function ResultsPanel({ state }: { state: FacilitatorState }) {
         <ErrorBoundary
           label={`results:${state.moduleId}`}
           resetKey={state.phaseId ?? ""}
-          fallback={<p className="text-sm text-muted">Results unavailable for this phase.</p>}
+          fallback={
+            <p className="text-sm text-muted">
+              Results unavailable for this phase.
+            </p>
+          }
         >
           <R
             view={state.view.data}
@@ -778,7 +910,10 @@ function ModuleControlPanel({
     ? getClientRenderer(state.moduleId, "facilitator")
     : null;
   if (!R || !state.view) return null;
-  const act = async (action: { type: string; payload?: Record<string, unknown> }) => {
+  const act = async (action: {
+    type: string;
+    payload?: Record<string, unknown>;
+  }) => {
     const res = await cmd("moduleAction", {
       actionType: action.type,
       payload: action.payload ?? {},
@@ -791,10 +926,11 @@ function ModuleControlPanel({
     const fd = new FormData();
     fd.append("file", file);
     try {
-      const res = await fetch(
-        `${apiBase}/upload?code=${encodeURIComponent(code)}`,
-        { method: "POST", body: fd },
-      );
+      const res = await fetch(`${apiBase}/upload`, {
+        method: "POST",
+        headers: { "X-Edges-Code": code },
+        body: fd,
+      });
       if (!res.ok) return null;
       const j = (await res.json()) as { url?: string };
       return j.url ?? null;
@@ -810,7 +946,8 @@ function ModuleControlPanel({
           resetKey={state.phaseId ?? ""}
           fallback={
             <p className="text-sm text-muted">
-              This phase&apos;s controls hit a snag — use Advance above to move on.
+              This phase&apos;s controls hit a snag — use Advance above to move
+              on.
             </p>
           }
         >
@@ -843,13 +980,42 @@ function ModeSelector({
 }) {
   // apiBase is "/api/r/{slug}"; the builder lives at "/r/{slug}/build".
   const slug = apiBase.replace("/api/r/", "");
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [query, setQuery] = useState("");
+  const [tag, setTag] = useState<SessionTemplateTag | "all">("all");
+  const featuredIds = ["one-two-four-all", "pre-mortem", "fifteen-percent"];
+  const featured = featuredIds
+    .map((id) => TEMPLATES.find((template) => template.id === id))
+    .filter((template): template is (typeof TEMPLATES)[number] =>
+      Boolean(template),
+    );
+  const filteredTemplates = TEMPLATES.filter((template) => {
+    const matchesTag = tag === "all" || template.tag === tag;
+    const haystack = `${template.name} ${template.description}`.toLowerCase();
+    return matchesTag && haystack.includes(query.trim().toLowerCase());
+  });
+  const tags: { id: SessionTemplateTag | "all"; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "diverge", label: "Generate" },
+    { id: "decide", label: "Decide" },
+    { id: "dialogue", label: "Discuss" },
+    { id: "reflect", label: "Reflect" },
+    { id: "ai", label: "AI-powered" },
+  ];
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-4 p-6 lg:max-w-4xl">
-      <h1 className="font-display text-2xl font-semibold tracking-tight">Pick a session mode</h1>
-      <p className="text-sm text-muted">
-        Participants see the lobby until you pick one. Or build a custom session
-        from any modules.
-      </p>
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-5 pb-16 sm:p-8 lg:max-w-5xl">
+      <header className="max-w-2xl">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-accent">
+          Start your workshop
+        </p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+          What does the room need to do?
+        </h1>
+        <p className="mt-3 text-sm leading-relaxed text-muted sm:text-base">
+          Pick a proven session and start in one click. Participants stay in the
+          lobby until you advance, so you can get settled first.
+        </p>
+      </header>
 
       {/* A5 — your saved workshops: one-tap re-launch from any room's setup,
           even after a wipe (the designs outlive the room). */}
@@ -857,45 +1023,191 @@ function ModeSelector({
 
       {/* E1 — author the front-of-room lobby before you begin: the welcome line
           the room reads while joining, and whether the live headcount shows. */}
-      <LobbyAuthor
-        cmd={cmd}
-        cue={lobbyCue}
-        countVisible={lobbyCountVisible}
-      />
-      {Object.values(MODES).map((m) => (
-        <button
-          key={m.id}
-          onClick={() => cmd("setMode", { mode: m.id as ModeId })}
-          className="rounded-xl border border-border bg-surface p-5 text-left transition-colors hover:border-accent"
-        >
-          <p className="text-lg font-semibold">{m.name}</p>
-          <p className="mt-1 text-sm text-muted">{m.description}</p>
-        </button>
-      ))}
+      <details className="rounded-xl border border-border bg-surface/50 p-4">
+        <summary className="-my-2 cursor-pointer list-none py-2 text-sm font-medium marker:hidden">
+          <span className="flex items-center justify-between gap-3">
+            <span>
+              Lobby message
+              <span className="ml-2 font-normal text-muted">
+                · {lobbyCue || "We’ll begin shortly."}
+              </span>
+            </span>
+            <span className="text-xs text-accent">Edit</span>
+          </span>
+        </summary>
+        <div className="mt-4 border-t border-border pt-4">
+          <LobbyAuthor
+            cmd={cmd}
+            cue={lobbyCue}
+            countVisible={lobbyCountVisible}
+          />
+        </div>
+      </details>
 
-      <h2 className="mt-2 text-sm font-semibold uppercase tracking-wide text-muted">
-        Research-grounded templates
-      </h2>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {TEMPLATES.map((t) => (
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Recommended
+            </p>
+            <h2 className="mt-1 font-display text-2xl font-semibold">
+              Reliable starting points
+            </h2>
+          </div>
           <button
-            key={t.id}
-            onClick={() => cmd("setTemplate", { templateId: t.id })}
-            className="rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-accent"
+            onClick={() => setShowLibrary((open) => !open)}
+            className="-mr-2 shrink-0 rounded-lg px-2 py-2 text-sm text-accent hover:bg-white/[0.04] hover:underline"
           >
-            <p className="text-base font-semibold">{t.name}</p>
-            <p className="mt-1 text-xs text-muted">{t.description}</p>
+            {showLibrary ? "Hide library" : `Browse all ${TEMPLATES.length}`}
           </button>
-        ))}
-      </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {featured.map((template) => (
+            <TemplateChoice
+              key={template.id}
+              template={template}
+              cmd={cmd}
+              featured
+            />
+          ))}
+        </div>
+      </section>
+
+      {showLibrary && (
+        <section className="rounded-2xl border border-border bg-surface/35 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-display text-xl font-semibold">
+                Session library
+              </h2>
+              <p className="mt-1 text-xs text-muted">
+                Search by outcome or browse a facilitation intent.
+              </p>
+            </div>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search methods…"
+              aria-label="Search session methods"
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none sm:w-64"
+            />
+          </div>
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+            {tags.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setTag(item.id)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                  tag === item.id
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border text-muted hover:border-white/25 hover:text-white"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredTemplates.map((template) => (
+              <TemplateChoice key={template.id} template={template} cmd={cmd} />
+            ))}
+          </div>
+          {filteredTemplates.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted">
+              No methods match that search.
+            </p>
+          )}
+        </section>
+      )}
+
+      <section>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Signature formats
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          {Object.values(MODES).map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() => cmd("setMode", { mode: mode.id as ModeId })}
+              className="group rounded-xl border border-border bg-surface p-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-lg"
+            >
+              <p className="font-semibold">{mode.name}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
+                {mode.description}
+              </p>
+              <p className="mt-4 text-xs font-medium text-accent">
+                Start this session →
+              </p>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <a
         href={`/r/${slug}/build`}
-        className="rounded-xl border border-dashed border-accent p-5 text-center text-accent"
+        className="group rounded-2xl border border-dashed border-accent/70 bg-accent/5 p-6 text-left transition-colors hover:bg-accent/10 sm:flex sm:items-center sm:justify-between"
       >
-        + Build a custom session
+        <span>
+          <span className="block font-display text-xl font-semibold text-white">
+            Build a custom session
+          </span>
+          <span className="mt-1 block text-sm text-muted">
+            Compose your own sequence, rehearse it, and save it for reuse.
+          </span>
+        </span>
+        <span className="mt-3 block text-sm font-medium text-accent sm:mt-0">
+          Open builder →
+        </span>
       </a>
     </main>
+  );
+}
+
+type SessionTemplateTag = (typeof TEMPLATES)[number]["tag"];
+
+function TemplateChoice({
+  template,
+  cmd,
+  featured = false,
+}: {
+  template: (typeof TEMPLATES)[number];
+  cmd: Cmd;
+  featured?: boolean;
+}) {
+  const tagLabel: Record<SessionTemplateTag, string> = {
+    diverge: "Generate",
+    decide: "Decide",
+    reflect: "Reflect",
+    ai: "AI-powered",
+    dialogue: "Discuss",
+  };
+  const activityCount = Math.max(0, template.phases.length - 2);
+  return (
+    <button
+      onClick={() => cmd("setTemplate", { templateId: template.id })}
+      className={`group flex h-full flex-col rounded-xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-lg ${
+        featured
+          ? "border-accent/35 bg-[linear-gradient(145deg,rgb(var(--c-surface)),rgb(var(--c-accent)/0.06))]"
+          : "border-border bg-surface"
+      }`}
+    >
+      <div className="flex w-full items-center justify-between gap-2">
+        <span className="rounded-full bg-bg/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+          {tagLabel[template.tag]}
+        </span>
+        <span className="text-[11px] text-muted">
+          {activityCount} {activityCount === 1 ? "activity" : "activities"}
+        </span>
+      </div>
+      <p className="mt-3 text-base font-semibold">{template.name}</p>
+      <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-muted">
+        {template.description}
+      </p>
+      <p className="mt-auto pt-4 text-xs font-medium text-accent">
+        Start this session →
+      </p>
+    </button>
   );
 }
 
@@ -904,7 +1216,12 @@ function ModeSelector({
 // (the saved blueprints live in the durable library, not the 24h room). Launch is
 // the `advance`-tier setDesign command (any host can re-run a saved workshop); it
 // also stamps a fresh blueprint onto the room.
-type SavedDesign = { id: string; name: string; phaseCount: number; createdAt: number };
+type SavedDesign = {
+  id: string;
+  name: string;
+  phaseCount: number;
+  createdAt: number;
+};
 function SavedBlueprints({
   apiBase,
   code,
@@ -919,7 +1236,7 @@ function SavedBlueprints({
   useEffect(() => {
     if (!code) return;
     let live = true;
-    fetch(`${apiBase}/designs?code=${encodeURIComponent(code)}`)
+    authFetch(`${apiBase}/designs`, code)
       .then((r) => (r.ok ? r.json() : { designs: [] }))
       .then((d) => {
         if (live) setDesigns(d.designs ?? []);
@@ -940,8 +1257,8 @@ function SavedBlueprints({
     <section className="flex flex-col gap-2 rounded-xl border border-accent/40 bg-accent/5 p-4">
       <h2 className="text-sm font-semibold">Your saved workshops</h2>
       <p className="text-xs text-muted">
-        Re-launch a design you built earlier — these outlive the room, so they&apos;re
-        here even after a session ends.
+        Re-launch a design you built earlier — these outlive the room, so
+        they&apos;re here even after a session ends.
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
         {sorted.map((d) => (
@@ -1008,7 +1325,9 @@ function LobbyAuthor({
         <input
           type="checkbox"
           checked={countVisible}
-          onChange={(e) => cmd("setLobbyCue", { countVisible: e.target.checked })}
+          onChange={(e) =>
+            cmd("setLobbyCue", { countVisible: e.target.checked })
+          }
         />
         Show the live “{`{n}`} here” count on the big screen
       </label>
@@ -1111,7 +1430,7 @@ function SessionHeader({
               href="/help?doc=facilitator-guide"
               target="_blank"
               rel="noreferrer"
-              className="text-accent underline"
+              className="inline-flex min-h-6 items-center text-accent underline"
             >
               📖 Guide
             </a>
@@ -1138,7 +1457,9 @@ function SessionHeader({
             <Clock className="size-3.5" /> Timer
           </span>
           {preset && (
-            <Tip content={`Start this phase's planned ${Math.round(preset / 60)}-minute countdown on every screen`}>
+            <Tip
+              content={`Start this phase's planned ${Math.round(preset / 60)}-minute countdown on every screen`}
+            >
               <UiButton variant="ghost" size="sm" onClick={() => timer(preset)}>
                 <Play /> {Math.round(preset / 60)}:00
               </UiButton>
@@ -1214,7 +1535,9 @@ function SessionHeader({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
-                  const note = window.prompt("Cue card text for the big screen:");
+                  const note = window.prompt(
+                    "Cue card text for the big screen:",
+                  );
                   if (note?.trim())
                     cmd("setAmbient", { scene: "cuecard", note: note.trim() });
                 }}
@@ -1258,11 +1581,13 @@ function PhaseStepper({
   cmd,
   me,
   onMoved,
+  onWrapUp,
 }: {
   state: FacilitatorState;
   cmd: Cmd;
   me?: { presenceId: string; name: string };
   onMoved?: (label: string) => void;
+  onWrapUp?: () => void;
 }) {
   // E2 — share the one nav-maths helper with the presenter ribbon (identical
   // prev/next/done logic, proven by test/sequence.test.ts).
@@ -1288,7 +1613,11 @@ function PhaseStepper({
     cmd(
       "setPhase",
       someoneElseDriving && me
-        ? { phaseId: p.id, claimDriverId: me.presenceId, claimDriverName: me.name }
+        ? {
+            phaseId: p.id,
+            claimDriverId: me.presenceId,
+            claimDriverName: me.name,
+          }
         : { phaseId: p.id },
     );
     onMoved?.(p.label);
@@ -1297,11 +1626,18 @@ function PhaseStepper({
     <div className="px-4 py-2">
       {armed && someoneElseDriving && (
         <p className="mb-1 text-xs text-[#ffb454]">
-          {liveDriver?.driverName || "A co-host"} is driving — tap again to take over.
+          {liveDriver?.driverName || "A co-host"} is driving — tap again to take
+          over.
         </p>
       )}
-      <div className="flex items-center gap-3">
-        <Tip content={prev ? `Back to ${prev.label} — keeps queued content held` : "No earlier phase"}>
+      <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
+        <Tip
+          content={
+            prev
+              ? `Back to ${prev.label} — keeps queued content held`
+              : "No earlier phase"
+          }
+        >
           <UiButton
             variant="ghost"
             size="icon"
@@ -1330,7 +1666,7 @@ function PhaseStepper({
                     onClick={() => go(p)}
                     aria-label={`Go to phase ${i + 1}: ${p.label}`}
                     aria-current={current ? "step" : undefined}
-                    className="group grid size-4 shrink-0 place-items-center"
+                    className="group grid size-6 shrink-0 place-items-center"
                   >
                     <span
                       className={`rounded-full transition-all duration-200 ${
@@ -1372,7 +1708,10 @@ function PhaseStepper({
               </UiButton>
             </Tip>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto">
+          <DropdownMenuContent
+            align="end"
+            className="max-h-[60vh] overflow-y-auto"
+          >
             <DropdownMenuLabel>Jump to phase</DropdownMenuLabel>
             {phases.map((p, i) => {
               const done = i < idx;
@@ -1410,27 +1749,26 @@ function PhaseStepper({
           }
           side="bottom"
         >
-        <UiButton
-          data-tour-id="advance"
-          variant="primary"
-          disabled={!next}
-          onClick={() => next && go(next)}
-          className="h-11 shrink-0 gap-2 pl-4 pr-3.5"
-        >
-          {next ? (
-            <span className="flex flex-col items-start leading-none">
-              <span className="text-[0.58rem] font-semibold uppercase tracking-[0.09em] text-bg/65">
-                Advance to
+          <UiButton
+            data-tour-id="advance"
+            variant="primary"
+            onClick={() => (next ? go(next) : onWrapUp?.())}
+            className="h-11 w-full basis-full justify-between gap-2 pl-4 pr-3.5 sm:w-auto sm:basis-auto sm:justify-center"
+          >
+            {next ? (
+              <span className="flex flex-col items-start leading-none">
+                <span className="text-[0.58rem] font-semibold uppercase tracking-[0.09em] text-bg/65">
+                  Advance to
+                </span>
+                <span className="mt-1 max-w-[11rem] truncate text-sm font-semibold">
+                  {next.label}
+                </span>
               </span>
-              <span className="mt-1 max-w-[11rem] truncate text-sm font-semibold">
-                {next.label}
-              </span>
-            </span>
-          ) : (
-            <span className="text-sm font-semibold">Wrap up</span>
-          )}
-          <ArrowRight />
-        </UiButton>
+            ) : (
+              <span className="text-sm font-semibold">Wrap up</span>
+            )}
+            <ArrowRight />
+          </UiButton>
         </Tip>
       </div>
     </div>
@@ -1460,7 +1798,11 @@ function ContentRow({ item, cmd }: { item: ContentItem; cmd: Cmd }) {
         : "Held — hidden until you show it";
 
   function save() {
-    cmd("updateContent", { id: item.id, title: title.trim(), body: body.trim() });
+    cmd("updateContent", {
+      id: item.id,
+      title: title.trim(),
+      body: body.trim(),
+    });
     setEditing(false);
   }
   function cancel() {
@@ -1521,7 +1863,9 @@ function ContentRow({ item, cmd }: { item: ContentItem; cmd: Cmd }) {
             </span>
           </Tip>
           <span className="truncate text-sm font-medium text-white/90">
-            {item.title && item.title !== "(untitled)" ? item.title : "Untitled"}
+            {item.title && item.title !== "(untitled)"
+              ? item.title
+              : "Untitled"}
           </span>
         </div>
         {item.body && (
@@ -1606,7 +1950,8 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   const isContentPhase = state.moduleId === "content";
   const phaseShowsReference = Array.isArray(cfg?.showContentTypes);
   const phaseShowsContent = isContentPhase || phaseShowsReference;
-  const phaseLabel = (state.config?.label as string) ?? state.moduleId ?? "this phase";
+  const phaseLabel =
+    (state.config?.label as string) ?? state.moduleId ?? "this phase";
 
   async function push(target: "now" | "queue" | "hold") {
     if (!title.trim() && !body.trim()) return;
@@ -1651,9 +1996,9 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   return (
     <Panel title="Room content">
       <p className="text-xs leading-relaxed text-muted">
-        Reference material for the room&apos;s screens — prompts, cases, notes. It
-        shows only during phases that <em>display</em> content; elsewhere it waits,
-        held, until you show it.
+        Reference material for the room&apos;s screens — prompts, cases, notes.
+        It shows only during phases that <em>display</em> content; elsewhere it
+        waits, held, until you show it.
       </p>
 
       {/* Will what I push right now actually be seen? The crux of the confusion. */}
@@ -1665,11 +2010,22 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
         }`}
       >
         {isContentPhase ? (
-          <>✓ &ldquo;{phaseLabel}&rdquo; is a content phase — anything you <b>show now</b> appears on the room&apos;s screens immediately.</>
+          <>
+            ✓ &ldquo;{phaseLabel}&rdquo; is a content phase — anything you{" "}
+            <b>show now</b> appears on the room&apos;s screens immediately.
+          </>
         ) : phaseShowsReference ? (
-          <>✓ &ldquo;{phaseLabel}&rdquo; shows reference material — pushed items appear as reference alongside the activity.</>
+          <>
+            ✓ &ldquo;{phaseLabel}&rdquo; shows reference material — pushed items
+            appear as reference alongside the activity.
+          </>
         ) : (
-          <>⚠ &ldquo;{phaseLabel}&rdquo; doesn&apos;t display content, so pushing now won&apos;t be visible to anyone yet. <b>Queue</b> it for the next phase, or <b>hold</b> it — then show it once you reach a Content phase.</>
+          <>
+            ⚠ &ldquo;{phaseLabel}&rdquo; doesn&apos;t display content, so
+            pushing now won&apos;t be visible to anyone yet. <b>Queue</b> it for
+            the next phase, or <b>hold</b> it — then show it once you reach a
+            Content phase.
+          </>
         )}
       </div>
 
@@ -1729,7 +2085,11 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
             placeholder="Short title"
             className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
           />
-          <VoiceTextarea value={body} onChange={setBody} placeholder="Body (type or dictate)…" />
+          <VoiceTextarea
+            value={body}
+            onChange={setBody}
+            placeholder="Body (type or dictate)…"
+          />
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => push("now")}>Show now</Button>
             <Button variant="ghost" onClick={() => push("queue")}>
@@ -1758,7 +2118,13 @@ function InjectPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   );
 }
 
-function AllocationsPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
+function AllocationsPanel({
+  state,
+  cmd,
+}: {
+  state: FacilitatorState;
+  cmd: Cmd;
+}) {
   const alloc = state.config?.allocate;
   if (!alloc) return null;
   const kind = alloc.kind;
@@ -1781,7 +2147,11 @@ function AllocationsPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd })
             <select
               value={cur ?? ""}
               onChange={(e) =>
-                cmd("reassign", { token: p.token, kind, value: e.target.value || null })
+                cmd("reassign", {
+                  token: p.token,
+                  kind,
+                  value: e.target.value || null,
+                })
               }
               className="rounded-lg border border-border bg-bg px-2 py-1 text-xs"
             >
@@ -1799,7 +2169,13 @@ function AllocationsPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd })
   );
 }
 
-function ReadAroundControls({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
+function ReadAroundControls({
+  state,
+  cmd,
+}: {
+  state: FacilitatorState;
+  cmd: Cmd;
+}) {
   const ra = state.readaround;
   return (
     <Panel title="Read-around">
@@ -1810,21 +2186,30 @@ function ReadAroundControls({ state, cmd }: { state: FacilitatorState; cmd: Cmd 
       </p>
       {ra?.item && (
         <div className="rounded-lg border border-accent bg-accent/10 p-3 text-sm">
-          {ra.item.tag && <span className="mr-2 text-xs text-muted">{ra.item.tag}</span>}
+          {ra.item.tag && (
+            <span className="mr-2 text-xs text-muted">{ra.item.tag}</span>
+          )}
           {ra.item.text}
         </div>
       )}
       <div className="flex gap-2">
-        <Button variant="ghost" onClick={() => cmd("readaroundNext", { dir: -1 })}>
+        <Button
+          variant="ghost"
+          onClick={() => cmd("readaroundNext", { dir: -1 })}
+        >
           ← Previous
         </Button>
-        <Button onClick={() => cmd("readaroundNext", { dir: 1 })}>Push next →</Button>
+        <Button onClick={() => cmd("readaroundNext", { dir: 1 })}>
+          Push next →
+        </Button>
       </div>
       {/* C4 — bloom the current item on the big screen (a literal spotlight). The
           "with name" option appears ONLY when the item carries a handle — i.e. a
           named, non-anonymous contribution — so an anonymous read-around can never
           be attributed. */}
-      {ra?.item && <ReadAroundSpotlight item={ra.item} state={state} cmd={cmd} />}
+      {ra?.item && (
+        <ReadAroundSpotlight item={ra.item} state={state} cmd={cmd} />
+      )}
     </Panel>
   );
 }
@@ -1839,7 +2224,8 @@ function ReadAroundSpotlight({
   cmd: Cmd;
 }) {
   const onScreen =
-    state.spotlight?.text === item.text && state.spotlightRef?.kind === "literal";
+    state.spotlight?.text === item.text &&
+    state.spotlightRef?.kind === "literal";
   if (onScreen) {
     return (
       <button
@@ -1861,7 +2247,9 @@ function ReadAroundSpotlight({
       {item.handle && (
         <button
           className="text-muted underline hover:text-white"
-          onClick={() => cmd("spotlight", { text: item.text, handle: item.handle })}
+          onClick={() =>
+            cmd("spotlight", { text: item.text, handle: item.handle })
+          }
           title={`Attribute this to ${item.handle}`}
         >
           spotlight with “{item.handle}”
@@ -1871,7 +2259,13 @@ function ReadAroundSpotlight({
   );
 }
 
-function SubmissionsPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
+function SubmissionsPanel({
+  state,
+  cmd,
+}: {
+  state: FacilitatorState;
+  cmd: Cmd;
+}) {
   const subs = state.submissions
     .filter((s) => s.phaseId === state.phaseId)
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -1886,40 +2280,42 @@ function SubmissionsPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd })
             state.spotlightRef?.kind === "submission" &&
             state.spotlightRef.id === s.id;
           return (
-          <div
-            key={s.id}
-            className={`rounded-lg border bg-surface p-3 ${onScreen ? "border-accent ring-1 ring-accent/60" : "border-border"}`}
-          >
-            <div className="flex items-center justify-between text-xs text-muted">
-              <span>
-                {s.handle}
-                {s.tag ? ` · ${s.tag}` : ""}
-              </span>
-              <span>{new Date(s.createdAt).toLocaleTimeString()}</span>
+            <div
+              key={s.id}
+              className={`rounded-lg border bg-surface p-3 ${onScreen ? "border-accent ring-1 ring-accent/60" : "border-border"}`}
+            >
+              <div className="flex items-center justify-between text-xs text-muted">
+                <span>
+                  {s.handle}
+                  {s.tag ? ` · ${s.tag}` : ""}
+                </span>
+                <span>{new Date(s.createdAt).toLocaleTimeString()}</span>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap text-sm">{s.text}</p>
+              <div className="mt-2 flex gap-3 text-xs">
+                <InlineEdit
+                  value={s.text}
+                  onSave={(text) => cmd("updateSubmission", { id: s.id, text })}
+                />
+                {/* C4 — push to / pull from the projector. Tapping the spotlit one clears it. */}
+                <button
+                  className={
+                    onScreen
+                      ? "text-accent underline"
+                      : "text-muted underline hover:text-white"
+                  }
+                  onClick={() => cmd("spotlight", onScreen ? {} : { id: s.id })}
+                >
+                  {onScreen ? "on screen — tap to clear" : "spotlight"}
+                </button>
+                <button
+                  className="text-[#ff8a8a] underline"
+                  onClick={() => cmd("deleteSubmission", { id: s.id })}
+                >
+                  delete
+                </button>
+              </div>
             </div>
-            <p className="mt-1 whitespace-pre-wrap text-sm">{s.text}</p>
-            <div className="mt-2 flex gap-3 text-xs">
-              <InlineEdit
-                value={s.text}
-                onSave={(text) => cmd("updateSubmission", { id: s.id, text })}
-              />
-              {/* C4 — push to / pull from the projector. Tapping the spotlit one clears it. */}
-              <button
-                className={onScreen ? "text-accent underline" : "text-muted underline hover:text-white"}
-                onClick={() =>
-                  cmd("spotlight", onScreen ? {} : { id: s.id })
-                }
-              >
-                {onScreen ? "on screen — tap to clear" : "spotlight"}
-              </button>
-              <button
-                className="text-[#ff8a8a] underline"
-                onClick={() => cmd("deleteSubmission", { id: s.id })}
-              >
-                delete
-              </button>
-            </div>
-          </div>
           );
         })
       )}
@@ -1949,7 +2345,8 @@ function PatternPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
     try {
       const res = await cmd("cluster");
       const data = await res.json();
-      const clusters: { name: string; submissionIds: string[] }[] = data.clusters ?? [];
+      const clusters: { name: string; submissionIds: string[] }[] =
+        data.clusters ?? [];
       if (clusters.length === 0) setNoClusters(true);
       else setSuggestions(clusters);
     } finally {
@@ -1959,7 +2356,10 @@ function PatternPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
   async function acceptSuggestions() {
     if (!suggestions) return;
     for (const c of suggestions)
-      await cmd("createPattern", { name: c.name, submissionIds: c.submissionIds });
+      await cmd("createPattern", {
+        name: c.name,
+        submissionIds: c.submissionIds,
+      });
     setSuggestions(null);
   }
 
@@ -1994,7 +2394,9 @@ function PatternPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
           {busy ? "Thinking…" : "Suggest patterns from current submissions"}
         </Button>
       )}
-      {noClusters && <Empty>No clusters suggested yet — collect more notes first.</Empty>}
+      {noClusters && (
+        <Empty>No clusters suggested yet — collect more notes first.</Empty>
+      )}
       {suggestions && (
         <Modal title="Suggested patterns" onClose={() => setSuggestions(null)}>
           <ul className="space-y-1 text-sm">
@@ -2022,7 +2424,11 @@ function PatternPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
             className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2"
           >
             <div className="flex flex-col">
-              <button className="text-muted disabled:opacity-20" disabled={i === 0} onClick={() => move(i, -1)}>
+              <button
+                className="text-muted disabled:opacity-20"
+                disabled={i === 0}
+                onClick={() => move(i, -1)}
+              >
                 ▲
               </button>
               <button
@@ -2038,7 +2444,9 @@ function PatternPanel({ state, cmd }: { state: FacilitatorState; cmd: Cmd }) {
               value={p.name}
               multiline={false}
               label="rename"
-              onSave={(name) => name.trim() && cmd("renamePattern", { id: p.id, name })}
+              onSave={(name) =>
+                name.trim() && cmd("renamePattern", { id: p.id, name })
+              }
             />
             <button
               className="text-xs text-[#ff8a8a] underline"
@@ -2063,8 +2471,8 @@ function SessionControls({ cmd }: { cmd: Cmd }) {
       {/* C3 — point to the calm recovery controls (they live on the Run tab). */}
       <p className="text-xs text-muted">
         Need to recover a phase? Re-run or re-open it from the{" "}
-        <span className="text-accent">Run</span> tab — it clears that phase&apos;s
-        answers without touching the rest.
+        <span className="text-accent">Run</span> tab — it clears that
+        phase&apos;s answers without touching the rest.
       </p>
       <div className="flex flex-col gap-2 rounded-xl border border-[#ff6b6b]/25 bg-[#ff6b6b]/[0.04] p-3">
         <UiButton
@@ -2113,7 +2521,10 @@ function SessionControls({ cmd }: { cmd: Cmd }) {
             <UiButton
               variant={confirming === "end" ? "danger" : "primary"}
               onClick={() => {
-                cmd(confirming, confirming === "end" ? { alsoArchive } : undefined);
+                cmd(
+                  confirming,
+                  confirming === "end" ? { alsoArchive } : undefined,
+                );
                 setConfirming(null);
               }}
             >
@@ -2129,10 +2540,18 @@ function SessionControls({ cmd }: { cmd: Cmd }) {
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">{title}</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+        {title}
+      </h2>
       {children}
     </section>
   );

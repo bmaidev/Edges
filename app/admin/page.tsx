@@ -5,9 +5,39 @@ import { useSearchParams } from "next/navigation";
 import { normalizeSlug } from "@/lib/slug";
 import { groupRooms } from "@/lib/room-groups";
 import { Button } from "@/components/ui";
+import { Button as UiButton } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  BookOpen,
+  Copy,
+  FileText,
+  KeyRound,
+  Link2,
+  Monitor,
+  MoreHorizontal,
+  Palette,
+  PencilRuler,
+  Play,
+  QrCode,
+  Radio,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { RoomAccessCard } from "@/components/RoomAccessCard";
 import { PasscodeReveal } from "@/components/PasscodeReveal";
-import { adminMagicLink, bootToken, clearToken, tokenKey } from "@/lib/magicLink";
+import {
+  adminMagicLink,
+  bootToken,
+  clearToken,
+  tokenKey,
+} from "@/lib/magicLink";
 import { CreateWorkshop } from "@/components/wizard/CreateWorkshop";
 import {
   EMPTY_THEME,
@@ -21,6 +51,8 @@ import { ReportDocument } from "@/lib/report/ReportDocument";
 import { reportToMarkdown } from "@/lib/report/markdown";
 import { ActionItemsExport } from "@/components/ActionItemsExport";
 import { TourCoach } from "@/components/TourCoach";
+import { authFetch } from "@/lib/client-auth";
+import { A11yProvider } from "@/components/A11yProvider";
 
 interface RoomRow {
   slug: string;
@@ -31,7 +63,11 @@ interface RoomRow {
   isSample?: boolean;
   // A5 — design summary + last-run memory.
   blueprint?: { chips: string[]; phaseCount: number } | null;
-  lastRun?: { endedAt: number; participantCount: number; submissionCount: number } | null;
+  lastRun?: {
+    endedAt: number;
+    participantCount: number;
+    submissionCount: number;
+  } | null;
   // C3 — who created it (a named member), for the shared rooms list.
   createdBy?: string | null;
 }
@@ -68,7 +104,7 @@ function useSampleActions(code: string) {
     setBusy(null);
     if (fc)
       window.open(
-        `/r/${SAMPLE_SLUG}/host?tour=1&code=${encodeURIComponent(fc)}`,
+        `/r/${SAMPLE_SLUG}/host?tour=1#k=${encodeURIComponent(fc)}`,
         "_blank",
         "noreferrer",
       );
@@ -78,10 +114,7 @@ function useSampleActions(code: string) {
     setBusy("screen");
     setErr(null);
     // Only seed if missing/stale, so we don't rotate the code under an open host.
-    const st = await fetch(
-      `/api/admin/sample?code=${encodeURIComponent(code)}`,
-      { cache: "no-store" },
-    )
+    const st = await authFetch("/api/admin/sample", code, { cache: "no-store" })
       .then((r) => r.json())
       .catch(() => ({ exists: false, stale: true }));
     if (!st.exists || st.stale) await post();
@@ -101,9 +134,11 @@ function useSampleActions(code: string) {
 
 export default function AdminPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted">Loading…</div>}>
-      <Admin />
-    </Suspense>
+    <A11yProvider>
+      <Suspense fallback={<div className="p-8 text-muted">Loading…</div>}>
+        <Admin />
+      </Suspense>
+    </A11yProvider>
   );
 }
 
@@ -131,15 +166,26 @@ function Admin() {
   const [tourKey, setTourKey] = useState(0);
 
   useEffect(() => {
-    // Phase B — prefer the bookmarkable magic link (#k= fragment, read once and
-    // scrubbed from the address bar), then a remembered token from this tab, then
-    // a legacy ?code= query for older links.
-    const t = bootToken("admin") || params.get("code");
+    // Prefer the bookmarkable #k= magic link (read once and scrubbed), then the
+    // tab token. A legacy query link is migrated once and immediately removed
+    // from the address bar so it cannot ride into logs, history, or referrers.
+    const remembered = bootToken("admin");
+    const legacy = params.get("code");
+    const t = remembered || legacy;
+    if (!remembered && legacy && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("code");
+      window.history.replaceState(
+        null,
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    }
     if (t) setCode(t);
   }, [params]);
 
   const load = useCallback(async (c: string) => {
-    const res = await fetch(`/api/admin/rooms?code=${encodeURIComponent(c)}`, {
+    const res = await authFetch("/api/admin/rooms", c, {
       cache: "no-store",
     });
     if (!res.ok) {
@@ -160,7 +206,7 @@ function Admin() {
       /* private mode — fine, just won't survive a reload */
     }
     // Best-effort: has this admin already toured? (suppresses the first-run nudge)
-    fetch(`/api/admin/tour-seen?code=${encodeURIComponent(c)}`, {
+    authFetch("/api/admin/tour-seen", c, {
       cache: "no-store",
     })
       .then((r) => r.json())
@@ -231,7 +277,7 @@ function Admin() {
 
   if (showWizard) {
     return (
-      <main className="mx-auto w-full max-w-2xl p-6">
+      <main className="mx-auto w-full max-w-2xl p-4 sm:p-6">
         <button
           onClick={() => setShowWizard(false)}
           className="mb-4 text-sm text-muted underline"
@@ -251,7 +297,7 @@ function Admin() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-2xl p-6 lg:max-w-3xl">
+    <main className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">
       {showTour && (
         <TourCoach
           key={tourKey}
@@ -262,35 +308,84 @@ function Admin() {
           }}
         />
       )}
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl font-semibold tracking-tight">Rooms</h1>
-        <div className="flex items-center gap-4 text-sm">
-          <button onClick={startTour} className="text-accent underline">
-            {tourSeen ? "Replay tour" : "Take the tour"}
-          </button>
-          <a href="/help?doc=admin-guide" className="text-accent underline">
-            📖 Guides
-          </a>
-          <button onClick={logout} className="text-muted underline hover:text-white">
-            Log out
-          </button>
+      <div className="flex flex-col gap-4 border-b border-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
+            Workshop workspace
+          </p>
+          <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
+            Your rooms
+          </h1>
+          <p className="mt-1 text-sm text-muted">
+            Create, prepare and reopen every workshop from one place.
+          </p>
         </div>
+        <UiButton
+          data-tour-id="create-workshop"
+          variant="primary"
+          size="lg"
+          onClick={() => setShowWizard(true)}
+        >
+          <Play /> New workshop
+        </UiButton>
       </div>
 
-      {/* A4 — the active workspace (tenant) + super-admin workspace controls. */}
-      {context && <WorkspaceBar code={code} context={context} />}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <button
+          onClick={startTour}
+          className="inline-flex min-h-8 items-center text-accent hover:underline"
+        >
+          {tourSeen ? "Replay tour" : "Take the tour"}
+        </button>
+        <a
+          href="/help?doc=admin-guide"
+          className="inline-flex min-h-8 items-center gap-1.5 text-accent hover:underline"
+        >
+          <BookOpen className="size-3.5" /> Guides
+        </a>
+        <button
+          onClick={logout}
+          className="ml-auto inline-flex min-h-8 items-center text-muted hover:text-white hover:underline"
+        >
+          Log out
+        </button>
+      </div>
 
-      {/* E1 — operator setup status (super-admin only). */}
-      {context?.isSuperAdmin && <SetupStatusPanel code={code} />}
+      {/* A4 — infrequent workspace administration stays one calm disclosure away,
+          keeping the actual rooms above the fold for returning facilitators. */}
+      {context && (
+        <details className="group mt-3 rounded-xl border border-border bg-surface/45 p-3">
+          <summary className="-my-1 cursor-pointer list-none py-1 marker:hidden">
+            <span className="flex items-center justify-between gap-3 text-sm">
+              <span>
+                <span className="font-medium">Workspace settings</span>
+                <span className="ml-2 text-muted">· {context.name}</span>
+              </span>
+              <span className="text-xs text-accent group-open:hidden">
+                Manage
+              </span>
+              <span className="hidden text-xs text-accent group-open:inline">
+                Close
+              </span>
+            </span>
+          </summary>
+          <div className="mt-2 grid gap-2 border-t border-border pt-2 sm:grid-cols-2">
+            <WorkspaceBar code={code} context={context} />
 
-      {/* C2 — workspace members (owner-only: add/revoke named people). */}
-      {context && (context.isSuperAdmin || context.role === "owner") && (
-        <MembersPanel code={code} />
-      )}
+            {/* E1 — operator setup status (super-admin only). */}
+            {context.isSuperAdmin && <SetupStatusPanel code={code} />}
 
-      {/* D3 — the workspace's BYO Anthropic key (owner-only). */}
-      {context && (context.isSuperAdmin || context.role === "owner") && (
-        <AiKeyPanel code={code} />
+            {/* C2 — workspace members (owner-only: add/revoke named people). */}
+            {(context.isSuperAdmin || context.role === "owner") && (
+              <MembersPanel code={code} />
+            )}
+
+            {/* D3 — the workspace's BYO Anthropic key (owner-only). */}
+            {(context.isSuperAdmin || context.role === "owner") && (
+              <AiKeyPanel code={code} />
+            )}
+          </div>
+        </details>
       )}
 
       {/* F4 — Rooms / Analytics tabs. */}
@@ -300,7 +395,9 @@ function Admin() {
             key={t}
             onClick={() => setTab(t)}
             className={`-mb-px border-b-2 px-3 py-1.5 ${
-              tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-white"
+              tab === t
+                ? "border-accent text-accent"
+                : "border-transparent text-muted hover:text-white"
             }`}
           >
             {t === "rooms" ? "Rooms" : "Analytics"}
@@ -312,11 +409,10 @@ function Admin() {
         <AnalyticsPanel code={code} />
       ) : (
         <>
-          <div className="mt-4" data-tour-id="create-workshop">
-            <Button onClick={() => setShowWizard(true)}>＋ Create a workshop</Button>
-          </div>
-          <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-muted">Quick create (advanced)</summary>
+          <details className="mt-4">
+            <summary className="cursor-pointer py-1 text-xs text-muted">
+              Quick create (advanced)
+            </summary>
             <CreateRoom code={code} onCreated={() => load(code)} />
           </details>
 
@@ -328,10 +424,15 @@ function Admin() {
             <SampleCard code={code} />
             {realRooms.length === 0 ? (
               <p className="text-sm text-muted">
-                No rooms of your own yet — create one above, or poke the demo first.
+                No rooms of your own yet — create one above, or poke the demo
+                first.
               </p>
             ) : (
-              <MyWorkshops rooms={realRooms} code={code} onChanged={() => load(code)} />
+              <MyWorkshops
+                rooms={realRooms}
+                code={code}
+                onChanged={() => load(code)}
+              />
             )}
           </div>
         </>
@@ -351,14 +452,22 @@ type WsContext = {
   role: "owner" | "member" | null;
 };
 type WsMeta = { id: string; name: string; createdAt: number };
-type MemberMeta = { id: string; name: string; role: "owner" | "member"; createdAt: number };
+type MemberMeta = {
+  id: string;
+  name: string;
+  role: "owner" | "member";
+  createdAt: number;
+};
 
 function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<WsMeta[] | null>(null);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [created, setCreated] = useState<{ name: string; adminCode: string } | null>(null);
+  const [created, setCreated] = useState<{
+    name: string;
+    adminCode: string;
+  } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
@@ -384,7 +493,7 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
     const next = !open;
     setOpen(next);
     if (next && list === null) {
-      const res = await fetch(`/api/admin/workspaces?code=${encodeURIComponent(code)}`, {
+      const res = await authFetch("/api/admin/workspaces", code, {
         cache: "no-store",
       });
       if (res.ok) setList((await res.json()).workspaces ?? []);
@@ -406,7 +515,10 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
       if (res.ok) {
         setCreated({ name: d.name, adminCode: d.adminCode });
         setNewName("");
-        setList((prev) => [...(prev ?? []), { id: d.id, name: d.name, createdAt: Date.now() }]);
+        setList((prev) => [
+          ...(prev ?? []),
+          { id: d.id, name: d.name, createdAt: Date.now() },
+        ]);
       } else {
         setErr(d.error ?? "Couldn't create the workspace.");
       }
@@ -419,7 +531,8 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
     <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-muted">
-          Workspace: <span className="font-medium text-white/90">{context.name}</span>
+          Workspace:{" "}
+          <span className="font-medium text-white/90">{context.name}</span>
           {context.isSuperAdmin && (
             <span className="ml-2 rounded bg-accent/20 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent">
               super-admin
@@ -448,8 +561,8 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
         <div className="mt-3 flex flex-col gap-2 border-t border-[#ff8a8a]/30 pt-3">
           <p className="text-xs text-[#ff8a8a]">
             This permanently erases <strong>{context.name}</strong> and ALL its
-            rooms, reports, analytics, designs and members. It can&apos;t be undone.
-            Type the workspace name to confirm.
+            rooms, reports, analytics, designs and members. It can&apos;t be
+            undone. Type the workspace name to confirm.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -478,12 +591,13 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
       {context.isSuperAdmin && open && (
         <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
           <div>
-            <p className="text-xs uppercase tracking-wide text-muted">Workspaces</p>
+            <p className="text-xs uppercase tracking-wide text-muted">
+              Workspaces
+            </p>
             <ul className="mt-1 flex flex-col gap-0.5">
               {(list ?? []).map((w) => (
                 <li key={w.id} className="text-sm">
-                  {w.name}{" "}
-                  <span className="text-xs text-muted">/{w.id}</span>
+                  {w.name} <span className="text-xs text-muted">/{w.id}</span>
                 </li>
               ))}
               {list && list.length === 0 && (
@@ -494,7 +608,9 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
 
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex flex-1 flex-col gap-1 text-xs">
-              <span className="text-muted">New workspace (e.g. an org or team)</span>
+              <span className="text-muted">
+                New workspace (e.g. an org or team)
+              </span>
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -513,9 +629,10 @@ function WorkspaceBar({ code, context }: { code: string; context: WsContext }) {
           {created && (
             <div className="rounded-lg border border-emerald-400/40 bg-emerald-400/5 p-3">
               <p className="text-sm text-emerald-300">
-                Created <strong>{created.name}</strong> — shown once. The link below
-                is its key: anyone with it administers this workspace. Send it to the
-                workspace&apos;s facilitators to bookmark (you can&apos;t see it again).
+                Created <strong>{created.name}</strong> — shown once. The link
+                below is its key: anyone with it administers this workspace.
+                Send it to the workspace&apos;s facilitators to bookmark (you
+                can&apos;t see it again).
               </p>
               {/* B1 — the bookmarkable magic link (code in the #fragment, never the
                   query) is the primary hand-off; the raw code is the fallback. */}
@@ -558,12 +675,16 @@ function MembersPanel({ code }: { code: string }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState<"owner" | "member">("member");
   const [busy, setBusy] = useState(false);
-  const [created, setCreated] = useState<{ name: string; link: string; code: string } | null>(null);
+  const [created, setCreated] = useState<{
+    name: string;
+    link: string;
+    code: string;
+  } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/admin/members?code=${encodeURIComponent(code)}`, {
+    const res = await authFetch("/api/admin/members", code, {
       cache: "no-store",
     });
     if (res.ok) setList((await res.json()).members ?? []);
@@ -600,7 +721,8 @@ function MembersPanel({ code }: { code: string }) {
   }
 
   async function revoke(memberId: string, who: string) {
-    if (!window.confirm(`Revoke ${who}? Their sign-in link stops working.`)) return;
+    if (!window.confirm(`Revoke ${who}? Their sign-in link stops working.`))
+      return;
     await fetch("/api/admin/members", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -612,9 +734,7 @@ function MembersPanel({ code }: { code: string }) {
   return (
     <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted">
-          Members{list ? ` · ${list.length}` : ""}
-        </p>
+        <p className="text-muted">Members{list ? ` · ${list.length}` : ""}</p>
         <button onClick={openPanel} className="text-accent underline">
           {open ? "Close" : "Manage members"}
         </button>
@@ -624,7 +744,10 @@ function MembersPanel({ code }: { code: string }) {
         <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
           <ul className="flex flex-col gap-1">
             {(list ?? []).map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-2">
+              <li
+                key={m.id}
+                className="flex items-center justify-between gap-2"
+              >
                 <span>
                   {m.name}{" "}
                   <span className="rounded bg-bg px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
@@ -675,8 +798,8 @@ function MembersPanel({ code }: { code: string }) {
           {created && (
             <div className="rounded-lg border border-emerald-400/40 bg-emerald-400/5 p-3">
               <p className="text-sm text-emerald-300">
-                Added <strong>{created.name}</strong>. Send them this sign-in link to
-                bookmark — it&apos;s their key (shown once).
+                Added <strong>{created.name}</strong>. Send them this sign-in
+                link to bookmark — it&apos;s their key (shown once).
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
@@ -725,14 +848,22 @@ function SetupStatusPanel({ code }: { code: string }) {
     const next = !open;
     setOpen(next);
     if (next && cfg === null) {
-      const res = await fetch(`/api/admin/config?code=${encodeURIComponent(code)}`, {
+      const res = await authFetch("/api/admin/config", code, {
         cache: "no-store",
       });
       if (res.ok) setCfg(await res.json());
     }
   }
 
-  const Row = ({ on, label, hint }: { on: boolean; label: string; hint?: string }) => (
+  const Row = ({
+    on,
+    label,
+    hint,
+  }: {
+    on: boolean;
+    label: string;
+    hint?: string;
+  }) => (
     <li className="flex items-baseline gap-2">
       <span aria-hidden className={on ? "text-emerald-400" : "text-muted"}>
         {on ? "●" : "○"}
@@ -754,17 +885,43 @@ function SetupStatusPanel({ code }: { code: string }) {
       </div>
       {open && cfg && (
         <ul className="mt-3 flex flex-col gap-1 border-t border-border pt-3">
-          <Row on={cfg.storage.configured} label="Datastore (KV / Upstash)" hint="set KV_REST_API_* or UPSTASH_REDIS_REST_*" />
-          <Row on={cfg.superAdmin} label="Super-admin passcode" hint="set ADMIN_PASSCODE" />
-          <Row on={cfg.ai.baseline} label="AI baseline key" hint="set ANTHROPIC_API_KEY (or rely on per-workspace BYO)" />
-          <Row on={cfg.ai.byoEncryption} label="BYO-key encryption" hint="set EDGES_SECRET_KEY to let workspaces store their own key" />
-          <Row on={cfg.uploads.blob} label="Logo uploads" hint="set BLOB_READ_WRITE_TOKEN (or paste a logo URL instead)" />
+          <Row
+            on={cfg.storage.configured}
+            label="Datastore (KV / Upstash)"
+            hint="set KV_REST_API_* or UPSTASH_REDIS_REST_*"
+          />
+          <Row
+            on={cfg.superAdmin}
+            label="Super-admin passcode"
+            hint="set ADMIN_PASSCODE"
+          />
+          <Row
+            on={cfg.ai.baseline}
+            label="AI baseline key"
+            hint="set ANTHROPIC_API_KEY (or rely on per-workspace BYO)"
+          />
+          <Row
+            on={cfg.ai.byoEncryption}
+            label="BYO-key encryption"
+            hint="set EDGES_SECRET_KEY to let workspaces store their own key"
+          />
+          <Row
+            on={cfg.uploads.blob}
+            label="Logo uploads"
+            hint="set BLOB_READ_WRITE_TOKEN (or paste a logo URL instead)"
+          />
           <li className="flex items-baseline gap-2">
-            <span aria-hidden className="text-accent">◆</span>
+            <span aria-hidden className="text-accent">
+              ◆
+            </span>
             <span>
               Signup:{" "}
               <span className="font-medium">
-                {cfg.signup === "open" ? "open to all" : cfg.signup === "code" ? "community code" : "closed (invite only)"}
+                {cfg.signup === "open"
+                  ? "open to all"
+                  : cfg.signup === "code"
+                    ? "community code"
+                    : "closed (invite only)"}
               </span>
             </span>
           </li>
@@ -780,13 +937,17 @@ function SetupStatusPanel({ code }: { code: string }) {
 // platform's shared key.
 function AiKeyPanel({ code }: { code: string }) {
   const [open, setOpen] = useState(false);
-  const [info, setInfo] = useState<{ set: boolean; last4: string | null; secretsConfigured: boolean } | null>(null);
+  const [info, setInfo] = useState<{
+    set: boolean;
+    last4: string | null;
+    secretsConfigured: boolean;
+  } | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/admin/ai-key?code=${encodeURIComponent(code)}`, {
+    const res = await authFetch("/api/admin/ai-key", code, {
       cache: "no-store",
     });
     if (res.ok) setInfo(await res.json());
@@ -822,7 +983,12 @@ function AiKeyPanel({ code }: { code: string }) {
   }
 
   async function remove() {
-    if (!window.confirm("Remove this workspace's key? Its AI falls back to the platform's shared key.")) return;
+    if (
+      !window.confirm(
+        "Remove this workspace's key? Its AI falls back to the platform's shared key.",
+      )
+    )
+      return;
     await fetch("/api/admin/ai-key", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -854,28 +1020,35 @@ function AiKeyPanel({ code }: { code: string }) {
           {!info.secretsConfigured ? (
             <p className="text-xs text-muted">
               Bringing your own key isn&apos;t enabled on this instance (no
-              encryption key configured). The platform&apos;s shared AI key is in use.
+              encryption key configured). The platform&apos;s shared AI key is
+              in use.
             </p>
           ) : (
             <>
               <p className="text-xs text-muted">
-                Set your own Anthropic API key and this workspace&apos;s AI (session
-                reports, synthesis, design help) routes + bills through your own
-                account. It&apos;s encrypted at rest and never shown again.
+                Set your own Anthropic API key and this workspace&apos;s AI
+                (session reports, synthesis, design help) routes + bills through
+                your own account. It&apos;s encrypted at rest and never shown
+                again.
               </p>
               {info.set ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded bg-bg px-2 py-1 font-mono text-xs text-muted">
                     sk-…{info.last4}
                   </span>
-                  <button onClick={remove} className="text-xs text-[#ff8a8a] underline">
+                  <button
+                    onClick={remove}
+                    className="text-xs text-[#ff8a8a] underline"
+                  >
                     Remove
                   </button>
                 </div>
               ) : null}
               <div className="flex flex-wrap items-end gap-2">
                 <label className="flex flex-1 flex-col gap-1 text-xs">
-                  <span className="text-muted">{info.set ? "Replace with a new key" : "Anthropic API key"}</span>
+                  <span className="text-muted">
+                    {info.set ? "Replace with a new key" : "Anthropic API key"}
+                  </span>
                   <input
                     type="password"
                     value={draft}
@@ -914,7 +1087,8 @@ function FirstRunBanner({
       <p className="mt-1 text-sm text-muted">
         Take the 5-minute tour — we&apos;ll point you at a safe demo room you
         can&apos;t break: seven fake participants, real messy ideas, a live
-        timer. Press Advance, inject a slide, end the session and watch it vanish.
+        timer. Press Advance, inject a slide, end the session and watch it
+        vanish.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button onClick={onStartTour}>Start tour</Button>
@@ -943,14 +1117,26 @@ function SampleCard({ code }: { code: string }) {
             7 fake participants — safe to break
           </p>
         </div>
-        <div className="flex flex-wrap gap-3 text-xs text-accent underline">
-          <button onClick={openHost} disabled={busy !== null}>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <button
+            className="rounded-lg border border-border px-3 py-2 text-accent hover:border-accent"
+            onClick={openHost}
+            disabled={busy !== null}
+          >
             {busy === "host" ? "opening…" : "open host"}
           </button>
-          <button onClick={openScreen} disabled={busy !== null}>
+          <button
+            className="rounded-lg border border-border px-3 py-2 text-accent hover:border-accent"
+            onClick={openScreen}
+            disabled={busy !== null}
+          >
             {busy === "screen" ? "opening…" : "open screen"}
           </button>
-          <button onClick={reset} disabled={busy !== null}>
+          <button
+            className="rounded-lg px-2 py-2 text-muted hover:text-white"
+            onClick={reset}
+            disabled={busy !== null}
+          >
             {busy === "reset" ? "resetting…" : "reset sample"}
           </button>
         </div>
@@ -973,7 +1159,12 @@ function CreateRoom({
   const [created, setCreated] = useState<{
     slug: string;
     name: string;
-    passcodes: { admin: string; facilitator: string; cohost: string; projector: string };
+    passcodes: {
+      admin: string;
+      facilitator: string;
+      cohost: string;
+      projector: string;
+    };
   } | null>(null);
 
   const [err, setErr] = useState<string | null>(null);
@@ -981,9 +1172,12 @@ function CreateRoom({
   // edits it, then live-checks availability.
   const [slug, setSlug] = useState("");
   const [slugDirty, setSlugDirty] = useState(false);
-  const [avail, setAvail] = useState<
-    { available: boolean; slug: string; reason?: string; suggestion?: string } | null
-  >(null);
+  const [avail, setAvail] = useState<{
+    available: boolean;
+    slug: string;
+    reason?: string;
+    suggestion?: string;
+  } | null>(null);
 
   // Auto-derive the slug from the name while the operator hasn't touched it.
   useEffect(() => {
@@ -998,8 +1192,9 @@ function CreateRoom({
     }
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `/api/admin/rooms/availability?code=${encodeURIComponent(code)}&slug=${encodeURIComponent(slug)}`,
+        const res = await authFetch(
+          `/api/admin/rooms/availability?slug=${encodeURIComponent(slug)}`,
+          code,
         );
         if (res.ok) setAvail(await res.json());
       } catch {
@@ -1183,7 +1378,7 @@ function RoomCard({
       )
     )
       return;
-    await fetch(`/api/admin/rooms/${room.slug}?code=${encodeURIComponent(code)}`, {
+    await authFetch(`/api/admin/rooms/${room.slug}`, code, {
       method: "DELETE",
     });
     onChanged();
@@ -1200,7 +1395,12 @@ function RoomCard({
   const [dupCreated, setDupCreated] = useState<{
     slug: string;
     name: string;
-    passcodes: { admin: string; facilitator: string; cohost: string; projector: string };
+    passcodes: {
+      admin: string;
+      facilitator: string;
+      cohost: string;
+      projector: string;
+    };
   } | null>(null);
   const [dupBusy, setDupBusy] = useState(false);
   async function duplicate() {
@@ -1281,10 +1481,9 @@ function RoomCard({
 
   async function openTheme() {
     setPanel(panel === "theme" ? null : "theme");
-    const res = await fetch(
-      `/api/admin/rooms/${room.slug}?code=${encodeURIComponent(code)}`,
-      { cache: "no-store" },
-    );
+    const res = await authFetch(`/api/admin/rooms/${room.slug}`, code, {
+      cache: "no-store",
+    });
     const d = await res.json();
     const t = d.room?.theme ?? {};
     setTheme({
@@ -1304,18 +1503,17 @@ function RoomCard({
   }
   async function openReport() {
     setPanel(panel === "report" ? null : "report");
-    const res = await fetch(
-      `/api/admin/rooms/${room.slug}?code=${encodeURIComponent(code)}`,
-      { cache: "no-store" },
-    );
+    const res = await authFetch(`/api/admin/rooms/${room.slug}`, code, {
+      cache: "no-store",
+    });
     const d = await res.json();
     setReport(d.archive);
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
+    <div className="rounded-2xl border border-border bg-surface/85 p-4 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)] transition-colors hover:border-white/20 sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
           {editingName ? (
             <input
               autoFocus
@@ -1333,8 +1531,9 @@ function RoomCard({
               className="rounded border border-border bg-bg px-2 py-0.5 text-sm font-medium focus:border-accent focus:outline-none"
             />
           ) : (
-            <p
-              className="cursor-pointer font-medium hover:underline"
+            <button
+              type="button"
+              className="block max-w-full cursor-pointer truncate text-left font-display text-xl font-semibold hover:text-accent"
               title="Click to rename"
               onClick={() => {
                 setNameDraft(room.name);
@@ -1342,13 +1541,13 @@ function RoomCard({
               }}
             >
               {room.name}
-            </p>
+            </button>
           )}
-          <p className="text-xs text-muted">
-            /{room.slug}{" "}
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            <span>/r/{room.slug}</span>
             {/* A1 — at-a-glance draft / live / archived badge. */}
             <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                 room.status === "live"
                   ? "bg-emerald-500/20 text-emerald-300"
                   : room.status === "archived"
@@ -1360,54 +1559,138 @@ function RoomCard({
             </span>
             {room.lastRun && (
               <span>
-                {" "}· last run: {room.lastRun.participantCount} joined,{" "}
+                · {room.lastRun.participantCount} joined ·{" "}
                 {room.lastRun.submissionCount} contributions
               </span>
             )}
             {/* C3 — attribution in the shared workspace rooms list. */}
-            {room.createdBy && <span> · by {room.createdBy}</span>}
-          </p>
+            {room.createdBy && <span>· by {room.createdBy}</span>}
+          </div>
+          {room.topic && (
+            <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted">
+              {room.topic}
+            </p>
+          )}
           {/* A5 — the saved design at a glance. */}
           {room.blueprint && room.blueprint.chips.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
               {room.blueprint.chips.slice(0, 6).map((c, i) => (
-                <span key={i} className="rounded-full bg-bg px-1.5 py-0.5 text-[10px] text-muted">
+                <span
+                  key={i}
+                  className="rounded-full bg-bg px-1.5 py-0.5 text-[10px] text-muted"
+                >
                   {c}
                 </span>
               ))}
               {room.blueprint.chips.length > 6 && (
-                <span className="text-[10px] text-muted">+{room.blueprint.chips.length - 6}</span>
+                <span className="text-[10px] text-muted">
+                  +{room.blueprint.chips.length - 6}
+                </span>
               )}
             </div>
           )}
         </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-accent underline sm:max-w-[60%] sm:justify-end">
-          <a href={`/r/${room.slug}`} target="_blank" rel="noreferrer">join</a>
-          <a href={`/r/${room.slug}/host`} target="_blank" rel="noreferrer">host</a>
-          <a href={`/r/${room.slug}/build`} target="_blank" rel="noreferrer">build</a>
-          <a href={`/r/${room.slug}/screen`} target="_blank" rel="noreferrer">screen</a>
-          <a href={`/r/${room.slug}/qr`} target="_blank" rel="noreferrer">qr</a>
-          <button onClick={() => setPanel(panel === "access" ? null : "access")}>access</button>
-          <button onClick={openTheme}>theme</button>
-          <button onClick={openReport}>report</button>
-          <button onClick={duplicate} disabled={dupBusy} className="text-accent">
-            {dupBusy ? "duplicating…" : "duplicate"}
-          </button>
-          {room.status !== "live" && (
-            <button
-              onClick={() => {
-                setSlugDraft(room.slug);
-                setSlugError(null);
-                setPanel(panel === "address" ? null : "address");
-              }}
+        <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:max-w-[55%] sm:flex-wrap sm:justify-end">
+          <UiButton
+            asChild
+            variant="primary"
+            size="sm"
+            className="col-span-2 sm:col-span-1"
+          >
+            <a
+              href={`/r/${room.slug}/host#k=${encodeURIComponent(code)}`}
+              target="_blank"
+              rel="noreferrer"
             >
-              address
-            </button>
-          )}
+              <Play /> Open host
+            </a>
+          </UiButton>
+          <UiButton asChild variant="secondary" size="sm">
+            <a href={`/r/${room.slug}`} target="_blank" rel="noreferrer">
+              <Users /> Join
+            </a>
+          </UiButton>
+          <UiButton asChild variant="secondary" size="sm">
+            <a
+              href={`/r/${room.slug}/screen#k=${encodeURIComponent(code)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Monitor /> Screen
+            </a>
+          </UiButton>
           {room.status === "draft" && (
-            <button onClick={markLive} className="text-emerald-400">make live</button>
+            <UiButton
+              variant="outline"
+              size="sm"
+              onClick={markLive}
+              className="text-emerald-300"
+            >
+              <Radio /> Open doors
+            </UiButton>
           )}
-          <button onClick={del} className="text-[#ff8a8a]">delete</button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <UiButton
+                variant="outline"
+                size="sm"
+                aria-label={`More actions for ${room.name}`}
+              >
+                <MoreHorizontal /> More
+              </UiButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuLabel>Prepare & share</DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <a
+                  href={`/r/${room.slug}/build#k=${encodeURIComponent(code)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <PencilRuler /> Build session
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href={`/r/${room.slug}/qr`} target="_blank" rel="noreferrer">
+                  <QrCode /> Door QR
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setPanel(panel === "access" ? null : "access")}
+              >
+                <KeyRound /> Access links
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={openTheme}>
+                <Palette /> Theme & branding
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={openReport}>
+                <FileText /> Report
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Room settings</DropdownMenuLabel>
+              <DropdownMenuItem disabled={dupBusy} onSelect={duplicate}>
+                <Copy /> {dupBusy ? "Duplicating…" : "Duplicate room"}
+              </DropdownMenuItem>
+              {room.status !== "live" && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setSlugDraft(room.slug);
+                    setSlugError(null);
+                    setPanel(panel === "address" ? null : "address");
+                  }}
+                >
+                  <Link2 /> Change address
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={del}
+                className="text-[#ff9a9a] focus:text-[#ffb0b0]"
+              >
+                <Trash2 /> Delete room
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -1415,7 +1698,8 @@ function RoomCard({
       {dupCreated && (
         <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
           <p className="text-xs text-emerald-400">
-            Duplicated the design into a fresh room — new passcodes (shown once):
+            Duplicated the design into a fresh room — new passcodes (shown
+            once):
           </p>
           <RoomAccessCard
             slug={dupCreated.slug}
@@ -1446,8 +1730,12 @@ function RoomCard({
           slug, so nothing in someone's pocket breaks. Live rooms are excluded. */}
       {panel === "address" && (
         <div className="mt-3 space-y-2 border-t border-border pt-3 text-sm">
-          <label className="block text-xs text-muted" htmlFor={`slug-${room.slug}`}>
-            New address — letters, numbers and hyphens. The old link will redirect here.
+          <label
+            className="block text-xs text-muted"
+            htmlFor={`slug-${room.slug}`}
+          >
+            New address — letters, numbers and hyphens. The old link will
+            redirect here.
           </label>
           <div className="flex items-center gap-2">
             <span className="text-muted">/r/</span>
@@ -1480,7 +1768,11 @@ function RoomCard({
             </div>
           </div>
           <div className="md:w-60">
-            <JoinScreenPreview theme={theme} joinUrl={`/r/${room.slug}`} title={room.name} />
+            <JoinScreenPreview
+              theme={theme}
+              joinUrl={`/r/${room.slug}`}
+              title={room.name}
+            />
           </div>
         </div>
       )}
@@ -1488,12 +1780,15 @@ function RoomCard({
       {panel === "report" && (
         <div className="mt-3 border-t border-border pt-3 text-sm">
           {!report ? (
-            <p className="text-muted">No archive yet. Use “Archive” in the host console to snapshot a session.</p>
+            <p className="text-muted">
+              No archive yet. Use “Archive” in the host console to snapshot a
+              session.
+            </p>
           ) : (
             <div className="space-y-3">
               <p className="text-muted">
                 {report.sessionName} · {report.participantCount} joined ·{" "}
-                {report.submissions.length} submissions
+                {report.submissionCount} submissions
               </p>
               {/* F1 — admin parity: the same branded client-ready document + export
                   row the host gets, so the report can be sent straight from /admin. */}
@@ -1540,13 +1835,22 @@ function RoomCard({
                     </div>
                   )}
                   {report.report.tensions?.length > 0 && (
-                    <ReportList title="Tensions" items={report.report.tensions} />
+                    <ReportList
+                      title="Tensions"
+                      items={report.report.tensions}
+                    />
                   )}
                   {report.report.decisions?.length > 0 && (
-                    <ReportList title="Decisions" items={report.report.decisions} />
+                    <ReportList
+                      title="Decisions"
+                      items={report.report.decisions}
+                    />
                   )}
                   {report.report.nextSteps?.length > 0 && (
-                    <ReportList title="Next steps" items={report.report.nextSteps} />
+                    <ReportList
+                      title="Next steps"
+                      items={report.report.nextSteps}
+                    />
                   )}
                 </div>
               ) : (

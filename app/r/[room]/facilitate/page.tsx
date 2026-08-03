@@ -2,6 +2,7 @@
 
 import { use } from "react";
 import { HostConsole } from "@/components/HostConsole";
+import { A11yProvider } from "@/components/A11yProvider";
 
 // C1 — the Facilitate cockpit is a MODE of the host console (same auth, same
 // poll, same authoritative-apply cmd path), so privacy + role gating are
@@ -10,10 +11,12 @@ import { HostConsole } from "@/components/HostConsole";
 export default function FacilitatePage({
   params,
 }: {
-  params: Promise<{ room: string }> | { room: string };
+  params: Promise<{ room: string }>;
 }) {
-  const p = params instanceof Promise ? use(params) : params;
+  const p = use(params);
   return (
-    <HostConsole apiBase={`/api/r/${p.room}`} roomName={`Room ${p.room}`} cockpit />
+    <A11yProvider>
+      <HostConsole apiBase={`/api/r/${p.room}`} roomName={`Room ${p.room}`} cockpit />
+    </A11yProvider>
   );
 }

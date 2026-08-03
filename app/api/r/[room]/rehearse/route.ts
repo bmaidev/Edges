@@ -19,9 +19,9 @@ export const maxDuration = 60;
 // end. The shadow leaves no real data — `end` (and the 24h TTL backstop) wipe it.
 export async function POST(
   req: NextRequest,
-  { params }: { params: { room: string } },
+  { params }: { params: Promise<{ room: string }> },
 ) {
-  const room = params.room;
+  const { room } = await params;
   const roomRec = await getRoom(room);
   if (!roomRec)
     return NextResponse.json({ error: "No such room" }, { status: 404 });

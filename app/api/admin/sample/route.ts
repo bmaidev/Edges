@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkSuperAdmin, getRoom } from "@/lib/rooms";
 import { SAMPLE_SLUG, isSampleStale, seedSample } from "@/lib/sample";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,10 +35,10 @@ export async function POST(req: NextRequest) {
   });
 }
 
-// GET /api/admin/sample?code=ADMIN -> { exists, stale } so /admin can choose
+// GET /api/admin/sample + X-Edges-Code -> { exists, stale } so /admin can choose
 // open-vs-reseed without a blind write.
 export async function GET(req: NextRequest) {
-  const code = req.nextUrl.searchParams.get("code");
+  const code = requestCode(req);
   if (!checkSuperAdmin(code))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 

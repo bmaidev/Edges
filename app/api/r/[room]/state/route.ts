@@ -8,18 +8,25 @@ import {
 } from "@/lib/store";
 import { getRoom, resolveRedirect, resolveRole } from "@/lib/rooms";
 import type { RoomBranding } from "@/lib/types";
+import {
+  rateLimitResponse,
+  requestCode,
+  requestParticipantToken,
+} from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/r/[room]/state?token=...   -> participant view
-// GET /api/r/[room]/state?code=...    -> role-scoped (facilitator/cohost/admin)
-// GET /api/r/[room]/state?role=projector&code=... -> projector view
+// GET /api/r/[room]/state + X-Edges-Participant-Token -> participant view
+// GET /api/r/[room]/state + X-Edges-Code -> facilitator/cohost/admin
+// GET /api/r/[room]/state?role=projector -> public projector view
 export async function GET(
   req: NextRequest,
-  { params }: { params: { room: string } },
+  { params }: { params: Promise<{ room: string }> },
 ) {
-  const room = params.room;
+  const { room } = await params;
+  const limited = await rateLimitResponse(req, `state:${room}`, { limit: 180 });
+  if (limited) return limited;
   const roomRec = await getRoom(room);
   if (!roomRec) {
     // A4 — the room may have been renamed; old links/QRs redirect to the new slug.
@@ -42,8 +49,8 @@ export async function GET(
   // is a legacy default); surface it to every role.
   const topic = roomRec.topic || undefined;
 
-  const code = req.nextUrl.searchParams.get("code");
-  const token = req.nextUrl.searchParams.get("token");
+  const code = requestCode(req);
+  const token = requestParticipantToken(req);
   const wantProjector = req.nextUrl.searchParams.get("role") === "projector";
 
   const headers = { "Cache-Control": "no-store" };

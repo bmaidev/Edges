@@ -6,12 +6,12 @@ export const STRINGS = {
   subtitle: "A live workshop companion",
 
   joinBody:
-    "This companion helps the room surface what it's thinking, in real time. You'll write or dictate short notes during the session. The facilitators see raw notes; the room sees only patterns or aggregates. Each phase shows whether your response is named or facilitators-only.",
+    "This companion helps the room surface what it's thinking, in real time. You'll write or dictate short notes during the session. Each phase explains whether notes stay with facilitators or are intentionally shared, rotated, or aggregated. Facilitator-triggered AI features may send relevant notes to Anthropic for synthesis.",
 
   lobby: "We'll begin shortly.",
 
   privacyLine:
-    "No account needed. The facilitators see your raw notes; other participants never do. Pick a handle or stay anonymous. After the session a handle-free recap is available for 24 hours, then all data is deleted.",
+    "No account needed. Pick a handle or stay anonymous. Live notes and browser drafts expire within 24 hours and are erased on End. A handle-free synthesis and agreed action items may remain in the facilitator's workspace; raw responses do not.",
 
   faceToFace: "Now talk face-to-face. The app waits.",
 

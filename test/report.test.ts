@@ -4,6 +4,7 @@ import {
   buildReport,
   createRoomWithSlug,
   freshPasscodes,
+  getDb,
   getArchive,
 } from "@/lib/rooms";
 import {
@@ -58,6 +59,9 @@ describe("buildReport (mid-session, no wipe)", () => {
     expect(archive!.report).not.toBeNull();
     expect(archive!.report!.summary.length).toBeGreaterThan(0); // fallback fills it
     expect(archive!.participantCount).toBe(2);
+    expect(archive!.submissionCount).toBe(2);
+    expect(archive).not.toHaveProperty("submissions");
+    expect(archive).not.toHaveProperty("content");
     // the live room is untouched — this is the whole point of buildReport.
     expect((await listParticipants(slug)).length).toBe(2);
     expect((await listSubmissions(slug)).length).toBe(2);
@@ -116,5 +120,37 @@ describe("reportToMarkdown", () => {
     // submission text must NOT appear (synthesis only — privacy)
     expect(md).not.toContain("ship the thing");
     expect(md).not.toContain("rethink pricing");
+  });
+});
+
+describe("legacy archive privacy migration", () => {
+  it("strips durable verbatim content on read and overwrites the unsafe record", async () => {
+    const slug = "legacy-raw-archive";
+    await getDb().set(`rooms:archive:${slug}`, {
+      slug,
+      name: "Legacy",
+      archivedAt: 1,
+      sessionName: null,
+      sequence: [],
+      patterns: [],
+      participantCount: 2,
+      submissions: [
+        { phaseId: "p1", handle: "Ada", text: "private words", tag: null },
+      ],
+      content: [{ type: "note", title: "Private", body: "more private words" }],
+      actionItems: [{ text: "Do it", ownerName: "Sam", status: "open" }],
+      reportMeta: { showQuotes: true, attribution: "named" },
+    });
+
+    const archive = await getArchive(slug);
+    expect(archive?.submissionCount).toBe(1);
+    expect(archive?.reportMeta).toEqual({ showQuotes: false, attribution: "anonymous" });
+    expect(archive).not.toHaveProperty("submissions");
+    expect(archive).not.toHaveProperty("content");
+    expect(JSON.stringify(archive)).not.toContain("Sam");
+
+    const stored = await getDb().get<Record<string, unknown>>(`rooms:archive:${slug}`);
+    expect(stored).not.toHaveProperty("submissions");
+    expect(stored).not.toHaveProperty("content");
   });
 });

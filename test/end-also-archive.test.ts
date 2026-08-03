@@ -48,14 +48,15 @@ describe("end with alsoArchive", () => {
     expect(await getArchive(slug)).toBeNull(); // nothing archived yet
     const res = await hostPOST(
       endReq(slug, { command: "end", code, alsoArchive: true }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(200);
     // the durable record survives the wipe
     const archive = await getArchive(slug);
     expect(archive).not.toBeNull();
     expect(archive!.participantCount).toBe(1);
-    expect(archive!.submissions.length).toBe(1);
+    expect(archive!.submissionCount).toBe(1);
+    expect(archive).not.toHaveProperty("submissions");
     // the live session was still wiped
     expect((await listParticipants(slug)).length).toBe(0);
   });
@@ -64,7 +65,7 @@ describe("end with alsoArchive", () => {
     const { slug, code } = await seeded();
     const res = await hostPOST(
       endReq(slug, { command: "end", code, alsoArchive: false }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(200);
     expect(await getArchive(slug)).toBeNull();

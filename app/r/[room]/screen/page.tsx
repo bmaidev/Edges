@@ -6,8 +6,8 @@ import { ProjectorApp } from "@/components/ProjectorApp";
 export default function ScreenPage({
   params,
 }: {
-  params: Promise<{ room: string }> | { room: string };
+  params: Promise<{ room: string }>;
 }) {
-  const p = params instanceof Promise ? use(params) : params;
+  const p = use(params);
   return <ProjectorApp apiBase={`/api/r/${p.room}`} />;
 }

@@ -6,6 +6,7 @@ import {
   workspaceAiKeyInfo,
 } from "@/lib/workspaces";
 import { secretsConfigured } from "@/lib/secrets";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,10 +19,10 @@ function ownerGate(ctx: { ok: boolean; role: string | null; isSuperAdmin: boolea
   return ctx.ok && (ctx.isSuperAdmin || ctx.role === "owner");
 }
 
-// GET ?code=… -> { set, last4, secretsConfigured }
+// GET + X-Edges-Code -> { set, last4, secretsConfigured }
 export async function GET(req: NextRequest) {
   const ctx = await resolveAdminContext(
-    req.nextUrl.searchParams.get("code"),
+    requestCode(req),
     req.nextUrl.searchParams.get("workspace"),
   );
   if (!ctx.ok)

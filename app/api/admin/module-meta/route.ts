@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAdminContext } from "@/lib/auth";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/admin/module-meta?code=ADMIN -> { meta: { [id]: { name, description } } }
+// GET /api/admin/module-meta + X-Edges-Code -> module metadata
 // Serialized module names/descriptions so the wizard can render an AI-proposed
 // agenda as plain-language prose WITHOUT importing the server registry into
 // client code (keeps the server/client module boundary intact). Super-admin gated.
 export async function GET(req: NextRequest) {
-  if (!(await resolveAdminContext(req.nextUrl.searchParams.get("code"))).ok)
+  if (!(await resolveAdminContext(requestCode(req))).ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const meta: Record<string, { name: string; description: string }> = {};
   for (const [id, mod] of Object.entries(SERVER_MODULES)) {

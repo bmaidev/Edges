@@ -99,7 +99,7 @@ describe("server-role authority + role scoping (via /state route)", () => {
     );
     // A cohost console polls with its passcode + presence id.
     const res = await stateGET(stateReq(room.slug, { code: passcodes.cohost, pid: "p1", pname: "Sam" }), {
-      params: { room: room.slug },
+      params: Promise.resolve({ room: room.slug }),
     });
     const host = await res.json();
     // Heartbeat is fire-and-forget; give the microtask a tick, then read.
@@ -112,7 +112,7 @@ describe("server-role authority + role scoping (via /state route)", () => {
     expect(Array.isArray(host.presence)).toBe(true);
     // ...but a participant poll never does.
     const pRes = await stateGET(stateReq(room.slug, { token: "tokX" }), {
-      params: { room: room.slug },
+      params: Promise.resolve({ room: room.slug }),
     });
     const part = await pRes.json();
     expect(part.presence).toBeUndefined();

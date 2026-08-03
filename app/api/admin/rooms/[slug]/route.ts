@@ -11,6 +11,7 @@ import {
 import type { RoomTheme, ShareableTier } from "@/lib/rooms";
 import { resolveAdminContext } from "@/lib/auth";
 import { DEFAULT_WORKSPACE_ID } from "@/lib/workspaces";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,19 +33,20 @@ async function authRoom(
   return { room };
 }
 
-// GET /api/admin/rooms/[slug]?code=ADMIN -> room meta + archive (report).
+// GET /api/admin/rooms/[slug] + X-Edges-Code -> room meta + archive (report).
 export async function GET(
   req: NextRequest,
-  { params }: { params: { slug: string } },
+  { params }: { params: Promise<{ slug: string }> },
 ) {
+  const { slug } = await params;
   const g = await authRoom(
-    req.nextUrl.searchParams.get("code"),
+    requestCode(req),
     req.nextUrl.searchParams.get("workspace"),
-    params.slug,
+    slug,
   );
   if ("error" in g) return g.error;
   const { room } = g;
-  const archive = await getArchive(params.slug);
+  const archive = await getArchive(slug);
   return NextResponse.json({
     room: { slug: room.slug, name: room.name, topic: room.topic, status: room.status, theme: room.theme },
     archive,
@@ -63,21 +65,22 @@ export async function GET(
 // a shareable link, so it cannot be regenerated here.
 export async function POST(
   req: NextRequest,
-  { params }: { params: { slug: string } },
+  { params }: { params: Promise<{ slug: string }> },
 ) {
+  const { slug } = await params;
   let body: { code?: string; action?: string; role?: string; slug?: string; workspace?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  const g = await authRoom(body.code, body.workspace, params.slug);
+  const g = await authRoom(body.code, body.workspace, slug);
   if ("error" in g) return g.error;
 
   // A4 — change the room's address (slug). Non-live rooms only; old links/QRs
   // redirect to the new slug. The record (+ a draft's session state) moves.
   if (body.action === "rename") {
-    const res = await renameRoom(params.slug, body.slug ?? "");
+    const res = await renameRoom(slug, body.slug ?? "");
     if (!res.ok)
       return NextResponse.json({ error: res.error }, { status: 400 });
     return NextResponse.json({ ok: true, slug: res.slug });
@@ -93,7 +96,7 @@ export async function POST(
       { status: 400 },
     );
 
-  const res = await regenerateRoleCode(params.slug, role as ShareableTier);
+  const res = await regenerateRoleCode(slug, role as ShareableTier);
   if (!res) return NextResponse.json({ error: "No such room" }, { status: 404 });
   return NextResponse.json({ ok: true, code: res.code });
 }
@@ -103,8 +106,9 @@ export async function POST(
 // primary key). Renaming the name never touches the slug, passcodes, or links.
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { slug: string } },
+  { params }: { params: Promise<{ slug: string }> },
 ) {
+  const { slug } = await params;
   let body: {
     code?: string;
     name?: string;
@@ -117,7 +121,7 @@ export async function PATCH(
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  const g = await authRoom(body.code, body.workspace, params.slug);
+  const g = await authRoom(body.code, body.workspace, slug);
   if ("error" in g) return g.error;
 
   const patch: {
@@ -133,23 +137,24 @@ export async function PATCH(
   }
   if (body.theme) patch.theme = body.theme;
   if (body.status) patch.status = body.status;
-  const room = await updateRoom(params.slug, patch);
+  const room = await updateRoom(slug, patch);
   if (!room) return NextResponse.json({ error: "No such room" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/admin/rooms/[slug]?code=ADMIN -> permanently delete the room.
+// DELETE /api/admin/rooms/[slug] + X-Edges-Code -> permanently delete the room.
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { slug: string } },
+  { params }: { params: Promise<{ slug: string }> },
 ) {
+  const { slug } = await params;
   const g = await authRoom(
-    req.nextUrl.searchParams.get("code"),
+    requestCode(req),
     req.nextUrl.searchParams.get("workspace"),
-    params.slug,
+    slug,
   );
   if ("error" in g) return g.error;
-  const ok = await deleteRoom(params.slug);
+  const ok = await deleteRoom(slug);
   if (!ok) return NextResponse.json({ error: "No such room" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

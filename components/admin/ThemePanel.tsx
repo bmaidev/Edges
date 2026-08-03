@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { ContrastStrip } from "@/components/admin/ContrastStrip";
+import { authFetch } from "@/lib/client-auth";
 
 export const PALETTE_KEYS = ["bg", "surface", "accent", "muted", "border"] as const;
 export const PALETTE_DEFAULTS: Record<string, string> = {
@@ -75,7 +76,7 @@ export function ThemePanel({
     try {
       const fd = new FormData();
       fd.set("file", file);
-      const res = await fetch(`/api/admin/upload?code=${encodeURIComponent(code)}`, {
+      const res = await authFetch("/api/admin/upload", code, {
         method: "POST",
         body: fd,
       });

@@ -80,10 +80,10 @@ describe("normalizeReportMeta", () => {
     expect(normalizeReportMeta(undefined)).toEqual({ showQuotes: false, attribution: "anonymous" });
     expect(normalizeReportMeta({})).toEqual({ showQuotes: false, attribution: "anonymous" });
   });
-  it("honours explicit opt-ins only", () => {
+  it("rejects legacy quote and named-attribution opt-ins", () => {
     expect(normalizeReportMeta({ showQuotes: true, attribution: "named" })).toEqual({
-      showQuotes: true,
-      attribution: "named",
+      showQuotes: false,
+      attribution: "anonymous",
     });
     // garbage attribution → anonymous
     expect(normalizeReportMeta({ attribution: "everyone" }).attribution).toBe("anonymous");
@@ -100,9 +100,8 @@ describe("editReport / setReportMeta (durable archive round-trip)", () => {
       sessionName: null,
       sequence: [],
       patterns: [],
-      submissions: [],
-      content: [],
       participantCount: 0,
+      submissionCount: 0,
       report: { ...REPORT },
     };
     await getDb().set(`rooms:archive:${room.slug}`, archive);
@@ -121,7 +120,7 @@ describe("editReport / setReportMeta (durable archive round-trip)", () => {
   it("setReportMeta stores normalized sharing prefs", async () => {
     const slug = await seededRoom();
     const after = await setReportMeta(slug, { showQuotes: true, attribution: "bogus" });
-    expect(after?.reportMeta).toEqual({ showQuotes: true, attribution: "anonymous" });
+    expect(after?.reportMeta).toEqual({ showQuotes: false, attribution: "anonymous" });
   });
 
   it("editReport on a room with no archive is a calm no-op", async () => {

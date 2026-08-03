@@ -11,9 +11,9 @@ export const dynamic = "force-dynamic";
 // Polling remains the fallback in the client, so this is purely an accelerator.
 export async function GET(
   req: NextRequest,
-  { params }: { params: { room: string } },
+  { params }: { params: Promise<{ room: string }> },
 ) {
-  const room = params.room;
+  const { room } = await params;
   if (!(await getRoom(room)))
     return new Response("no such room", { status: 404 });
 

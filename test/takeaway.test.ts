@@ -81,6 +81,7 @@ describe("publishTakeaway", () => {
     const json = JSON.stringify(proj.takeaway);
     expect(json).not.toContain("ship the thing"); // raw submission text
     expect(json).not.toContain("Ada"); // a participant handle
+    expect(json).not.toContain("Sam"); // structured action ownership is also stripped
     expect("contributions" in (proj.takeaway ?? {})).toBe(false); // raw array stripped
   });
 });

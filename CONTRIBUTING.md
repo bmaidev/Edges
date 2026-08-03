@@ -9,7 +9,7 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Dev setup
 
-Prerequisites: **Node >= 20**.
+Prerequisites: **Node 24.x** (the production and CI runtime).
 
 ```bash
 npm install
@@ -30,12 +30,15 @@ unless `ANTHROPIC_API_KEY` is set — both degrade gracefully. See the
 | `npm test`          | Vitest, once                                |
 | `npm run coverage`  | Tests with coverage                         |
 | `npm run typecheck` | `tsc --noEmit`                              |
-| `npm run lint`      | `next lint`                                 |
+| `npm run lint`      | ESLint over JS/TS source                    |
+| `npm run audit:prod`| Production dependency vulnerability gate   |
+| `npm run load:smoke`| Content-free staging capacity smoke test    |
 | `npm run format`    | Prettier (write)                            |
-| `npm run verify`    | `typecheck` + `lint` + `test`               |
+| `npm run verify`    | `typecheck` + `lint` + `test` + prod audit  |
 
-**`npm run verify` is the gate** — it runs typecheck, lint, and the full test
-suite, and is what CI runs. Run it before every PR.
+**`npm run verify` is the gate** — it runs typecheck, lint, the full test suite,
+and the production dependency audit. CI also runs a production build. Run it
+before every PR.
 
 ## Code conventions
 

@@ -10,14 +10,15 @@ import {
 } from "@/lib/rooms";
 import { resolveAdminContext } from "@/lib/auth";
 import { DEFAULT_WORKSPACE_ID, getWorkspace } from "@/lib/workspaces";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/admin/rooms?code=ADMIN[&workspace=ID] -> list the workspace's rooms.
+// GET /api/admin/rooms[?workspace=ID] + X-Edges-Code -> list workspace rooms.
 export async function GET(req: NextRequest) {
   const ctx = await resolveAdminContext(
-    req.nextUrl.searchParams.get("code"),
+    requestCode(req),
     req.nextUrl.searchParams.get("workspace"),
   );
   if (!ctx.ok)

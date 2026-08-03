@@ -21,8 +21,9 @@ shared instance for a community.
 
 Edges is a Next.js web app for facilitating live, in-person and remote
 sessions. It is mobile-first and voice-first for participants, and deliberately
-privacy-preserving: no accounts, no analytics, no durable database, raw
-contributions are facilitator-only, and everything self-erases within 24 hours.
+privacy-preserving: no participant accounts or tracking analytics, live session
+data self-erases within 24 hours, and durable reports retain synthesis and agreed
+actions—not verbatim responses or participant handles.
 
 ## Features
 
@@ -44,8 +45,9 @@ contributions are facilitator-only, and everything self-erases within 24 hours.
   with a sha256-hashed capability model; the projector screen is a read-only
   URL. See [roles & passcodes](docs/roles-and-passcodes.md).
 - **Off-the-record privacy posture** — handles default to Anonymous (or can be
-  stripped entirely), submissions are never logged, and all room data carries a
-  24h TTL with an immediate wipe on End session.
+  stripped entirely), submissions are never logged, and live room data carries a
+  24h TTL with an immediate wipe on End session. Durable handover reports contain
+  only synthesis, counts, curated patterns, and agreed action items.
 - **Optional AI assist** — cluster assist, AI facilitation modules, a setup
   design assistant, and a post-session report — all gated on an API key and
   content-free in logs. See [AI features & privacy](docs/ai-and-privacy.md).
@@ -110,13 +112,14 @@ store + the env vars). Or do it by hand:
      them at rest). `openssl rand -hex 32`.
    - **`SIGNUP_OPEN=true`** or **`SIGNUP_CODE=…`** — optional; opens self-service
      workspace sign-up at `/start` (default: closed / super-admin mints).
-   - **`BLOB_READ_WRITE_TOKEN`** — optional; logo uploads (else paste a logo URL).
+   - **`BLOB_READ_WRITE_TOKEN`** — optional; logo and presenter-media uploads.
    - **`PUSHER_APP_*`** + **`NEXT_PUBLIC_PUSHER_APP_KEY`/`NEXT_PUBLIC_PUSHER_APP_CLUSTER`** —
      optional but strongly recommended at scale; enables the realtime push tier so
      screens update sub-second without every phone polling. Without it the app
      falls back to polling (see the R1 tier in [ARCHITECTURE.md](ARCHITECTURE.md)).
 4. Disable Vercel Analytics in project settings (privacy requirement).
-5. **Verify:** open `/api/health` (uptime) and, signed in as super-admin, the
+5. **Verify:** open `/api/health/live` (liveness), `/api/health` (readiness), and,
+   signed in as super-admin, the
    **Instance setup** panel in `/admin` (a checklist of what's enabled).
 
 Running it elsewhere (Docker, your own Node host) and the full operator reference
@@ -141,13 +144,14 @@ Privacy is a design constraint, not a setting:
 
 - **Off-the-record contract** — no accounts, no PII; handles default to
   Anonymous and an anonymous capture mode strips them from stored submissions.
-- **24h TTL** — every room key auto-expires within 24 hours; **End session**
-  wipes participants, submissions, content, patterns, votes, and words
-  immediately.
+- **24h TTL** — every live-session key auto-expires within 24 hours; **End
+  session** wipes participants, submissions, content, patterns, votes, words,
+  presenter uploads, and browser recovery data immediately.
 - **Submissions are never logged** — AI observability records latency and token
   counts only, never prompt or participant content.
-- **Raw contributions are facilitator-only**; participants see curated or
-  aggregated output.
+- **Role-scoped sharing** — a method may intentionally share or rotate a note
+  when its phase says so; hidden facilitator analyses are centrally blocked from
+  participant and projector views.
 
 See [docs/ai-and-privacy.md](docs/ai-and-privacy.md) for the full model and
 [SECURITY.md](SECURITY.md) for the security posture.
@@ -163,6 +167,7 @@ User-facing guides live in [`docs/`](docs/):
 - [Module reference](docs/modules.md) — every module, in plain language
 - [Templates catalog](docs/templates.md) — the ready-made sessions
 - [AI features & privacy](docs/ai-and-privacy.md) — what the AI does, and the privacy model
+- [Production operations](docs/operations.md) — release gates, health, capacity, and incidents
 
 Contributor docs: [ARCHITECTURE.md](ARCHITECTURE.md) ·
 [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·

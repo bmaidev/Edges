@@ -5,8 +5,9 @@
 Please report security issues **privately** — do not open a public issue for a
 suspected vulnerability.
 
-Email **security@blackmountain.ai** *(placeholder — please confirm the correct
-address before publishing this repository)* with:
+Use GitHub's **private vulnerability reporting** for this repository. If that is
+unavailable, contact the repository owners privately rather than opening a public
+issue. Include:
 
 - a description of the issue and its impact,
 - steps to reproduce (a proof of concept if you have one),
@@ -35,14 +36,19 @@ mechanisms (see [ARCHITECTURE.md](ARCHITECTURE.md) and
 - **Passcode role tiers.** Admin, facilitator, and co-host are reached with a
   per-room passcode; the projector is a read-only screen URL; participants join
   by token. Host actions are gated server-side by capability
-  (`requireCapability`), and `configure` is admin-only.
-- **sha256-hashed passcodes.** Plaintext passcodes are shown **once** at room
-  creation and never persisted; only sha256 hashes are stored, and they're
-  compared with a timing-safe comparison (`lib/rooms.ts`).
+  (`requireCapability`). Lead facilitators can configure their room; workspace
+  ownership and membership remain separately gated.
+- **High-entropy, sha256-hashed passcodes.** Newly generated room, workspace, and
+  member capabilities use 128 bits of cryptographic randomness. Plaintext is
+  shown **once** and never persisted; only sha256 hashes are stored, and they're
+  compared with a timing-safe comparison (`lib/rooms.ts`). Operators must also
+  choose a strong, unique `ADMIN_PASSCODE`.
 - **Off-the-record contract.** No accounts, no PII; handles default to Anonymous
   and an anonymous capture mode strips the handle from stored submissions. All
-  room data carries a **24h TTL**, and **End session** wipes participants,
-  submissions, content, patterns, votes, and words immediately.
+  live room data and browser recovery data carry a **24h TTL**, and **End
+  session** wipes participants, submissions, content, patterns, votes, words,
+  and tracked presenter uploads immediately. Durable archives contain synthesis,
+  counts, curated patterns and action items—not raw responses or handles.
 - **Submissions are never logged.** Server logs never contain prompt or
   participant content; AI observability records latency, model, stop reason, and
   token counts only.
@@ -57,9 +63,9 @@ mechanisms (see [ARCHITECTURE.md](ARCHITECTURE.md) and
 
 In the spirit of honesty, current known gaps:
 
-- **No per-endpoint rate limiting yet.** Rooms are passcode-gated and data is
-  short-lived, which limits exposure, but there is no request throttling on the
-  participant/host APIs. Adding limits is on the backlog.
+- **Application rate limits are a baseline, not a DDoS service.** Join, action,
+  state, host and upload endpoints use atomic per-client windows. Production
+  deployments should also enforce network-level limits at the edge/proxy.
 - **No durable audit log — by design.** There is intentionally no long-lived
   record of who did or said what; the same privacy posture that protects
   participants also means there's no after-the-fact audit trail.

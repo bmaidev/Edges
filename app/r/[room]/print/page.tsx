@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getExpiring, removeStored } from "@/lib/browser-storage";
 
 // B3 — the printable facilitator run-sheet. The host console hands the data over
 // via localStorage (read-once-then-clear), so the PRIVATE notes never hit a URL
@@ -31,10 +32,10 @@ export default function PrintPage() {
     if (consumed.current) return;
     consumed.current = true;
     try {
-      const raw = localStorage.getItem("edges_print");
-      if (raw) {
-        setData(JSON.parse(raw));
-        localStorage.removeItem("edges_print"); // read once
+      const payload = getExpiring<PrintPayload>("edges_print");
+      if (payload) {
+        setData(payload);
+        removeStored("edges_print"); // read once
       } else {
         setEmpty(true);
       }

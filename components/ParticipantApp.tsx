@@ -22,6 +22,11 @@ import { ArrowRight } from "lucide-react";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { STRINGS } from "@/lib/strings";
+import {
+  clearParticipantSession,
+  getExpiring,
+  setExpiring,
+} from "@/lib/browser-storage";
 import type { PublicState } from "@/lib/types";
 
 // The participant experience for a room, parameterized by API base
@@ -65,14 +70,18 @@ function ParticipantInner({ apiBase }: { apiBase: string }) {
   const TK = `edges_token:${apiBase}`;
 
   useEffect(() => {
-    const t = localStorage.getItem(TK);
-    const h = localStorage.getItem(HK);
+    const t = getExpiring<string>(TK);
+    const h = getExpiring<string>(HK);
     if (t) {
       setToken(t);
       setJoined(true);
       if (h) setHandle(h);
     }
   }, [TK, HK]);
+
+  useEffect(() => {
+    if (state?.ended) clearParticipantSession(apiBase, token);
+  }, [apiBase, state?.ended, token]);
 
   if (!state) {
     // H1 — never strand on an endless "Connecting…". If the device is offline
@@ -129,8 +138,8 @@ function ParticipantInner({ apiBase }: { apiBase: string }) {
         topic={state.topic}
         branding={state.branding ?? null}
         onJoined={(h, t) => {
-          localStorage.setItem(TK, t);
-          localStorage.setItem(HK, h);
+          setExpiring(TK, t);
+          setExpiring(HK, h);
           setHandle(h);
           setToken(t);
           setJoined(true);
@@ -342,7 +351,7 @@ function PhaseScreen({
   orientation: Orientation | null;
   onDismissOrientation: () => void;
 }) {
-  const { act, pending } = useResilientAct(apiBase, token, handle, state.phaseId ?? "");
+  const { act, pending } = useResilientAct(apiBase, token, state.phaseId ?? "");
   const pulse = useContentPulse(state.contentVersion);
   // D2 — announce a phase change to screen readers (never on mount or a poll).
   const [announce, setAnnounce] = useState("");

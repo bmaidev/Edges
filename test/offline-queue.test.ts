@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as actionPOST } from "@/app/api/r/[room]/action/route";
-import { claimAction, listSubmissions, replaceState } from "@/lib/store";
+import { addParticipant, claimAction, listSubmissions, replaceState } from "@/lib/store";
 import { createRoomWithSlug, freshPasscodes } from "@/lib/rooms";
 
 // H1 offline queue — the load-bearing guarantee is server-side idempotency: a
@@ -28,6 +28,7 @@ async function seedCapture(slug: string) {
     },
     slug,
   );
+  await addParticipant("a", "A", slug);
 }
 function submitReq(slug: string, text: string, dedupeId?: string) {
   return new NextRequest(`http://x/api/r/${slug}/action`, {
@@ -48,10 +49,14 @@ describe("action route idempotency", () => {
   it("a replayed send (same dedupeId) applies exactly once", async () => {
     const slug = "oq-route";
     await seedCapture(slug);
-    const r1 = await actionPOST(submitReq(slug, "my idea", "send-1"), { params: { room: slug } });
+    const r1 = await actionPOST(submitReq(slug, "my idea", "send-1"), {
+      params: Promise.resolve({ room: slug }),
+    });
     expect(r1.status).toBe(200);
     // replay the exact same send (as the queue would on a flaky reconnect)
-    const r2 = await actionPOST(submitReq(slug, "my idea", "send-1"), { params: { room: slug } });
+    const r2 = await actionPOST(submitReq(slug, "my idea", "send-1"), {
+      params: Promise.resolve({ room: slug }),
+    });
     const d2 = await r2.json();
     expect(d2.ok).toBe(true);
     expect(d2.deduped).toBe(true); // acknowledged, not re-applied
@@ -63,8 +68,12 @@ describe("action route idempotency", () => {
   it("two genuinely different sends both apply", async () => {
     const slug = "oq-two";
     await seedCapture(slug);
-    await actionPOST(submitReq(slug, "first", "a1"), { params: { room: slug } });
-    await actionPOST(submitReq(slug, "second", "a2"), { params: { room: slug } });
+    await actionPOST(submitReq(slug, "first", "a1"), {
+      params: Promise.resolve({ room: slug }),
+    });
+    await actionPOST(submitReq(slug, "second", "a2"), {
+      params: Promise.resolve({ room: slug }),
+    });
     expect((await listSubmissions(slug)).length).toBe(2);
   });
 });

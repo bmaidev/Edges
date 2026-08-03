@@ -20,8 +20,8 @@ export const useColourSafe = (): boolean => useContext(A11yContext)?.prefs.contr
 
 // D2 — applies the participant's accessibility prefs to the document (one root
 // scale var + a few body classes) and renders the floating "Aa" control. Wrap a
-// participant/projector tree in this; it cleans the document classes on unmount,
-// so admin/builder trees are never affected.
+  // participant, host, builder, or admin tree in this; it cleans document classes
+  // on unmount so preferences never leak between independently mounted surfaces.
 export function A11yProvider({ children }: { children: React.ReactNode }) {
   const [prefs, setPrefs] = useState<A11yPrefs>(DEFAULT_PREFS);
   const [mounted, setMounted] = useState(false);

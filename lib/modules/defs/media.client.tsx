@@ -44,6 +44,8 @@ function VideoEmbed({ url, big }: { url: string; big?: boolean }) {
         src={`https://www.youtube.com/embed/${yt}`}
         title="Video"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        sandbox="allow-scripts allow-same-origin allow-presentation"
+        referrerPolicy="no-referrer"
         allowFullScreen
       />
     );
@@ -54,13 +56,18 @@ function VideoEmbed({ url, big }: { url: string; big?: boolean }) {
         src={`https://player.vimeo.com/video/${vm}`}
         title="Video"
         allow="autoplay; fullscreen; picture-in-picture"
+        sandbox="allow-scripts allow-same-origin allow-presentation"
+        referrerPolicy="no-referrer"
         allowFullScreen
       />
     );
   if (isDirectVideo(url))
     return <video className="h-full w-full" src={url} controls playsInline />;
-  // Last resort: embed the URL directly.
-  return <iframe className={frame} src={url} title="Video" allowFullScreen />;
+  return (
+    <div className="flex h-full items-center justify-center p-8 text-center text-white/70">
+      This video host is not supported. Use YouTube, Vimeo, or a direct media file.
+    </div>
+  );
 }
 
 // ---- projector -------------------------------------------------------------
@@ -135,7 +142,10 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
   async function addPdf(file: File): Promise<MediaCard[]> {
     if (!upload) return [];
     const pdfjs = await import("pdfjs-dist");
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      "pdfjs-dist/build/pdf.worker.min.mjs",
+      import.meta.url,
+    ).toString();
     const data = await file.arrayBuffer();
     const doc = await pdfjs.getDocument({ data }).promise;
     const base = file.name.replace(/\.pdf$/i, "");

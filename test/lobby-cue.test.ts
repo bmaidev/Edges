@@ -85,7 +85,7 @@ describe("host route gating", () => {
     const { slug, passcodes } = await seeded();
     const res = await hostPOST(
       hostReq(slug, { command: "setLobbyCue", code: passcodes.cohost, cue: "Take a seat", countVisible: false }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(200);
     const d = await res.json();
@@ -97,7 +97,7 @@ describe("host route gating", () => {
     const { slug } = await seeded();
     const res = await hostPOST(
       hostReq(slug, { command: "setLobbyCue", code: "not-a-real-code", cue: "x" }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(403);
   });
@@ -125,13 +125,13 @@ describe("D2 — projector high-contrast toggle", () => {
     const { slug, passcodes } = await seeded();
     const ok = await hostPOST(
       hostReq(slug, { command: "setProjectorA11y", code: passcodes.cohost, on: true }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(ok.status).toBe(200);
     expect((await ok.json()).state.projectorA11y).toBe(true);
     const bad = await hostPOST(
       hostReq(slug, { command: "setProjectorA11y", code: "nope", on: true }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(bad.status).toBe(403);
   });

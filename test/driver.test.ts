@@ -110,7 +110,7 @@ describe("host route — claim vs directed hand-off (C5)", () => {
     await setPhases(PHASES, "S", room.slug);
     const res = await hostPOST(
       req(room.slug, { command: "claimDriver", code: passcodes.facilitator, driverId: "me-1", driverName: "Ada" }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     expect(res.status).toBe(200);
     expect((await res.json()).state.driver.driverId).toBe("me-1");
@@ -121,7 +121,7 @@ describe("host route — claim vs directed hand-off (C5)", () => {
     await setPhases(PHASES, "S", room.slug);
     const res = await hostPOST(
       req(room.slug, { command: "handoffDriver", code: passcodes.facilitator, toPresenceId: "cohost-9", toName: "Bo" }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     expect(res.status).toBe(200);
     const d = (await res.json()).state.driver;
@@ -134,7 +134,7 @@ describe("host route — claim vs directed hand-off (C5)", () => {
     await setPhases(PHASES, "S", room.slug);
     const res = await hostPOST(
       req(room.slug, { command: "handoffDriver", code: passcodes.facilitator, driverId: "me-1" }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     expect(res.status).toBe(400);
   });

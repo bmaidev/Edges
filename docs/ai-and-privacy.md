@@ -6,8 +6,9 @@ admins, and for anyone who simply wants to know where their words go.
 
 The short version: every AI feature is optional, facilitator-controlled, and
 grounded in your own room's topic and contributions. Participants never trigger
-AI. Raw words stay with the facilitator. Nothing the room types is ever written
-to a server log, and all session data deletes itself within 24 hours.
+AI. Relevant raw words may be sent to Anthropic only when a facilitator invokes
+an AI feature; they are never written to application logs or durable archives.
+Live participant data deletes itself within 24 hours.
 
 ---
 
@@ -187,10 +188,12 @@ These are properties of how the system is built, not just promises in copy.
   stop reason, and token counts — and never the prompt or the submission content
   itself. (For the same reason, the deployment guidance is to keep third-party
   analytics off.)
-- **Everything self-deletes within 24 hours.** All live session data carries a
-  24-hour time-to-live and expires automatically. Pressing **"End session"**
-  wipes the participants, submissions, content, patterns, votes, and words
-  immediately rather than waiting for the timer.
+- **Live data self-deletes within 24 hours.** Participants, verbatim submissions,
+  content, votes, words, browser recovery data, and presenter uploads carry a
+  24-hour limit. Pressing **"End session"** wipes them immediately. A durable
+  workspace archive may retain only aggregate counts, facilitator-curated
+  patterns, agreed action items, and the de-identified synthesis—never raw
+  responses or participant handles.
 - **The end-of-session recap (take-away).** When a session ends, participants are
   shown a **recap they can keep for 24 hours** (and scan from the projector to
   take with them). This recap is the **synthesis only** — the summary, themes,
@@ -198,8 +201,9 @@ These are properties of how the system is built, not just promises in copy.
   contains a raw response or attributes anything to a named person. It lives in
   the same 24-hour-TTL session store under a random, unguessable, room-scoped
   token and **self-destructs at 24 hours**; it is not indexed by search engines.
-  The raw live data is still wiped at End exactly as above — only the
-  de-identified synthesis is kept, and only for a day.
+  The raw live data is still wiped at End exactly as above. The participant link
+  lasts only a day; the same de-identified synthesis may also remain in the
+  facilitator's workspace archive until an owner deletes the room or workspace.
 - **Synthetic outputs are clearly labelled.** The synthetic persona panel and the
   empty chair carry an honesty banner stating they are AI-generated stand-ins,
   not real users or the real stakeholder. They are useful for pressure-testing a

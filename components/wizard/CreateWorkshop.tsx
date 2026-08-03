@@ -14,6 +14,7 @@ import {
 import { JoinScreenPreview } from "@/components/admin/JoinScreenPreview";
 import { TEMPLATES } from "@/lib/templates";
 import type { PhaseInstance } from "@/lib/types";
+import { authFetch } from "@/lib/client-auth";
 
 type Step = "name" | "design" | "brand" | "share" | "ready";
 const STEPS: { id: Step; label: string }[] = [
@@ -66,16 +67,22 @@ export function CreateWorkshop({
 
   useEffect(() => {
     setOrigin(window.location.origin);
-    const q = `?code=${encodeURIComponent(code)}`;
-    fetch(`/api/admin/capabilities${q}`, { cache: "no-store" })
+    authFetch("/api/admin/capabilities", code, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setAiAvailable(Boolean(d.aiAvailable)))
       .catch(() => {});
-    fetch(`/api/admin/module-meta${q}`, { cache: "no-store" })
+    authFetch("/api/admin/module-meta", code, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d?.meta && setModuleMeta(d.meta))
       .catch(() => {});
   }, [code]);
+
+  // This is one in-page state machine, so the browser would otherwise preserve
+  // the previous (often long) step's scroll position and reveal the next step
+  // halfway down. Each transition should feel like a fresh, predictable page.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [step]);
 
   const stepIdx = STEPS.findIndex((s) => s.id === step);
   const joinUrl = slug ? `${origin}/r/${slug}` : `${origin}/r/your-room`;
@@ -83,9 +90,12 @@ export function CreateWorkshop({
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       {/* progress rail */}
-      <div className="flex items-center gap-2">
+      <div
+        className="grid grid-cols-5 gap-1"
+        aria-label={`Step ${stepIdx + 1} of ${STEPS.length}: ${STEPS[stepIdx].label}`}
+      >
         {STEPS.map((s, i) => (
-          <div key={s.id} className="flex flex-1 items-center gap-2">
+          <div key={s.id} className="flex min-w-0 flex-col items-center gap-1">
             <span
               className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${
                 i < stepIdx
@@ -97,10 +107,11 @@ export function CreateWorkshop({
             >
               {i < stepIdx ? "✓" : i + 1}
             </span>
-            <span className={`text-xs ${i === stepIdx ? "text-accent" : "text-muted"}`}>
+            <span
+              className={`max-w-full truncate text-[10px] sm:text-xs ${i === stepIdx ? "text-accent" : "text-muted"}`}
+            >
               {s.label}
             </span>
-            {i < STEPS.length - 1 && <span className="h-px flex-1 bg-border" />}
           </div>
         ))}
       </div>
@@ -161,7 +172,14 @@ export function CreateWorkshop({
           />
         )}
         {step === "ready" && (
-          <StepReady slug={slug} name={name} code={code} origin={origin} onClose={onClose} />
+          <StepReady
+            slug={slug}
+            name={name}
+            code={code}
+            origin={origin}
+            passcodes={passcodes}
+            onClose={onClose}
+          />
         )}
       </ErrorBoundary>
     </div>
@@ -169,7 +187,11 @@ export function CreateWorkshop({
 }
 
 function H({ children }: { children: React.ReactNode }) {
-  return <h2 className="font-display text-2xl font-semibold tracking-tight">{children}</h2>;
+  return (
+    <h2 className="font-display text-2xl font-semibold tracking-tight">
+      {children}
+    </h2>
+  );
 }
 
 // ---- Step 1: Name ---------------------------------------------------------
@@ -257,14 +279,20 @@ function StepDesign({
   );
   const [goal, setGoal] = useState("");
   const [minutes, setMinutes] = useState("");
-  const [busy, setBusy] = useState<null | "suggest" | "critique" | "revise">(null);
+  const [busy, setBusy] = useState<null | "suggest" | "critique" | "revise">(
+    null,
+  );
   const [err, setErr] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<{
     sessionName: string;
     rationale: string;
     phases: PhaseInstance[];
   } | null>(null);
-  const [critique, setCritique] = useState<{ strengths: string[]; issues: string[] } | null>(null);
+  const [critique, setCritique] = useState<{
+    strengths: string[];
+    issues: string[];
+  } | null>(null);
+  const [templateQuery, setTemplateQuery] = useState("");
 
   async function design(action: "suggest" | "revise") {
     setBusy(action);
@@ -303,7 +331,12 @@ function StepDesign({
       const res = await fetch("/api/admin/design", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, action: "critique", phases: suggestion.phases, topic }),
+        body: JSON.stringify({
+          code,
+          action: "critique",
+          phases: suggestion.phases,
+          topic,
+        }),
       });
       const d = await res.json();
       if (res.ok && d.critique) setCritique(d.critique);
@@ -364,17 +397,24 @@ function StepDesign({
                 />
                 <span>sizes the agenda.</span>
               </label>
-              <Button onClick={() => design("suggest")} disabled={busy !== null || !goal.trim()}>
+              <Button
+                onClick={() => design("suggest")}
+                disabled={busy !== null || !goal.trim()}
+              >
                 {busy === "suggest" ? "Designing…" : "Design it"}
               </Button>
 
               {busy === "suggest" && (
-                <p className="text-sm text-muted">Reading your goal and laying out a calm agenda…</p>
+                <p className="text-sm text-muted">
+                  Reading your goal and laying out a calm agenda…
+                </p>
               )}
 
               {suggestion && busy === null && (
                 <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
-                  <p className="text-sm font-medium">{suggestion.sessionName}</p>
+                  <p className="text-sm font-medium">
+                    {suggestion.sessionName}
+                  </p>
                   <ul className="flex flex-col gap-1 text-sm">
                     {suggestion.phases.map((p, i) => (
                       <li key={i}>{phaseLine(p, i)}</li>
@@ -382,7 +422,8 @@ function StepDesign({
                   </ul>
                   {suggestion.rationale && (
                     <p className="text-xs text-muted">
-                      <span className="text-accent">Why:</span> {suggestion.rationale}
+                      <span className="text-accent">Why:</span>{" "}
+                      {suggestion.rationale}
                     </p>
                   )}
                   {critique && critique.issues.length > 0 && (
@@ -408,11 +449,19 @@ function StepDesign({
                     >
                       Use this
                     </Button>
-                    <Button variant="ghost" onClick={refine} disabled={busy !== null}>
+                    <Button
+                      variant="ghost"
+                      onClick={refine}
+                      disabled={busy !== null}
+                    >
                       {busy === "critique" ? "Reviewing…" : "Review it"}
                     </Button>
                     {critique && critique.issues.length > 0 && (
-                      <Button variant="ghost" onClick={() => design("revise")} disabled={busy !== null}>
+                      <Button
+                        variant="ghost"
+                        onClick={() => design("revise")}
+                        disabled={busy !== null}
+                      >
                         {busy === "revise" ? "Revising…" : "Apply fixes"}
                       </Button>
                     )}
@@ -426,17 +475,83 @@ function StepDesign({
       )}
 
       {lane === "template" && (
-        <div className="flex flex-wrap gap-2">
-          {TEMPLATES.map((t) => (
-            <button
-              key={t.id}
-              title={t.description}
-              onClick={() => onChoose({ kind: "template", templateId: t.id, label: t.name })}
-              className="rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-xs hover:border-accent"
-            >
-              {t.name}
-            </button>
-          ))}
+        <div className="flex flex-col gap-4">
+          <p className="text-sm leading-relaxed text-muted">
+            These three work well across most rooms. Choose one now—you can edit
+            every prompt and timing later.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {["one-two-four-all", "pre-mortem", "fifteen-percent"].map((id) => {
+              const template = TEMPLATES.find((item) => item.id === id);
+              if (!template) return null;
+              return (
+                <button
+                  key={template.id}
+                  onClick={() =>
+                    onChoose({
+                      kind: "template",
+                      templateId: template.id,
+                      label: template.name,
+                    })
+                  }
+                  className="rounded-xl border border-accent/35 bg-accent/5 p-4 text-left transition-colors hover:border-accent hover:bg-accent/10"
+                >
+                  <span className="font-semibold">{template.name}</span>
+                  <span className="mt-2 line-clamp-3 block text-xs leading-relaxed text-muted">
+                    {template.description}
+                  </span>
+                  <span className="mt-3 block text-xs font-medium text-accent">
+                    Use this →
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <details className="group rounded-xl border border-border bg-surface/45 p-3">
+            <summary className="cursor-pointer list-none marker:hidden">
+              <span className="flex items-center justify-between gap-3 text-sm">
+                <span>Browse all {TEMPLATES.length} methods</span>
+                <span className="text-xs text-accent group-open:hidden">
+                  Browse
+                </span>
+                <span className="hidden text-xs text-accent group-open:inline">
+                  Close
+                </span>
+              </span>
+            </summary>
+            <div className="mt-3 border-t border-border pt-3">
+              <input
+                type="search"
+                value={templateQuery}
+                onChange={(event) => setTemplateQuery(event.target.value)}
+                placeholder="Search methods…"
+                aria-label="Search workshop methods"
+                className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {TEMPLATES.filter((template) =>
+                  `${template.name} ${template.description}`
+                    .toLowerCase()
+                    .includes(templateQuery.trim().toLowerCase()),
+                ).map((template) => (
+                  <button
+                    key={template.id}
+                    title={template.description}
+                    onClick={() =>
+                      onChoose({
+                        kind: "template",
+                        templateId: template.id,
+                        label: template.name,
+                      })
+                    }
+                    className="rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-xs hover:border-accent"
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </details>
         </div>
       )}
 
@@ -446,13 +561,20 @@ function StepDesign({
             Start with an empty room and compose phases yourself in the builder.
             You&apos;ll get the builder link on the last step.
           </p>
-          <Button onClick={() => onChoose({ kind: "blank", label: "Blank — build it yourself" })}>
+          <Button
+            onClick={() =>
+              onChoose({ kind: "blank", label: "Blank — build it yourself" })
+            }
+          >
             Continue blank
           </Button>
         </div>
       )}
 
-      <button onClick={onBack} className="self-start text-xs text-muted underline">
+      <button
+        onClick={onBack}
+        className="self-start text-xs text-muted underline"
+      >
         ← Back
       </button>
     </div>
@@ -501,7 +623,18 @@ function StepBrand({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <H>Make it yours</H>
+      <div className="flex items-center justify-between gap-3">
+        <H>Make it yours</H>
+        <button
+          onClick={() => {
+            setBrand(EMPTY_THEME);
+            onNext();
+          }}
+          className="shrink-0 text-xs text-accent hover:underline"
+        >
+          Skip for now →
+        </button>
+      </div>
       <div className="grid gap-5 md:grid-cols-[1fr_auto]">
         <ThemePanel code={code} value={brand} onChange={setBrand} />
         <div className="md:w-64">
@@ -510,10 +643,10 @@ function StepBrand({
       </div>
       <div className="flex items-center gap-2">
         <Button onClick={onNext}>Save &amp; continue</Button>
-        <button onClick={() => setBrand(EMPTY_THEME)} className="text-xs text-muted underline">
-          Skip branding
-        </button>
-        <button onClick={onBack} className="ml-auto text-xs text-muted underline">
+        <button
+          onClick={onBack}
+          className="ml-auto text-xs text-muted underline"
+        >
           ← Back
         </button>
       </div>
@@ -545,7 +678,11 @@ function StepShare({
   slug: string;
   setSlug: (s: string) => void;
   passcodes: { facilitator: string; cohost: string; projector: string } | null;
-  setPasscodes: (p: { facilitator: string; cohost: string; projector: string }) => void;
+  setPasscodes: (p: {
+    facilitator: string;
+    cohost: string;
+    projector: string;
+  }) => void;
   onCreated: () => void;
   onBack: () => void;
   onNext: () => void;
@@ -557,13 +694,20 @@ function StepShare({
   // (not earlier) so abandoning the wizard before Share leaves nothing durable.
   const committed = useRef(false);
 
-  async function host(slugId: string, command: string, args: Record<string, unknown>) {
+  async function host(
+    slugId: string,
+    command: string,
+    args: Record<string, unknown>,
+  ) {
     const res = await fetch(`/api/r/${slugId}/host`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ command, code, ...args }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "command failed");
+    if (!res.ok)
+      throw new Error(
+        (await res.json().catch(() => ({}))).error ?? "command failed",
+      );
   }
 
   async function commit() {
@@ -642,7 +786,15 @@ function StepShare({
 
   return (
     <div className="flex flex-col gap-4">
-      <H>Your keys</H>
+      <div className="flex items-center justify-between gap-3">
+        <H>Your keys</H>
+        <button
+          onClick={onNext}
+          className="shrink-0 text-xs text-accent hover:underline"
+        >
+          Continue →
+        </button>
+      </div>
       <p className="text-sm text-muted">
         Share these links to run the room. Each link is the key — anyone with it
         can do its job.
@@ -664,12 +816,14 @@ function StepReady({
   name,
   code,
   origin,
+  passcodes,
   onClose,
 }: {
   slug: string;
   name: string;
   code: string;
   origin: string;
+  passcodes: { facilitator: string; cohost: string; projector: string } | null;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -694,11 +848,24 @@ function StepReady({
   function copyInvite() {
     navigator.clipboard
       ?.writeText(`Join my workshop "${name}": ${join} — no app, no passcode.`)
-      .then(() => setCopied(true), () => setCopied(false));
+      .then(
+        () => setCopied(true),
+        () => setCopied(false),
+      );
   }
   const tiles: { label: string; href: string }[] = [
-    { label: "Open host console", href: `/r/${slug}/host` },
-    { label: "Open projector", href: `/r/${slug}/screen` },
+    {
+      label: "Open host console",
+      href: passcodes?.facilitator
+        ? `/r/${slug}/host#k=${encodeURIComponent(passcodes.facilitator)}`
+        : `/r/${slug}/host`,
+    },
+    {
+      label: "Open projector",
+      href: passcodes?.projector
+        ? `/r/${slug}/screen#k=${encodeURIComponent(passcodes.projector)}`
+        : `/r/${slug}/screen`,
+    },
     { label: "Print door QR", href: `/r/${slug}/qr` },
   ];
   return (
@@ -734,8 +901,8 @@ function StepReady({
             <div className="flex-1">
               <p className="text-sm font-medium">Open the doors?</p>
               <p className="text-xs text-muted">
-                It&apos;s a draft until you mark it live — you can also do this later
-                from the rooms list.
+                It&apos;s a draft until you mark it live — you can also do this
+                later from the rooms list.
               </p>
             </div>
             <Button onClick={markLive} disabled={liveBusy}>

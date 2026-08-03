@@ -90,13 +90,13 @@ function genWorkspaceId(): string {
   return `w-${randomBytes(5).toString("hex")}`;
 }
 function genAdminCode(): string {
-  return `wsa-${randomBytes(5).toString("hex")}`;
+  return `wsa-${randomBytes(16).toString("hex")}`;
 }
 function genMemberId(): string {
   return `m-${randomBytes(5).toString("hex")}`;
 }
 function genMemberCode(): string {
-  return `wsm-${randomBytes(5).toString("hex")}`;
+  return `wsm-${randomBytes(16).toString("hex")}`;
 }
 
 // Copy a legacy global index into its per-workspace key ONCE. Idempotent: if the

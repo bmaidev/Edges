@@ -47,7 +47,7 @@ describe("host route gating", () => {
     const { slug, passcodes } = await seeded();
     const res = await hostPOST(
       hostReq(slug, { command: "setTimerSound", code: passcodes.cohost, off: true }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(200);
     expect((await res.json()).state.timerSoundOff).toBe(true);
@@ -57,7 +57,7 @@ describe("host route gating", () => {
     const { slug } = await seeded();
     const res = await hostPOST(
       hostReq(slug, { command: "setTimerSound", code: "nope", off: true }),
-      { params: { room: slug } },
+      { params: Promise.resolve({ room: slug }) },
     );
     expect(res.status).toBe(403);
   });

@@ -54,8 +54,11 @@ interface ModuleServerDef<Config = Record<string, unknown>> {
   store directly — they go through `ctx.store` (a `ModuleStore` facade with
   `roomId` pre-bound), which breaks the module ↔ store import cycle.
 
-`ModuleContext.submissions` is facilitator-only data — it is `[]` for the
-participant role, so a module physically cannot leak raw submissions to a phone.
+`ModuleContext.submissions` is server-side working data. Modules use it to derive
+their deliberately role-scoped payloads (including methods that intentionally
+rotate or share a note). Before `computeView` can run, the store enforces the
+module's visibility matrix; hidden participant/projector views are returned as
+`null`. Exhaustive privacy-boundary tests cover the hidden modules.
 
 ### The client half — renderers
 
@@ -176,10 +179,10 @@ Redis** as the hot path, with an **in-memory fallback** for local dev and tests
 on reload). Both classic Vercel KV and Upstash env names are supported.
 
 - **Room-scoped keys** with a **24h TTL** on every write (`TTL_SECONDS`).
-- **No durable database by design** — this is a privacy decision. There is no
-  long-lived record of who said what. Durable, no-TTL data is limited to the
-  room registry itself (rooms, passcode hashes, themes) in
-  [`lib/rooms.ts`](lib/rooms.ts).
+- **No durable raw-participant database.** Durable records include the room and
+  workspace registry plus de-identified handover reports (counts, synthesis,
+  curated patterns and action items). Verbatim submissions and participant
+  handles never enter that no-TTL store; legacy archives are scrubbed on read.
 
 Atomic operations chosen to be concurrency-safe for a whole room writing at once:
 

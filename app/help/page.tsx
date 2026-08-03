@@ -24,12 +24,13 @@ const DOCS: { slug: string; title: string; body: string }[] = [
 // Server component: the active doc is chosen from the URL's ?doc= on the server,
 // so the page fully server-renders its content (no loading flash, readable
 // without JS). The markdown itself renders via the DocBody client component.
-export default function HelpPage({
+export default async function HelpPage({
   searchParams,
 }: {
-  searchParams: { doc?: string };
+  searchParams: Promise<{ doc?: string }>;
 }) {
-  const slug = searchParams.doc ?? "overview";
+  const query = await searchParams;
+  const slug = query.doc ?? "overview";
   const active = DOCS.find((d) => d.slug === slug) ?? DOCS[0];
 
   return (

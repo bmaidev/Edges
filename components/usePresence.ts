@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getExpiring, setExpiring } from "@/lib/browser-storage";
 
 // C5 — this host console's own identity for co-facilitation presence. The
 // presenceId is per-TAB (sessionStorage, so it survives a refresh but two tabs
@@ -38,7 +39,7 @@ export function usePresence(): {
         sessionStorage.setItem(ID_KEY, id);
       }
       setPresenceId(id);
-      setNameState(localStorage.getItem(NAME_KEY) ?? "");
+      setNameState(getExpiring<string>(NAME_KEY) ?? "");
     } catch {
       // private mode / no storage — fall back to an ephemeral in-memory id.
       setPresenceId((prev) => prev || makeId());
@@ -49,7 +50,7 @@ export function usePresence(): {
     const clean = n.slice(0, 40);
     setNameState(clean);
     try {
-      localStorage.setItem(NAME_KEY, clean);
+      setExpiring(NAME_KEY, clean);
     } catch {
       /* ignore */
     }

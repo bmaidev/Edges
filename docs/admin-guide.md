@@ -15,11 +15,12 @@ There are two ways in, depending on how you arrived:
 - **Someone set one up for you.** They'll send you a **sign-in link** that looks
   like `…/admin#k=XXXX`. Click it once and **bookmark it**. You're in.
 
-> **Your sign-in link is your password.** The code rides in the part of the URL
-> after the `#`, which your browser never sends to any server — so it stays
-> private. Bookmark the link; if you ever lose it, an owner of your workspace can
+> **Your sign-in link is your password.** The code rides after the `#`, so the
+> browser does not include it in the HTTP URL, proxy logs, or referrer. The app
+> reads it locally, removes it from the address bar, and submits it to Edges in an
+> authentication header. Bookmark the original link; if you lose it, an owner can
 > issue a new one (or you can start a fresh workspace). There's nothing to
-> "recover" — keep the bookmark safe and you never think about it again.
+> "recover" — keep the bookmark safe.
 
 Already signed in on this device? `/admin` just opens — no re-entry.
 
@@ -104,7 +105,8 @@ works; the AI buttons simply read "AI unavailable". See
 ## 7. After the session: reports
 
 When the facilitator **archives** a session, its live data is wiped and a
-snapshot is saved. Open the room's **report** panel in `/admin` to see it:
+de-identified handover is saved. It contains no participant handles or verbatim
+responses. Open the room's **report** panel in `/admin` to see it:
 
 - Session name · participants · submission count.
 - If an AI key is configured, an **AI session report**: a short summary, the
@@ -112,8 +114,8 @@ snapshot is saved. Open the room's **report** panel in `/admin` to see it:
   from all of that session's contributions.
 - The facilitator's curated **patterns**.
 
-If no AI key was set when the session was archived, you'll see the data snapshot
-without the AI synthesis.
+If no AI key was set, the report uses aggregate counts and curated patterns. Raw
+responses are still erased and cannot be regenerated after the session ends.
 
 ## Sample room & the 5-minute tour
 
@@ -147,8 +149,10 @@ Privacy notes for the sample:
 
 ## Notes
 
-- **Privacy:** raw submissions are never shown to participants; everything
-  carries a 24-hour TTL; archiving/ending wipes the live data immediately. Full
+- **Privacy:** methods disclose when they intentionally share or rotate a note;
+  hidden facilitator analyses are never shown to participants. Live data carries
+  a 24-hour TTL, and archiving/ending wipes it immediately. Durable reports retain
+  synthesis and actions, not raw responses. Full
   model in [AI features & privacy](ai-and-privacy.md).
 - **Building custom sessions:** facilitators usually pick a
   [template](templates.md), but a workspace owner can compose a bespoke sequence

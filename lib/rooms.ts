@@ -36,6 +36,7 @@ const useKv = Boolean(KV_URL && KV_TOKEN);
 interface DurableBackend {
   get<T>(key: string): Promise<T | null>;
   set<T>(key: string, value: T): Promise<void>;
+  ping(): Promise<boolean>;
   // A4 — atomic claim: write ONLY if the key is absent. Returns true if we won
   // the key. Used to reserve a room slug without a check-then-set TOCTOU race.
   setNX<T>(key: string, value: T): Promise<boolean>;
@@ -52,6 +53,9 @@ if (useKv) {
     },
     async set<T>(key: string, value: T) {
       await client.set(key, value); // no `ex` — durable
+    },
+    async ping() {
+      return (await client.ping()) === "PONG";
     },
     async setNX<T>(key: string, value: T) {
       // @vercel/kv set with NX returns "OK" on a win, null if the key existed.
@@ -71,6 +75,9 @@ if (useKv) {
     },
     async set<T>(key: string, value: T) {
       mem.set(key, value);
+    },
+    async ping() {
+      return true;
     },
     async setNX<T>(key: string, value: T) {
       // Synchronous check-and-set within one microtask → atomic in single-
@@ -93,6 +100,13 @@ if (useKv) {
 // shares ONE instance (and the dev in-memory singleton), never a second backend.
 export function getDb(): DurableBackend {
   return db;
+}
+
+export function durableStorageConfigured(): boolean {
+  return Boolean(
+    (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) ||
+      (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN),
+  );
 }
 
 // ---- Types ----------------------------------------------------------------
@@ -244,7 +258,9 @@ export async function slugAvailable(
 }
 
 function randomPasscode(prefix: string): string {
-  return `${prefix}-${randomBytes(4).toString("hex")}`; // e.g. fac-1a2b3c4d
+  // Bearer capabilities need enough entropy to remain safe even if an edge rate
+  // limiter is misconfigured or a datastore snapshot is exposed.
+  return `${prefix}-${randomBytes(16).toString("hex")}`;
 }
 
 function roomKey(slug: string): string {
@@ -533,9 +549,8 @@ export interface RoomArchive {
   sessionName: string | null;
   sequence: { id: string; label: string; moduleId: string }[];
   patterns: { name: string }[];
-  submissions: { phaseId: string; handle: string; text: string; tag: string | null }[];
-  content: { type: string; title: string; body: string }[];
   participantCount: number;
+  submissionCount: number;
   report?: SessionReport | null; // AI synthesis of the whole session
   // F1 — a random, unguessable token gating the public report page. Minted once
   // when the report is built; lets the facilitator share a read-only link.
@@ -543,13 +558,53 @@ export interface RoomArchive {
   // F2 — the captured action-item register (verbatim), carried into the handover.
   actionItems?: {
     text: string;
+    due?: string;
+    status: "open" | "done";
+  }[];
+  // Legacy-compatible sharing preferences. Durable reports never retain raw
+  // submissions, so quotes/named attribution are forced off by normalization.
+  reportMeta?: import("./report-edit").ReportMeta;
+}
+
+// Archives written before the privacy hardening release contained verbatim
+// submissions and injected content. Keep that shape private to the migration so
+// callers can never accidentally depend on those fields again.
+type LegacyRoomArchive = Omit<RoomArchive, "submissionCount" | "actionItems"> & {
+  submissionCount?: number;
+  submissions?: { phaseId: string; handle: string; text: string; tag: string | null }[];
+  content?: { type: string; title: string; body: string }[];
+  actionItems?: {
+    text: string;
     ownerName?: string;
     due?: string;
     status: "open" | "done";
   }[];
-  // F1 — report sharing preferences (quotes toggle + attribution). Defaults are
-  // off-the-record (no quotes, anonymous) until the facilitator opts in.
-  reportMeta?: import("./report-edit").ReportMeta;
+};
+
+function sanitizeArchive(raw: LegacyRoomArchive): RoomArchive {
+  const {
+    submissions,
+    content: _content,
+    reportMeta: _reportMeta,
+    actionItems,
+    ...safe
+  } = raw;
+  return {
+    ...safe,
+    participantCount: Number(raw.participantCount) || 0,
+    submissionCount:
+      Number(raw.submissionCount) || (Array.isArray(submissions) ? submissions.length : 0),
+    actionItems: Array.isArray(actionItems)
+      ? actionItems.map((item) => ({
+          text: item.text,
+          due: item.due,
+          status: item.status,
+        }))
+      : undefined,
+    // Raw quotes and named attribution are impossible once the source text has
+    // been erased. Preserve the field only for API compatibility.
+    reportMeta: { showQuotes: false, attribution: "anonymous" },
+  };
 }
 
 // Generate a whole-session report from all submissions + curated patterns.
@@ -643,7 +698,9 @@ function buildFallbackReport(
   };
 }
 
-// Compose the durable archive snapshot from the LIVE room state. REUSES an
+// Compose the durable, de-identified archive from LIVE room state. Raw text is
+// used transiently to create the synthesis and is NEVER included in the object
+// written to the durable store. REUSES an
 // existing report rather than re-spending Opus (and never clobbers it) — the
 // report is generated once (by buildReport or the first archive) and carried
 // forward. Falls back to a structural report when AI is unavailable.
@@ -654,7 +711,6 @@ async function composeArchive(slug: string): Promise<RoomArchive | null> {
   const fs = await getFacilitatorState(slug);
   const submissions = fs.submissions.map((s) => ({
     phaseId: s.phaseId,
-    handle: s.handle,
     text: s.text,
     tag: s.tag ?? null,
   }));
@@ -665,7 +721,7 @@ async function composeArchive(slug: string): Promise<RoomArchive | null> {
       (await generateSessionReport(
         room.topic ?? fs.topic ?? "",
         fs.modeName,
-        submissions.map((s) => ({ phaseId: s.phaseId, text: s.text, tag: s.tag })),
+        submissions,
         patternNames,
       )) ?? buildFallbackReport(submissions.length, patternNames);
   }
@@ -676,14 +732,12 @@ async function composeArchive(slug: string): Promise<RoomArchive | null> {
     sessionName: fs.modeName,
     sequence: fs.sequence,
     patterns: patternNames.map((name) => ({ name })),
-    submissions,
-    content: fs.allContent.map((c) => ({ type: c.type, title: c.title, body: c.body })),
     participantCount: fs.participantCount,
+    submissionCount: submissions.length,
     report,
     reportToken: existing?.reportToken ?? randomBytes(16).toString("hex"),
     actionItems: (fs.actionItems ?? []).map((a) => ({
       text: a.text,
-      ownerName: a.ownerName,
       due: a.due,
       status: a.status,
     })),
@@ -725,7 +779,7 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
         lastRun: {
           endedAt: Date.now(),
           participantCount: archive.participantCount,
-          submissionCount: archive.submissions.length,
+          submissionCount: archive.submissionCount,
         },
       });
       // F4 — capture the de-identified evidence record. Best-effort: a metrics
@@ -739,7 +793,15 @@ export async function archiveRoom(slug: string): Promise<RoomArchive | null> {
 }
 
 export async function getArchive(slug: string): Promise<RoomArchive | null> {
-  return db.get<RoomArchive>(archiveKey(slug));
+  const raw = await db.get<LegacyRoomArchive>(archiveKey(slug));
+  if (!raw) return null;
+  const safe = sanitizeArchive(raw);
+  // Opportunistically scrub legacy raw fields the first time an archive is read.
+  const unsafeMeta = raw.reportMeta?.showQuotes || raw.reportMeta?.attribution === "named";
+  const namedActions = raw.actionItems?.some((item) => Boolean(item.ownerName));
+  if ("submissions" in raw || "content" in raw || unsafeMeta || namedActions)
+    await db.set(archiveKey(slug), safe);
+  return safe;
 }
 
 // ---- F4: de-identified SessionMetrics (the evidence layer) -----------------
@@ -832,7 +894,9 @@ export async function editReport(
   return res.ok ? res.value : getArchive(slug);
 }
 
-// F1 — set the report's sharing preferences (quotes toggle + attribution).
+// F1 — retain the legacy endpoint, but enforce the durable privacy boundary:
+// archives contain synthesis only, so verbatim quotes/named attribution cannot
+// be enabled.
 export async function setReportMeta(
   slug: string,
   raw: unknown,
@@ -844,7 +908,10 @@ export async function setReportMeta(
     async () => {
       const archive = await getArchive(slug);
       if (!archive) return null;
-      const next = { ...archive, reportMeta: normalizeReportMeta(raw) };
+      const next = {
+        ...archive,
+        reportMeta: normalizeReportMeta(raw),
+      };
       await db.set(archiveKey(slug), next);
       return next;
     },
@@ -853,9 +920,9 @@ export async function setReportMeta(
   return res.ok ? res.value : getArchive(slug);
 }
 
-// F1 — regenerate the AI report fresh from the archived submissions/patterns,
-// discarding prior edits (an explicit "redo the synthesis"). Preserves the
-// reportToken + reportMeta (sharing link + preferences survive a regenerate).
+// F1 — regenerate only while live raw submissions still exist. Raw text is not
+// retained in the archive, so after End/Archive the existing synthesis remains
+// available for curation but cannot be re-sent to AI.
 export async function regenerateReport(slug: string): Promise<RoomArchive | null> {
   const res = await withLock(
     slug,
@@ -864,10 +931,16 @@ export async function regenerateReport(slug: string): Promise<RoomArchive | null
       const archive = await getArchive(slug);
       if (!archive) return null;
       const room = await getRoom(slug);
+      const fs = await getFacilitatorState(slug);
+      if (fs.submissions.length === 0) return archive;
       const report = await generateSessionReport(
         room?.topic ?? "",
         archive.sessionName,
-        archive.submissions.map((s) => ({ phaseId: s.phaseId, text: s.text, tag: s.tag })),
+        fs.submissions.map((s) => ({
+          phaseId: s.phaseId,
+          text: s.text,
+          tag: s.tag ?? null,
+        })),
         archive.patterns.map((p) => p.name),
       );
       const next = { ...archive, report: report ?? archive.report };
@@ -927,7 +1000,7 @@ export async function renameRoom(
 
     // Move the session state (a built-but-unlaunched draft) + archive + metrics.
     await migrateRoomState(oldSlug, normalized);
-    const archive = await db.get<RoomArchive>(archiveKey(oldSlug));
+    const archive = await getArchive(oldSlug);
     if (archive) {
       await db.set(archiveKey(normalized), { ...archive, slug: normalized });
       await db.del(archiveKey(oldSlug));
@@ -1009,7 +1082,7 @@ async function buildTakeaway(
     // F3 — the host can leave specific action items out of the recap.
     actionItems: (fs.actionItems ?? [])
       .filter((a) => !excluded.has(a.id))
-      .map((a) => ({ text: a.text, ownerName: a.ownerName, due: a.due, status: a.status })),
+      .map((a) => ({ text: a.text, due: a.due, status: a.status })),
     branding:
       t && (t.logoUrl || t.headline) ? { logoUrl: t.logoUrl, headline: t.headline } : undefined,
     // F3 — keep each contribution with its author token so a participant can be

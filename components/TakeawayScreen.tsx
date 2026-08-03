@@ -89,10 +89,9 @@ export function TakeawayScreen({
             {t.actionItems.map((a, i) => (
               <li key={i} className={a.status === "done" ? "text-muted line-through" : ""}>
                 {a.text}
-                {(a.ownerName || a.due) && (
+                {a.due && (
                   <span className="text-muted">
-                    {" — "}
-                    {[a.ownerName, a.due ? `due ${a.due}` : null].filter(Boolean).join(", ")}
+                    {` — due ${a.due}`}
                   </span>
                 )}
               </li>

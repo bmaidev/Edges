@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/rooms";
+import { durableStorageConfigured, getDb } from "@/lib/rooms";
 import { realtimeHealth } from "@/lib/realtime";
+import { readinessStatus } from "@/lib/readiness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,13 +18,18 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   let storage = false;
   try {
-    await getDb().get("__health__");
-    storage = true;
+    storage = await getDb().ping();
   } catch {
     storage = false;
   }
+  const configured = durableStorageConfigured();
+  const readiness = readinessStatus({
+    production: process.env.NODE_ENV === "production",
+    configured,
+    reachable: storage,
+  });
   return NextResponse.json(
-    { ok: true, storage, realtime: realtimeHealth() },
-    { headers: { "Cache-Control": "no-store" } },
+    { ok: readiness.ok, storage, storageConfigured: configured, realtime: realtimeHealth() },
+    { status: readiness.status, headers: { "Cache-Control": "no-store" } },
   );
 }

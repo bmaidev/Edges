@@ -14,7 +14,7 @@ verify your instance.
 | **`ANTHROPIC_API_KEY`** | the AI baseline (modules, synthesis, reports, design help) | Optional |
 | **`EDGES_SECRET_KEY`** | encrypts each workspace's bring-your-own Anthropic key at rest | Optional |
 | **`SIGNUP_OPEN` / `SIGNUP_CODE`** | open self-service workspace sign-up at `/start` | Optional |
-| **`BLOB_READ_WRITE_TOKEN`** | logo **uploads** (otherwise paste a logo URL) | Optional |
+| **`BLOB_READ_WRITE_TOKEN`** | logo and presenter-media uploads | Optional |
 
 `.env.example` in the repo root is the authoritative, annotated list of every
 variable the code reads.
@@ -36,8 +36,8 @@ variable the code reads.
 - **`SIGNUP_OPEN=true`** → anyone can create a workspace at `/start`; else
   **`SIGNUP_CODE=<secret>`** → gated by a shared community code; else **closed**
   (only the super-admin mints workspaces).
-- **`BLOB_READ_WRITE_TOKEN`** — Vercel Blob for logo uploads. Not available off
-  Vercel; use logo-by-URL there.
+- **`BLOB_READ_WRITE_TOKEN`** — Vercel Blob for logo and presenter-media uploads.
+  Not available off Vercel; use logo/media-by-URL there.
 
 ## Deploy on Vercel
 
@@ -68,11 +68,16 @@ URL in the theme panel instead. Everything else works identically.
 
 ## Verify your instance
 
-- **`GET /api/health`** → `{ "ok": true, "storage": true }` — for uptime monitors
-  (public, no secrets).
+- **`GET /api/health/live`** → `{ "ok": true }` — process liveness.
+- **`GET /api/health`** → readiness with `ok`, `storage`, and
+  `storageConfigured`. It returns 503 in production if durable storage is absent
+  or unreachable (public, no secrets).
 - Sign in to **`/admin`** as the super-admin → the **Instance setup** panel shows
   a green/grey checklist (datastore, super-admin, AI baseline, BYO-key encryption,
   logo uploads, signup mode) with a hint for anything not yet enabled.
+
+Use the [production operations runbook](operations.md) for monitoring, retention,
+capacity validation, release gates, recovery, and incident response.
 
 ## Running a community instance
 

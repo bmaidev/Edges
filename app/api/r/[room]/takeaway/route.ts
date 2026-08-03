@@ -9,10 +9,11 @@ export const dynamic = "force-dynamic";
 // the 24h TTL). Token is room-scoped: a token from room A can't read room B.
 export async function GET(
   req: NextRequest,
-  { params }: { params: { room: string } },
+  { params }: { params: Promise<{ room: string }> },
 ) {
+  const { room } = await params;
   const token = req.nextUrl.searchParams.get("k") ?? "";
-  const snapshot = await getTakeaway(params.room, token);
+  const snapshot = await getTakeaway(room, token);
   if (!snapshot)
     return NextResponse.json(
       { error: "This recap has expired or doesn't exist." },

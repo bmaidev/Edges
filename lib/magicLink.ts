@@ -1,6 +1,6 @@
 // Magic-link helpers (A2). A "link" carries a room control credential in the URL
-// FRAGMENT (`#k=…`) so the token never reaches a server log or the Referer
-// header. The client reads it once on mount and scrubs it from the address bar.
+// FRAGMENT (`#k=…`) so it never appears in the HTTP URL, server/proxy logs, or the
+// Referer header. The client reads it once, scrubs it, then authenticates by header.
 // No server imports here — safe in the client bundle.
 
 export type LinkRole = "facilitator" | "cohost" | "projector" | "join";
@@ -31,8 +31,8 @@ export function tokenKey(slug: string): string {
 }
 
 // Phase B — a workspace's bookmarkable sign-in link for the admin portal. The
-// admin/workspace code rides the URL FRAGMENT (never sent to a server, scrubbed
-// on arrival), exactly like a room link — so it never leaks via the query string.
+// admin/workspace code rides the URL FRAGMENT (not the HTTP URL, scrubbed on
+// arrival), exactly like a room link — so it never leaks via the query string.
 // `bootToken("admin")` / `clearToken("admin")` namespace the remembered token.
 export function adminMagicLink(origin: string, code: string): string {
   return `${origin}/admin#k=${encodeURIComponent(code)}`;

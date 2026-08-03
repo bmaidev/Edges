@@ -21,8 +21,13 @@ import {
 } from "lucide-react";
 import { Button as UiButton } from "@/components/ui/button";
 import { bootToken } from "@/lib/magicLink";
+import { authFetch } from "@/lib/client-auth";
 import { SERVER_MODULES } from "@/lib/modules/registry.server";
-import { PaletteChip, PlacedPhaseCard, SourceField } from "@/components/ModuleCard";
+import {
+  PaletteChip,
+  PlacedPhaseCard,
+  SourceField,
+} from "@/components/ModuleCard";
 import { TEMPLATES } from "@/lib/templates";
 // H2 — single source of truth, shared with the pre-flight engine so the builder's
 // validation and the readiness check can never drift.
@@ -120,7 +125,6 @@ interface FieldInfo {
   enums?: string[];
 }
 
-
 function describeField(key: string, zt: any): FieldInfo {
   const optional = isOptional(zt);
   // sourcePhaseId is a plain string in the schema, but semantically a link to
@@ -130,13 +134,17 @@ function describeField(key: string, zt: any): FieldInfo {
     const inner = unwrap(zt);
     if (inner instanceof z.ZodEnum)
       return { key, kind: "enum", optional, enums: enumValues(inner) ?? [] };
-    if (inner instanceof z.ZodBoolean) return { key, kind: "boolean", optional };
+    if (inner instanceof z.ZodBoolean)
+      return { key, kind: "boolean", optional };
     if (inner instanceof z.ZodNumber) return { key, kind: "number", optional };
     if (inner instanceof z.ZodString)
       return { key, kind: LONG_TEXT.test(key) ? "textarea" : "text", optional };
     if (inner instanceof z.ZodArray) {
-      const el = unwrap(inner._def?.type ?? inner._def?.element ?? inner.element);
-      if (el instanceof z.ZodString) return { key, kind: "stringList", optional };
+      const el = unwrap(
+        inner._def?.type ?? inner._def?.element ?? inner.element,
+      );
+      if (el instanceof z.ZodString)
+        return { key, kind: "stringList", optional };
       if (el instanceof z.ZodEnum)
         return { key, kind: "enumList", optional, enums: enumValues(el) ?? [] };
     }
@@ -212,7 +220,11 @@ function AutoForm({
   onChange: (next: Record<string, unknown>) => void;
   // B6 — carries each earlier phase's config so the source field can quote its
   // real prompt ("Reads what the room wrote in '…'").
-  earlierPhases: { id: string; moduleId: ModuleKind; config: Record<string, unknown> }[];
+  earlierPhases: {
+    id: string;
+    moduleId: ModuleKind;
+    config: Record<string, unknown>;
+  }[];
 }) {
   const fields = schemaFields(moduleId);
   if (!fields) {
@@ -231,7 +243,9 @@ function AutoForm({
     onChange(next);
   }
 
-  const unsupported = fields.filter((f) => f.kind === "unsupported").map((f) => f.key);
+  const unsupported = fields
+    .filter((f) => f.kind === "unsupported")
+    .map((f) => f.key);
 
   return (
     <div className="flex flex-col gap-3">
@@ -267,9 +281,16 @@ function AutoForm({
                 <FieldRow key={f.key} label={label} optional={f.optional}>
                   <input
                     type="number"
-                    value={val === undefined || val === null ? "" : (val as number)}
+                    value={
+                      val === undefined || val === null ? "" : (val as number)
+                    }
                     onChange={(e) =>
-                      set(f.key, e.target.value === "" ? undefined : Number(e.target.value))
+                      set(
+                        f.key,
+                        e.target.value === ""
+                          ? undefined
+                          : Number(e.target.value),
+                      )
                     }
                     className={inputCls}
                   />
@@ -277,7 +298,10 @@ function AutoForm({
               );
             case "boolean":
               return (
-                <label key={f.key} className="flex items-center gap-2 text-sm text-white/80">
+                <label
+                  key={f.key}
+                  className="flex items-center gap-2 text-sm text-white/80"
+                >
                   <input
                     type="checkbox"
                     checked={Boolean(val)}
@@ -338,7 +362,11 @@ function AutoForm({
             case "stringList": {
               const arr = Array.isArray(val) ? (val as string[]) : [];
               return (
-                <FieldRow key={f.key} label={`${label} (one per line)`} optional={f.optional}>
+                <FieldRow
+                  key={f.key}
+                  label={`${label} (one per line)`}
+                  optional={f.optional}
+                >
                   <textarea
                     value={arr.join("\n")}
                     onChange={(e) =>
@@ -420,7 +448,13 @@ function AdvancedJson({
 // Admin session builder: compose a custom phase sequence from any module, edit
 // each phase's config, and launch it into the room. Requires the admin tier
 // (server gates setPhases behind the "configure" capability).
-export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string }) {
+export function BuilderApp({
+  apiBase,
+  slug,
+}: {
+  apiBase: string;
+  slug: string;
+}) {
   const [code, setCode] = useState("");
   const [hasToken, setHasToken] = useState(false);
   const [name, setName] = useState("Custom session");
@@ -459,12 +493,14 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
     if (blueprintLoaded.current || !code.trim()) return;
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `${apiBase}/blueprint?code=${encodeURIComponent(code)}`,
-        );
+        const res = await authFetch(`${apiBase}/blueprint`, code);
         if (!res.ok) return; // wrong/partial code — retry when it changes
         const d = (await res.json()) as {
-          blueprint: { name?: string; phases?: PhaseInstance[]; savedAt?: number | null } | null;
+          blueprint: {
+            name?: string;
+            phases?: PhaseInstance[];
+            savedAt?: number | null;
+          } | null;
           source?: "blueprint" | "live" | null;
         };
         blueprintLoaded.current = true; // valid code answered — don't re-fetch
@@ -498,13 +534,23 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   // B1 — shared hover/selection across the arc and the phase cards (index-keyed,
   // because builder phase ids aren't unique).
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [aiBusy, setAiBusy] = useState<null | "suggest" | "critique" | "revise">(null);
+  const [aiBusy, setAiBusy] = useState<
+    null | "suggest" | "critique" | "revise"
+  >(null);
   const [rationale, setRationale] = useState<string | null>(null);
-  const [critique, setCritique] = useState<{ strengths: string[]; issues: string[] } | null>(null);
+  const [critique, setCritique] = useState<{
+    strengths: string[];
+    issues: string[];
+  } | null>(null);
   // B7 — AI design partner: transform the CURRENT design by a free-text instruction.
   const [refineText, setRefineText] = useState("");
   const [preTransform, setPreTransform] = useState<BuilderPhase[] | null>(null);
-  const [tally, setTally] = useState<{ bN: number; bM: number; aN: number; aM: number } | null>(null);
+  const [tally, setTally] = useState<{
+    bN: number;
+    bM: number;
+    aN: number;
+    aM: number;
+  } | null>(null);
 
   const phaseIds = useMemo(() => phases.map((p) => p.id), [phases]);
 
@@ -526,11 +572,21 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
 
   // Current phases for the AI endpoints (config is already an object).
   function parsedPhases() {
-    return phases.map((p) => ({ id: p.id, moduleId: p.moduleId, config: p.config }));
+    return phases.map((p) => ({
+      id: p.id,
+      moduleId: p.moduleId,
+      config: p.config,
+    }));
   }
 
-  const totalMinutes = (ps: { moduleId: ModuleKind; config: Record<string, unknown> }[]) =>
-    ps.reduce((sum, p) => sum + phaseMinutes({ moduleId: p.moduleId, config: p.config }).minutes, 0);
+  const totalMinutes = (
+    ps: { moduleId: ModuleKind; config: Record<string, unknown> }[],
+  ) =>
+    ps.reduce(
+      (sum, p) =>
+        sum + phaseMinutes({ moduleId: p.moduleId, config: p.config }).minutes,
+      0,
+    );
 
   // B7 — transform the current design by an instruction (a preset chip or free
   // text). Reuses the existing reviseSession AI command (which validates every
@@ -539,25 +595,40 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   async function transform(instruction: string) {
     if (!instruction.trim() || phases.length === 0) return;
     if (!code.trim()) {
-      setMsg("Enter your admin or facilitator passcode above first — the AI tools need it.");
+      setMsg(
+        "Enter your admin or facilitator passcode above first — the AI tools need it.",
+      );
       return;
     }
     setAiBusy("revise");
     setMsg(null);
     const snapshot = phases;
-    const before = { n: snapshot.length, m: Math.round(totalMinutes(snapshot)) };
+    const before = {
+      n: snapshot.length,
+      m: Math.round(totalMinutes(snapshot)),
+    };
     try {
       const res = await fetch(`${apiBase}/host`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: "reviseSession", phases: parsedPhases(), goal: instruction, code }),
+        body: JSON.stringify({
+          command: "reviseSession",
+          phases: parsedPhases(),
+          goal: instruction,
+          code,
+        }),
       });
       const d = await res.json();
       if (res.ok && d.suggestion) {
         setPreTransform(snapshot);
         loadSuggestion(d.suggestion);
         const after = d.suggestion.phases ?? [];
-        setTally({ bN: before.n, bM: before.m, aN: after.length, aM: Math.round(totalMinutes(after)) });
+        setTally({
+          bN: before.n,
+          bM: before.m,
+          aN: after.length,
+          aM: Math.round(totalMinutes(after)),
+        });
         setRefineText("");
       } else {
         setMsg(d.error ?? "Couldn't transform the design.");
@@ -580,7 +651,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   async function suggest() {
     if (!goal.trim()) return;
     if (!code.trim()) {
-      setMsg("Enter your admin or facilitator passcode above first — the AI design tools need it.");
+      setMsg(
+        "Enter your admin or facilitator passcode above first — the AI design tools need it.",
+      );
       return;
     }
     setAiBusy("suggest");
@@ -599,7 +672,11 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       });
       const d = await res.json();
       if (res.ok && d.suggestion) loadSuggestion(d.suggestion);
-      else setMsg(d.error ?? "Couldn't suggest a session (admin/facilitator code + AI key needed).");
+      else
+        setMsg(
+          d.error ??
+            "Couldn't suggest a session (admin/facilitator code + AI key needed).",
+        );
     } catch {
       setMsg("Network error.");
     } finally {
@@ -639,7 +716,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   async function runCritique() {
     if (phases.length === 0) return;
     if (!code.trim()) {
-      setMsg("Enter your admin or facilitator passcode above first — the AI design tools need it.");
+      setMsg(
+        "Enter your admin or facilitator passcode above first — the AI design tools need it.",
+      );
       return;
     }
     setAiBusy("critique");
@@ -649,7 +728,11 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       const res = await fetch(`${apiBase}/host`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: "critiqueSession", phases: parsedPhases(), code }),
+        body: JSON.stringify({
+          command: "critiqueSession",
+          phases: parsedPhases(),
+          code,
+        }),
       });
       const d = await res.json();
       if (res.ok && d.critique) setCritique(d.critique);
@@ -691,12 +774,17 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
 
   // B4 — the user-template library (global + this room's room-scoped designs).
   const [userDesigns, setUserDesigns] = useState<
-    { id: string; name: string; phaseCount: number; scope?: "global" | "room" }[]
+    {
+      id: string;
+      name: string;
+      phaseCount: number;
+      scope?: "global" | "room";
+    }[]
   >([]);
   const loadDesigns = useCallback(async () => {
     if (!code.trim()) return;
     try {
-      const res = await fetch(`${apiBase}/designs?code=${encodeURIComponent(code)}`);
+      const res = await authFetch(`${apiBase}/designs`, code);
       if (res.ok) setUserDesigns((await res.json()).designs ?? []);
     } catch {
       /* the launch path is the real gate */
@@ -727,7 +815,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
       }),
     });
     if (res.ok) {
-      setMsg(`Saved “${nm}” to ${shared ? "the shared library" : "this room"}.`);
+      setMsg(
+        `Saved “${nm}” to ${shared ? "the shared library" : "this room"}.`,
+      );
       loadDesigns();
     } else {
       const d = await res.json().catch(() => ({}));
@@ -736,17 +826,26 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   }
 
   async function editDesign(id: string) {
-    const res = await fetch(`${apiBase}/designs?code=${encodeURIComponent(code)}&id=${id}`);
+    const res = await authFetch(
+      `${apiBase}/designs?id=${encodeURIComponent(id)}`,
+      code,
+    );
     if (!res.ok) return;
     const { design } = await res.json();
     if (!design) return;
     setName(design.name);
     setPhases(
-      design.phases.map((p: { id: string; moduleId: ModuleKind; config: Record<string, unknown> }) => ({
-        id: p.id,
-        moduleId: p.moduleId,
-        config: { ...p.config },
-      })),
+      design.phases.map(
+        (p: {
+          id: string;
+          moduleId: ModuleKind;
+          config: Record<string, unknown>;
+        }) => ({
+          id: p.id,
+          moduleId: p.moduleId,
+          config: { ...p.config },
+        }),
+      ),
     );
   }
 
@@ -766,7 +865,12 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
     const res = await fetch(`${apiBase}/host`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: "exportDesign", id, code, origin: name || undefined }),
+      body: JSON.stringify({
+        command: "exportDesign",
+        id,
+        code,
+        origin: name || undefined,
+      }),
     });
     const d = await res.json().catch(() => ({}));
     if (!d.code) {
@@ -784,14 +888,22 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   // B4 — duplicate a saved design: load it, then save a fresh copy. Re-uses the
   // validated phases the library already holds (saveDesign re-validates anyway).
   async function duplicateDesign(id: string) {
-    const got = await fetch(`${apiBase}/designs?code=${encodeURIComponent(code)}&id=${id}`);
+    const got = await authFetch(
+      `${apiBase}/designs?id=${encodeURIComponent(id)}`,
+      code,
+    );
     if (!got.ok) return;
     const { design } = await got.json();
     if (!design) return;
     const res = await fetch(`${apiBase}/host`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: "saveDesign", name: `${design.name} (copy)`.slice(0, 80), phases: design.phases, code }),
+      body: JSON.stringify({
+        command: "saveDesign",
+        name: `${design.name} (copy)`.slice(0, 80),
+        phases: design.phases,
+        code,
+      }),
     });
     if (res.ok) {
       setMsg(`Duplicated “${design.name}”.`);
@@ -803,7 +915,11 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   }
 
   function exportDesign() {
-    const json = JSON.stringify({ version: 1, name, phases: parsedPhases() }, null, 2);
+    const json = JSON.stringify(
+      { version: 1, name, phases: parsedPhases() },
+      null,
+      2,
+    );
     navigator.clipboard?.writeText(json).then(
       () => setMsg("Copied this design as JSON — paste it anywhere to share."),
       () => setMsg("Couldn't copy to the clipboard."),
@@ -811,16 +927,26 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
   }
 
   function importDesign() {
-    const raw = window.prompt("Paste a design JSON to load it into the builder:");
+    const raw = window.prompt(
+      "Paste a design JSON to load it into the builder:",
+    );
     if (!raw) return;
     try {
       const d = JSON.parse(raw) as { name?: string; phases?: unknown };
       if (!Array.isArray(d.phases)) throw new Error("no phases");
       if (typeof d.name === "string") setName(d.name);
       setPhases(
-        (d.phases as { id?: string; moduleId: ModuleKind; config?: Record<string, unknown> }[]).map(
-          (p, i) => ({ id: p.id ?? `p${i + 1}`, moduleId: p.moduleId, config: { ...(p.config ?? {}) } }),
-        ),
+        (
+          d.phases as {
+            id?: string;
+            moduleId: ModuleKind;
+            config?: Record<string, unknown>;
+          }[]
+        ).map((p, i) => ({
+          id: p.id ?? `p${i + 1}`,
+          moduleId: p.moduleId,
+          config: { ...(p.config ?? {}) },
+        })),
       );
       setMsg("Imported — review the phases, then launch (it'll be validated).");
     } catch {
@@ -841,19 +967,34 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
     setPhases(phases.map((p, idx) => (idx === i ? { ...p, config } : p)));
   }
   function toggleAdvanced(i: number) {
-    setPhases(phases.map((p, idx) => (idx === i ? { ...p, advanced: !p.advanced } : p)));
+    setPhases(
+      phases.map((p, idx) => (idx === i ? { ...p, advanced: !p.advanced } : p)),
+    );
   }
   function togglePreview(i: number) {
-    setPhases(phases.map((p, idx) => (idx === i ? { ...p, previewOpen: !p.previewOpen } : p)));
+    setPhases(
+      phases.map((p, idx) =>
+        idx === i ? { ...p, previewOpen: !p.previewOpen } : p,
+      ),
+    );
   }
 
   async function launch() {
     setMsg(null);
-    const parsed = phases.map((p) => ({ id: p.id, moduleId: p.moduleId, config: p.config }));
+    const parsed = phases.map((p) => ({
+      id: p.id,
+      moduleId: p.moduleId,
+      config: p.config,
+    }));
     const res = await fetch(`${apiBase}/host`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: "setPhases", phases: parsed, sessionName: name, code }),
+      body: JSON.stringify({
+        command: "setPhases",
+        phases: parsed,
+        sessionName: name,
+        code,
+      }),
     });
     if (res.ok) {
       setLaunched(true);
@@ -901,7 +1042,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           onClose={() => setRehearsing(false)}
         />
       )}
-      <h1 className="font-display text-2xl font-semibold tracking-tight">Session builder · {slug}</h1>
+      <h1 className="font-display text-2xl font-semibold tracking-tight">
+        Session builder · {slug}
+      </h1>
       <p className="mt-1 text-sm text-muted">
         {editingSaved
           ? "Editing this room's saved build — change any phase, then save. Re-launching updates the live room."
@@ -940,7 +1083,7 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
         )}
       </div>
 
-      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
+      <h2 className="mb-2 mt-8 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
         Design with AI
       </h2>
       <div className="mt-2 flex flex-col gap-2 rounded-xl border border-dashed border-accent/50 bg-accent/5 p-3">
@@ -962,7 +1105,9 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
             placeholder="e.g. 60"
             className="w-24 rounded border border-border bg-bg px-2 py-1 text-sm focus:border-accent focus:outline-none"
           />
-          <span>sizes the agenda — fewer, deeper phases for the time you have.</span>
+          <span>
+            sizes the agenda — fewer, deeper phases for the time you have.
+          </span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <UiButton
@@ -970,24 +1115,30 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
             onClick={suggest}
             disabled={aiBusy !== null || !goal.trim() || !code.trim()}
           >
-            <Sparkles /> {aiBusy === "suggest" ? "Designing…" : "Suggest a session"}
+            <Sparkles />{" "}
+            {aiBusy === "suggest" ? "Designing…" : "Suggest a session"}
           </UiButton>
           <UiButton
             variant="secondary"
             onClick={runCritique}
             disabled={aiBusy !== null || phases.length === 0 || !code.trim()}
           >
-            <Search /> {aiBusy === "critique" ? "Reviewing…" : "Critique this design"}
+            <Search />{" "}
+            {aiBusy === "critique" ? "Reviewing…" : "Critique this design"}
           </UiButton>
           {!code.trim() && (
-            <span className="text-xs text-muted">Enter your passcode above to enable AI design.</span>
+            <span className="text-xs text-muted">
+              Enter your passcode above to enable AI design.
+            </span>
           )}
         </div>
 
         {/* B7 — transform the design in hand (distinct from generating from scratch). */}
         {phases.length > 0 && (
           <div className="mt-1 flex flex-col gap-2 rounded-lg border border-border bg-bg/40 p-3">
-            <span className="text-xs font-medium text-white/80">Refine this design with AI</span>
+            <span className="text-xs font-medium text-white/80">
+              Refine this design with AI
+            </span>
             <div className="flex flex-wrap gap-1.5">
               {/* B1 — a targeted one-tap that appears only when the design runs over
                   the stated budget: trim to fit the actual number, not a guess. */}
@@ -1008,9 +1159,21 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                   </button>
                 )}
               {[
-                { label: "Make it shorter", instr: "Make this session about 20 minutes shorter — trim or merge phases, keep the essential arc." },
-                { label: "Add a warm-up", instr: "Add a short warm-up / opener near the start to settle the room." },
-                { label: "More interactive", instr: "Make this more interactive — replace passive phases with participatory ones where it fits." },
+                {
+                  label: "Make it shorter",
+                  instr:
+                    "Make this session about 20 minutes shorter — trim or merge phases, keep the essential arc.",
+                },
+                {
+                  label: "Add a warm-up",
+                  instr:
+                    "Add a short warm-up / opener near the start to settle the room.",
+                },
+                {
+                  label: "More interactive",
+                  instr:
+                    "Make this more interactive — replace passive phases with participatory ones where it fits.",
+                },
               ].map((c) => (
                 <button
                   key={c.label}
@@ -1043,9 +1206,16 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
             {tally && (
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-muted">
-                  {tally.bN} phases (~{tally.bM}m) → <span className="text-accent">{tally.aN} phases (~{tally.aM}m)</span>. Review below, then launch.
+                  {tally.bN} phases (~{tally.bM}m) →{" "}
+                  <span className="text-accent">
+                    {tally.aN} phases (~{tally.aM}m)
+                  </span>
+                  . Review below, then launch.
                 </span>
-                <button onClick={undoTransform} className="text-muted underline hover:text-white">
+                <button
+                  onClick={undoTransform}
+                  className="text-muted underline hover:text-white"
+                >
                   Undo
                 </button>
               </div>
@@ -1063,17 +1233,27 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
               <div>
                 <span className="text-accent">Strengths:</span>
                 <ul className="ml-4 list-disc text-muted">
-                  {critique.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                  {critique.strengths.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
                 </ul>
               </div>
             )}
             <div>
-              <span className={critique.issues.length ? "text-[#ff8a8a]" : "text-accent"}>
-                {critique.issues.length ? "Issues to consider:" : "No issues flagged."}
+              <span
+                className={
+                  critique.issues.length ? "text-[#ff8a8a]" : "text-accent"
+                }
+              >
+                {critique.issues.length
+                  ? "Issues to consider:"
+                  : "No issues flagged."}
               </span>
               {critique.issues.length > 0 && (
                 <ul className="ml-4 list-disc text-muted">
-                  {critique.issues.map((s, i) => <li key={i}>{s}</li>)}
+                  {critique.issues.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -1085,122 +1265,180 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                 disabled={aiBusy !== null}
                 className="mt-1 self-start"
               >
-                <Sparkles /> {aiBusy === "revise" ? "Revising…" : "Apply AI fixes"}
+                <Sparkles />{" "}
+                {aiBusy === "revise" ? "Revising…" : "Apply AI fixes"}
               </UiButton>
             )}
           </div>
         )}
       </div>
 
-      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
-        Start from a template
-      </h2>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {TEMPLATES.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => loadTemplate(t.id)}
-            title={t.description}
-            className="rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-xs hover:border-accent"
-          >
-            {t.name}
-          </button>
-        ))}
-      </div>
+      <details
+        className="group mt-6 rounded-xl border border-border bg-surface/35 p-4"
+        open={phases.length === 0 ? true : undefined}
+      >
+        <summary className="cursor-pointer list-none marker:hidden">
+          <span className="flex items-center justify-between gap-3">
+            <span>
+              <span className="block text-sm font-semibold">
+                Templates & sharing
+              </span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Start over from a proven method, or save and exchange this
+                design.
+              </span>
+            </span>
+            <span className="text-xs text-accent group-open:hidden">Open</span>
+            <span className="hidden text-xs text-accent group-open:inline">
+              Close
+            </span>
+          </span>
+        </summary>
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
+            Start from a template
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => loadTemplate(t.id)}
+                title={t.description}
+                className="rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-xs hover:border-accent"
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
 
-      {/* B4 — the shared library of designs you've saved + share via JSON. */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <UiButton
-          variant="secondary"
-          size="sm"
-          onClick={saveAsTemplate}
-          disabled={phases.length === 0}
-        >
-          <Star /> Save as template
-        </UiButton>
-        <UiButton
-          variant="secondary"
-          size="sm"
-          onClick={exportDesign}
-          disabled={phases.length === 0}
-        >
-          <Download /> Export JSON
-        </UiButton>
-        <UiButton variant="secondary" size="sm" onClick={importDesign}>
-          <Upload /> Import JSON
-        </UiButton>
-      </div>
-      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
-        Your templates
-      </h2>
-      <div className="mt-2 flex flex-col gap-1.5">
-        {userDesigns.map((d) => (
-          <div key={d.id} className="flex items-center gap-2 text-xs">
-            <button
-              onClick={() => editDesign(d.id)}
-              className="flex-1 rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-left hover:border-accent"
-            >
-              {d.name}{" "}
-              <span className="text-muted">· {d.phaseCount} phase{d.phaseCount === 1 ? "" : "s"}</span>
-              {d.scope === "room" && <span className="text-muted/60"> · this room</span>}
-            </button>
-            {/* B4 — share / duplicate / delete a saved design. */}
+          {/* B4 — the shared library of designs you've saved + share via JSON. */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <UiButton
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={() => shareDesign(d.id, d.name)}
-              title="Copy a shareable code"
+              variant="secondary"
+              size="sm"
+              onClick={saveAsTemplate}
+              disabled={phases.length === 0}
             >
-              <Share2 className="!size-3.5" />
+              <Star /> Save as template
             </UiButton>
             <UiButton
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={() => duplicateDesign(d.id)}
-              title="Duplicate (admin only)"
+              variant="secondary"
+              size="sm"
+              onClick={exportDesign}
+              disabled={phases.length === 0}
             >
-              <Copy className="!size-3.5" />
+              <Download /> Export JSON
             </UiButton>
-            <UiButton
-              variant="ghost"
-              size="icon"
-              className="size-7 text-[#ff8a8a] hover:bg-[#ff6b6b]/10 hover:text-[#ff9a9a]"
-              onClick={() => removeDesign(d.id)}
-              title="Delete (admin only)"
-            >
-              <Trash2 className="!size-3.5" />
+            <UiButton variant="secondary" size="sm" onClick={importDesign}>
+              <Upload /> Import JSON
             </UiButton>
           </div>
-        ))}
-      </div>
-      {/* B4 — import a design someone shared with you. */}
-      <ShareImportPanel apiBase={apiBase} code={code} onImported={(nm) => { setMsg(`Imported “${nm}”.`); loadDesigns(); }} />
+          <p className="mt-6 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
+            Your templates
+          </p>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {userDesigns.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 text-xs">
+                <button
+                  onClick={() => editDesign(d.id)}
+                  className="flex-1 rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-left hover:border-accent"
+                >
+                  {d.name}{" "}
+                  <span className="text-muted">
+                    · {d.phaseCount} phase{d.phaseCount === 1 ? "" : "s"}
+                  </span>
+                  {d.scope === "room" && (
+                    <span className="text-muted/60"> · this room</span>
+                  )}
+                </button>
+                {/* B4 — share / duplicate / delete a saved design. */}
+                <UiButton
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => shareDesign(d.id, d.name)}
+                  title="Copy a shareable code"
+                >
+                  <Share2 className="!size-3.5" />
+                </UiButton>
+                <UiButton
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => duplicateDesign(d.id)}
+                  title="Duplicate (admin only)"
+                >
+                  <Copy className="!size-3.5" />
+                </UiButton>
+                <UiButton
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-[#ff8a8a] hover:bg-[#ff6b6b]/10 hover:text-[#ff9a9a]"
+                  onClick={() => removeDesign(d.id)}
+                  title="Delete (admin only)"
+                >
+                  <Trash2 className="!size-3.5" />
+                </UiButton>
+              </div>
+            ))}
+          </div>
+          {/* B4 — import a design someone shared with you. */}
+          <ShareImportPanel
+            apiBase={apiBase}
+            code={code}
+            onImported={(nm) => {
+              setMsg(`Imported “${nm}”.`);
+              loadDesigns();
+            }}
+          />
+        </div>
+      </details>
 
-      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
-        Add a module
-      </h2>
-      <div className="mt-2 flex flex-col gap-3">
-        {CATEGORIES.map((cat) => (
-          <div key={cat.label}>
-            <p className="mb-1 text-xs text-muted">{cat.label}</p>
-            <div className="flex flex-wrap gap-2">
-              {cat.kinds
-                .filter((k) => SERVER_MODULES[k])
-                .map((k) => (
-                  <PaletteChip key={k} moduleId={k} onAdd={() => add(k)} />
-                ))}
+      <details
+        className="group mt-3 rounded-xl border border-border bg-surface/35 p-4"
+        open={phases.length === 0 ? true : undefined}
+      >
+        <summary className="cursor-pointer list-none marker:hidden">
+          <span className="flex items-center justify-between gap-3">
+            <span>
+              <span className="block text-sm font-semibold">
+                Add an activity
+              </span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Browse the full module library by facilitation purpose.
+              </span>
+            </span>
+            <span className="text-xs text-accent group-open:hidden">
+              Browse
+            </span>
+            <span className="hidden text-xs text-accent group-open:inline">
+              Close
+            </span>
+          </span>
+        </summary>
+        <div className="mt-4 flex flex-col gap-4 border-t border-border pt-4">
+          {CATEGORIES.map((cat) => (
+            <div key={cat.label}>
+              <p className="mb-1 text-xs font-medium text-muted">{cat.label}</p>
+              <div className="flex flex-wrap gap-2">
+                {cat.kinds
+                  .filter((k) => SERVER_MODULES[k])
+                  .map((k) => (
+                    <PaletteChip key={k} moduleId={k} onAdd={() => add(k)} />
+                  ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </details>
 
-      <h2 className="mt-8 mb-2 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
+      <h2 className="mb-2 mt-8 border-b border-border/60 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">
         Sequence ({phases.length})
       </h2>
       {phases.length === 0 ? (
-        <p className="mt-2 text-sm text-muted">Add modules above to build the flow.</p>
+        <p className="mt-2 text-sm text-muted">
+          Add modules above to build the flow.
+        </p>
       ) : (
         <div className="mt-2 flex flex-col gap-3">
           <AgendaArc
@@ -1212,9 +1450,16 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
           {phases.map((p, i) => {
             const mod = SERVER_MODULES[p.moduleId];
             const valid = validateConfig(p.moduleId, p.config);
-            const earlierPhases = phases.slice(0, i).map((q) => ({ id: q.id, moduleId: q.moduleId, config: q.config }));
+            const earlierPhases = phases.slice(0, i).map((q) => ({
+              id: q.id,
+              moduleId: q.moduleId,
+              config: q.config,
+            }));
             const stage = phaseStage(p.moduleId);
-            const mins = phaseMinutes({ moduleId: p.moduleId, config: p.config });
+            const mins = phaseMinutes({
+              moduleId: p.moduleId,
+              config: p.config,
+            });
             const timed = acceptsTimerEdit(p.moduleId);
             return (
               <div
@@ -1289,156 +1534,213 @@ export function BuilderApp({ apiBase, slug }: { apiBase: string; slug: string })
                 </div>
                 <PlacedPhaseCard moduleId={p.moduleId} />
 
-                <div className="mt-3">
-                  {p.advanced ? (
-                    <AdvancedJson config={p.config} onChange={(c) => setConfig(i, c)} />
-                  ) : (
-                    <AutoForm
-                      moduleId={p.moduleId}
-                      config={p.config}
-                      onChange={(c) => setConfig(i, c)}
-                      earlierPhases={earlierPhases}
-                    />
-                  )}
-                </div>
+                <details
+                  className="group mt-3 rounded-lg border border-border bg-bg/25"
+                  open={phases.length <= 2 ? true : undefined}
+                >
+                  <summary className="cursor-pointer list-none px-3 py-2.5 text-sm marker:hidden">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="font-medium">Edit phase settings</span>
+                      <span className="text-xs text-accent group-open:hidden">
+                        Open
+                      </span>
+                      <span className="hidden text-xs text-accent group-open:inline">
+                        Close
+                      </span>
+                    </span>
+                  </summary>
+                  <div className="border-t border-border p-3">
+                    <div>
+                      {p.advanced ? (
+                        <AdvancedJson
+                          config={p.config}
+                          onChange={(c) => setConfig(i, c)}
+                        />
+                      ) : (
+                        <AutoForm
+                          moduleId={p.moduleId}
+                          config={p.config}
+                          onChange={(c) => setConfig(i, c)}
+                          earlierPhases={earlierPhases}
+                        />
+                      )}
+                    </div>
 
-                {/* D1 — an optional instruction line the room sees this phase. */}
-                <label className="mt-2 flex flex-col gap-1 text-xs">
-                  <span className="text-muted">Instruction shown to the room (optional)</span>
-                  <input
-                    value={(p.config.instruction as string) ?? ""}
-                    onChange={(e) =>
-                      setConfig(i, { ...p.config, instruction: e.target.value || undefined })
-                    }
-                    placeholder="e.g. Add one idea per card — no wrong answers."
-                    maxLength={200}
-                    className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                  />
-                </label>
+                    {/* D1 — an optional instruction line the room sees this phase. */}
+                    <label className="mt-2 flex flex-col gap-1 text-xs">
+                      <span className="text-muted">
+                        Instruction shown to the room (optional)
+                      </span>
+                      <input
+                        value={(p.config.instruction as string) ?? ""}
+                        onChange={(e) =>
+                          setConfig(i, {
+                            ...p.config,
+                            instruction: e.target.value || undefined,
+                          })
+                        }
+                        placeholder="e.g. Add one idea per card — no wrong answers."
+                        maxLength={200}
+                        className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                      />
+                    </label>
 
-                {/* C1 — a private script line for the facilitate cockpit. Never
+                    {/* C1 — a private script line for the facilitate cockpit. Never
                     leaves the host (stripped for participant/projector). */}
-                <label className="mt-2 flex flex-col gap-1 text-xs">
-                  <span className="text-muted">
-                    Your script note for this phase (only you see it, in the cockpit)
-                  </span>
-                  <input
-                    value={(p.config.scriptNote as string) ?? ""}
-                    onChange={(e) =>
-                      setConfig(i, { ...p.config, scriptNote: e.target.value || undefined })
-                    }
-                    placeholder="e.g. Remind them this is silent — read the room before advancing."
-                    maxLength={240}
-                    className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                  />
-                </label>
+                    <label className="mt-2 flex flex-col gap-1 text-xs">
+                      <span className="text-muted">
+                        Your script note for this phase (only you see it, in the
+                        cockpit)
+                      </span>
+                      <input
+                        value={(p.config.scriptNote as string) ?? ""}
+                        onChange={(e) =>
+                          setConfig(i, {
+                            ...p.config,
+                            scriptNote: e.target.value || undefined,
+                          })
+                        }
+                        placeholder="e.g. Remind them this is silent — read the room before advancing."
+                        maxLength={240}
+                        className="rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                      />
+                    </label>
 
-                {/* C2 — per-gather-phase room signals (passthrough config, read by
+                    {/* C2 — per-gather-phase room signals (passthrough config, read by
                     the store/host route). Only meaningful where the phase gathers. */}
-                {SERVER_MODULES[p.moduleId]?.capabilities.gatherSource !== "none" && (
-                  <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-border bg-bg/40 p-2.5 text-xs">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={p.config.showLiveCount === true}
-                        onChange={(e) => setConfig(i, { ...p.config, showLiveCount: e.target.checked })}
-                      />
-                      Show the live response count on the big screen (3+ present)
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={p.config.nudgeable !== false}
-                        onChange={(e) => setConfig(i, { ...p.config, nudgeable: e.target.checked })}
-                      />
-                      Allow “nudge the room” on this phase
-                    </label>
-                  </div>
-                )}
+                    {SERVER_MODULES[p.moduleId]?.capabilities.gatherSource !==
+                      "none" && (
+                      <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-border bg-bg/40 p-2.5 text-xs">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={p.config.showLiveCount === true}
+                            onChange={(e) =>
+                              setConfig(i, {
+                                ...p.config,
+                                showLiveCount: e.target.checked,
+                              })
+                            }
+                          />
+                          Show the live response count on the big screen (3+
+                          present)
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={p.config.nudgeable !== false}
+                            onChange={(e) =>
+                              setConfig(i, {
+                                ...p.config,
+                                nudgeable: e.target.checked,
+                              })
+                            }
+                          />
+                          Allow “nudge the room” on this phase
+                        </label>
+                      </div>
+                    )}
 
-                {/* D4 — latecomer policy, only on the grouping modules (which
+                    {/* D4 — latecomer policy, only on the grouping modules (which
                     freeze a cohort on entry). Hold parks late arrivals until you
                     place them, instead of auto-folding them mid-activity. */}
-                {(p.moduleId === "onetwofour" ||
-                  p.moduleId === "worldcafe" ||
-                  p.moduleId === "stations") && (
-                  <label className="mt-2 flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={p.config.latecomerHold === true}
-                      onChange={(e) =>
-                        setConfig(i, { ...p.config, latecomerHold: e.target.checked })
-                      }
-                    />
-                    Hold latecomers until I place them (instead of auto-grouping)
-                  </label>
-                )}
+                    {(p.moduleId === "onetwofour" ||
+                      p.moduleId === "worldcafe" ||
+                      p.moduleId === "stations") && (
+                      <label className="mt-2 flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={p.config.latecomerHold === true}
+                          onChange={(e) =>
+                            setConfig(i, {
+                              ...p.config,
+                              latecomerHold: e.target.checked,
+                            })
+                          }
+                        />
+                        Hold latecomers until I place them (instead of
+                        auto-grouping)
+                      </label>
+                    )}
 
-                {/* C6 — author when the big screen goes amber + drains (minutes
+                    {/* C6 — author when the big screen goes amber + drains (minutes
                     left). Empty = the calm default (2:00). Only meaningful on a
                     timed phase. */}
-                {timed && (
-                  <label className="mt-2 flex items-center gap-2 text-xs text-muted">
-                    <span>Big screen goes amber at</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={
-                        typeof p.config.timerWarnSeconds === "number"
-                          ? Math.round((p.config.timerWarnSeconds as number) / 60)
-                          : ""
-                      }
-                      onChange={(e) => {
-                        const m = Number(e.target.value);
-                        setConfig(i, {
-                          ...p.config,
-                          timerWarnSeconds: m > 0 ? m * 60 : undefined,
-                        });
-                      }}
-                      placeholder="2"
-                      className="w-12 rounded border border-border bg-bg px-1 py-0.5 text-right focus:border-accent focus:outline-none"
-                      aria-label="Amber warning, minutes left"
+                    {timed && (
+                      <label className="mt-2 flex items-center gap-2 text-xs text-muted">
+                        <span>Big screen goes amber at</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={
+                            typeof p.config.timerWarnSeconds === "number"
+                              ? Math.round(
+                                  (p.config.timerWarnSeconds as number) / 60,
+                                )
+                              : ""
+                          }
+                          onChange={(e) => {
+                            const m = Number(e.target.value);
+                            setConfig(i, {
+                              ...p.config,
+                              timerWarnSeconds: m > 0 ? m * 60 : undefined,
+                            });
+                          }}
+                          placeholder="2"
+                          className="w-12 rounded border border-border bg-bg px-1 py-0.5 text-right focus:border-accent focus:outline-none"
+                          aria-label="Amber warning, minutes left"
+                        />
+                        <span>min left</span>
+                      </label>
+                    )}
+
+                    {/* B3 — author the facilitator-private run-sheet for this phase. */}
+                    <RunSheetSection
+                      config={p.config}
+                      onChange={(c) => setConfig(i, c)}
                     />
-                    <span>min left</span>
-                  </label>
-                )}
 
-                {/* B3 — author the facilitator-private run-sheet for this phase. */}
-                <RunSheetSection config={p.config} onChange={(c) => setConfig(i, c)} />
-
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => toggleAdvanced(i)}
-                      className="inline-flex items-center gap-1 text-xs text-muted hover:text-white/80"
-                    >
-                      <ChevronDown
-                        className={`size-3.5 transition-transform ${p.advanced ? "" : "-rotate-90"}`}
-                      />
-                      {p.advanced ? "Hide JSON — back to form" : "Advanced (JSON)"}
-                    </button>
-                    {/* B2 — audition this phase on the participant phone + projector. */}
-                    <button
-                      onClick={() => togglePreview(i)}
-                      className="inline-flex items-center gap-1 text-xs text-accent hover:text-white/80"
-                    >
-                      <Eye className="size-3.5" />
-                      {p.previewOpen ? "Hide preview" : "Preview the room"}
-                    </button>
-                  </div>
-                  {!valid.ok && <span className="text-xs text-[#ff8a8a]">{valid.msg}</span>}
-                </div>
-
-                {p.previewOpen &&
-                  (valid.ok ? (
-                    <div className="mt-3 border-t border-border pt-3">
-                      <RoomMockup moduleId={p.moduleId} config={p.config} />
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => toggleAdvanced(i)}
+                          className="inline-flex items-center gap-1 text-xs text-muted hover:text-white/80"
+                        >
+                          <ChevronDown
+                            className={`size-3.5 transition-transform ${p.advanced ? "" : "-rotate-90"}`}
+                          />
+                          {p.advanced
+                            ? "Hide JSON — back to form"
+                            : "Advanced (JSON)"}
+                        </button>
+                        {/* B2 — audition this phase on the participant phone + projector. */}
+                        <button
+                          onClick={() => togglePreview(i)}
+                          className="inline-flex items-center gap-1 text-xs text-accent hover:text-white/80"
+                        >
+                          <Eye className="size-3.5" />
+                          {p.previewOpen ? "Hide preview" : "Preview the room"}
+                        </button>
+                      </div>
+                      {!valid.ok && (
+                        <span className="text-xs text-[#ff8a8a]">
+                          {valid.msg}
+                        </span>
+                      )}
                     </div>
-                  ) : (
-                    <p className="mt-3 text-xs text-[#ff8a8a]">
-                      Fix the highlighted field to preview.
-                    </p>
-                  ))}
+
+                    {p.previewOpen &&
+                      (valid.ok ? (
+                        <div className="mt-3 border-t border-border pt-3">
+                          <RoomMockup moduleId={p.moduleId} config={p.config} />
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-xs text-[#ff8a8a]">
+                          Fix the highlighted field to preview.
+                        </p>
+                      ))}
+                  </div>
+                </details>
               </div>
             );
           })}

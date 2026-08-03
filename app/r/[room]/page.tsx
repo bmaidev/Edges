@@ -7,9 +7,8 @@ import { ParticipantApp } from "@/components/ParticipantApp";
 export default function RoomPage({
   params,
 }: {
-  params: Promise<{ room: string }> | { room: string };
+  params: Promise<{ room: string }>;
 }) {
-  // Next 14 passes params as an object; tolerate a promise too (forward-compat).
-  const p = params instanceof Promise ? use(params) : params;
+  const p = use(params);
   return <ParticipantApp apiBase={`/api/r/${p.room}`} />;
 }

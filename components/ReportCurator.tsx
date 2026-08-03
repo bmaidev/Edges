@@ -4,9 +4,9 @@ import { useState } from "react";
 import type { RoomArchive } from "@/lib/rooms";
 import type { ReportEdit } from "@/lib/report-edit";
 
-// F1 — inline report curation UI. Each tweak posts editReport / setReportMeta to
-// the host route and swaps in the returned (authoritative) archive, so the
-// curation is durable and the preview stays in sync. "Glance, fix, send."
+// F1 — inline report curation UI. Each tweak posts editReport to the host route
+// and swaps in the returned (authoritative) archive, so the curation is durable
+// and the preview stays in sync. "Glance, fix, send."
 export function ReportCurator({
   archive,
   apiBase,
@@ -40,8 +40,6 @@ export function ReportCurator({
   if (!report) {
     return <p className="text-sm text-muted">No report to curate yet.</p>;
   }
-  const meta = archive.reportMeta ?? { showQuotes: false, attribution: "anonymous" as const };
-
   return (
     <div className={`flex flex-col gap-4 text-sm ${busy ? "opacity-60" : ""}`}>
       {/* Summary */}
@@ -95,25 +93,9 @@ export function ReportCurator({
         ))}
       </Section>
 
-      {/* Sharing prefs. */}
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-bg p-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted">Sharing</span>
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={meta.showQuotes === true}
-            onChange={(e) => post("setReportMeta", { meta: { ...meta, showQuotes: e.target.checked } })}
-          />
-          Include verbatim quotes in the shared report
-        </label>
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={meta.attribution === "named"}
-            onChange={(e) => post("setReportMeta", { meta: { ...meta, attribution: e.target.checked ? "named" : "anonymous" } })}
-          />
-          Attribute contributions by name (off = anonymous)
-        </label>
+      <div className="rounded-lg border border-border bg-bg p-3 text-xs text-muted">
+        Shared reports contain the curated synthesis and action items only. Raw
+        responses and participant handles are erased when the session ends.
       </div>
 
       <button
@@ -121,7 +103,7 @@ export function ReportCurator({
         disabled={busy}
         className="self-start text-xs text-muted underline hover:text-accent disabled:opacity-40"
       >
-        ↻ Regenerate from scratch (discards edits)
+        ↻ Regenerate from live responses (discards edits)
       </button>
     </div>
   );

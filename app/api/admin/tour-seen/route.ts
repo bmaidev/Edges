@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTourSeen, setTourSeen } from "@/lib/rooms";
 import { resolveAdminContext } from "@/lib/auth";
+import { requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,9 +10,9 @@ export const dynamic = "force-dynamic";
 // admin who has toured isn't re-nagged across devices. Naturally per-admin (the
 // key is the code's hash), so any admin code resolves to its own flag.
 
-// GET /api/admin/tour-seen?code=ADMIN -> { seen }
+// GET /api/admin/tour-seen + X-Edges-Code -> { seen }
 export async function GET(req: NextRequest) {
-  const code = req.nextUrl.searchParams.get("code");
+  const code = requestCode(req);
   if (!(await resolveAdminContext(code)).ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   return NextResponse.json({ seen: await getTourSeen(code!) });

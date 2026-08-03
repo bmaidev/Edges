@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff } from "lucide-react";
+import { getExpiring, removeStored, setExpiring } from "@/lib/browser-storage";
 
 // A textarea with a big mic button. Uses the Web Speech API for dictation,
 // streaming interim transcripts into the value. Falls back to text-only with a
@@ -47,7 +48,7 @@ export function VoiceTextarea({
     if (!draftKey || restoredRef.current) return;
     restoredRef.current = true;
     try {
-      const saved = localStorage.getItem(draftKey);
+      const saved = getExpiring<string>(draftKey);
       if (saved && !value) onChange(saved);
     } catch {
       /* private mode — skip */
@@ -58,8 +59,8 @@ export function VoiceTextarea({
     if (!draftKey) return;
     const id = window.setTimeout(() => {
       try {
-        if (value) localStorage.setItem(draftKey, value);
-        else localStorage.removeItem(draftKey);
+        if (value) setExpiring(draftKey, value);
+        else removeStored(draftKey);
       } catch {
         /* ignore */
       }
@@ -152,7 +153,7 @@ export function VoiceTextarea({
             ? "Microphone access was blocked — allow it in your browser, or just type below."
             : listening
               ? "Listening… tap to stop."
-              : "Tap the mic to dictate, or type below."}
+              : "Tap the mic to dictate, or type below. Dictation may use your browser's speech service."}
       </p>
 
       <textarea

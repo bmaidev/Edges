@@ -24,9 +24,10 @@ export default async function RoomLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: { room: string };
+  params: Promise<{ room: string }>;
 }) {
-  const room = await getRoom(params.room);
+  const { room: slug } = await params;
+  const room = await getRoom(slug);
   const palette = room?.theme?.palette ?? {};
   const lines: string[] = [];
   for (const [key, hex] of Object.entries(palette)) {

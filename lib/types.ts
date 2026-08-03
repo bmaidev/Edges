@@ -187,7 +187,6 @@ export interface TakeawaySnapshot {
   report: SessionReport | null;
   actionItems?: {
     text: string;
-    ownerName?: string;
     due?: string;
     status: ActionItemStatus;
   }[];

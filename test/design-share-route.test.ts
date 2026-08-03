@@ -30,7 +30,7 @@ describe("export / preview / import round-trip", () => {
     // Export — any host tier.
     const exp = await hostPOST(
       req(room.slug, { command: "exportDesign", code: passcodes.cohost, id }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     expect(exp.status).toBe(200);
     const { code } = await exp.json();
@@ -39,7 +39,7 @@ describe("export / preview / import round-trip", () => {
     // Preview — decodes + revalidates, returns phase labels, saves nothing.
     const prev = await hostPOST(
       req(room.slug, { command: "previewImport", code: passcodes.cohost, shareCode: code }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     const pj = await prev.json();
     expect(pj.ok).toBe(true);
@@ -51,7 +51,7 @@ describe("export / preview / import round-trip", () => {
     // longer needs the super-admin passcode.
     const imp = await hostPOST(
       req(room.slug, { command: "importDesign", code: passcodes.facilitator, shareCode: code }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     const ij = await imp.json();
     expect(ij.ok).toBe(true);
@@ -64,7 +64,7 @@ describe("export / preview / import round-trip", () => {
     const code = encodeDesign({ name: "X", phases: GOOD });
     const res = await hostPOST(
       req(room.slug, { command: "importDesign", code: passcodes.cohost, shareCode: code }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     expect(res.status).toBe(403);
   });
@@ -73,7 +73,7 @@ describe("export / preview / import round-trip", () => {
     const { room, passcodes } = await createRoom("Share3", "Topic");
     const res = await hostPOST(
       req(room.slug, { command: "previewImport", code: passcodes.cohost, shareCode: "garbage!!!" }),
-      { params: { room: room.slug } },
+      { params: Promise.resolve({ room: room.slug }) },
     );
     expect(res.status).toBe(400);
     const j = await res.json();

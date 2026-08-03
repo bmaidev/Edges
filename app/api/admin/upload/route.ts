@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { resolveAdminContext } from "@/lib/auth";
+import { inspectUpload } from "@/lib/uploads";
+import { rateLimitResponse, requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// POST /api/admin/upload?code=ADMIN  (multipart form, field "file")
+// POST /api/admin/upload + X-Edges-Code (multipart form, field "file")
 // Stores an image in Vercel Blob and returns its public URL — used by the admin
 // theme panel to set a room's logo without pasting a URL.
 export async function POST(req: NextRequest) {
-  if (!(await resolveAdminContext(req.nextUrl.searchParams.get("code"))).ok)
+  const limited = await rateLimitResponse(req, "admin-upload", { limit: 10 });
+  if (limited) return limited;
+  if (!(await resolveAdminContext(requestCode(req))).ok)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   if (!process.env.BLOB_READ_WRITE_TOKEN)
@@ -27,7 +31,8 @@ export async function POST(req: NextRequest) {
   const file = form.get("file");
   if (!(file instanceof File))
     return NextResponse.json({ error: "No file" }, { status: 400 });
-  if (!file.type.startsWith("image/"))
+  const inspected = await inspectUpload(file, false);
+  if (!inspected)
     return NextResponse.json({ error: "Images only" }, { status: 400 });
   if (file.size > 4 * 1024 * 1024)
     return NextResponse.json({ error: "Image must be under 4 MB" }, { status: 400 });
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest) {
   try {
     const blob = await put(`logos/${Date.now()}-${safeName}`, file, {
       access: "public",
-      contentType: file.type,
+      contentType: inspected.contentType,
     });
     return NextResponse.json({ url: blob.url });
   } catch {

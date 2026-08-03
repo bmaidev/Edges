@@ -61,6 +61,7 @@ import {
   writeUndo,
 } from "@/lib/store";
 import type { ContentType, ModeId, Role, SessionState } from "@/lib/types";
+import { rateLimitResponse, requestCode } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -188,9 +189,11 @@ const COMMAND_CAP: Record<string, Capability> = {
 // POST /api/r/[room]/host { command, code, ...args }
 export async function POST(
   req: NextRequest,
-  { params }: { params: { room: string } },
+  { params }: { params: Promise<{ room: string }> },
 ) {
-  const room = params.room;
+  const { room } = await params;
+  const limited = await rateLimitResponse(req, `host:${room}`, { limit: 120 });
+  if (limited) return limited;
   if (!(await getRoom(room)))
     return NextResponse.json({ error: "No such room" }, { status: 404 });
 
@@ -207,7 +210,7 @@ export async function POST(
 
   const { ok, role } = await requireCapability(
     room,
-    body.code,
+    body.code ?? requestCode(req),
     COMMAND_CAP[command],
   );
   if (!ok)

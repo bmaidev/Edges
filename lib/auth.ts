@@ -5,7 +5,7 @@ import { resolveWorkspace, type WorkspaceRole } from "./workspaces";
 import type { Role } from "./types";
 
 export type Capability =
-  | "configure" // change room config / template (admin only)
+  | "configure" // change room config / template (admin + lead facilitator)
   | "advance" // change phase
   | "timer" // start/clear timers
   | "inject" // push content
@@ -46,10 +46,8 @@ const COHOST: Capability[] = [
 
 export const CAPABILITIES: Record<Role, Set<Capability>> = {
   admin: new Set(ALL),
-  // A2: the Facilitator (magic-link) role runs the WHOLE room — it now holds
-  // `configure`, so launching a custom build (setPhases) no longer 403s. This
-  // makes facilitator capability-equal to admin; the per-room admin tier is kept
-  // but vestigial (no Owner portal in this slice).
+  // A lead facilitator runs the whole room, including its design. Workspace-level
+  // ownership and membership remain separately gated by workspace roles.
   facilitator: new Set(ALL),
   cohost: new Set(COHOST),
   projector: new Set<Capability>(),
