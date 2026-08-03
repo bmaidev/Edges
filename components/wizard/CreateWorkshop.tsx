@@ -855,10 +855,10 @@ function StepReady({
   }
   const tiles: { label: string; href: string }[] = [
     {
-      label: "Open host console",
+      label: "Open facilitator",
       href: passcodes?.facilitator
-        ? `/r/${slug}/host#k=${encodeURIComponent(passcodes.facilitator)}`
-        : `/r/${slug}/host`,
+        ? `/r/${slug}/facilitate#k=${encodeURIComponent(passcodes.facilitator)}`
+        : `/r/${slug}/facilitate`,
     },
     {
       label: "Open projector",

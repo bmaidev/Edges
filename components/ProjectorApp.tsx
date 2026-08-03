@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { usePolledState } from "@/components/usePolledState";
 import { useChime } from "@/components/useChime";
-import { useTimerMilestones, warnThresholds } from "@/components/useTimerMilestones";
+import {
+  useTimerMilestones,
+  warnThresholds,
+} from "@/components/useTimerMilestones";
 import { getClientRenderer } from "@/lib/modules/registry.client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LobbyScreen } from "@/components/LobbyScreen";
@@ -27,16 +30,17 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
   // an anti-casual-takeover affordance — never depended on for confidentiality.
   const [tok, setTok] = useState<string | undefined>(undefined);
   useEffect(() => {
-    const t = bootToken(slug);
+    const t = bootToken(slug, "projector");
     if (t) setTok(t);
   }, [slug]);
 
-  const { state, error, lastAppliedAt } = usePolledState<PublicState>({
-    endpoint: `${apiBase}/state`,
-    role: "projector",
-    code: tok,
-    streamEndpoint: `${apiBase}/stream`,
-  });
+  const { state, error, httpStatus, lastAppliedAt } =
+    usePolledState<PublicState>({
+      endpoint: `${apiBase}/state`,
+      role: "projector",
+      code: tok,
+      streamEndpoint: `${apiBase}/stream`,
+    });
   const conn = useConnection({ error, lastAppliedAt });
   // E2 — present mode (fullscreen + wake-lock + auto-hiding chrome). Called here,
   // above the early "Connecting…" return, to keep hook order stable.
@@ -108,6 +112,16 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
   }, [projectorA11y]);
 
   if (!state) {
+    if (httpStatus === 404) {
+      return (
+        <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-10 text-center">
+          <p className="text-3xl font-semibold text-white/90">Room not found</p>
+          <p className="max-w-xl text-lg text-muted">
+            Check the big-screen link, or ask the organiser for a fresh one.
+          </p>
+        </main>
+      );
+    }
     return (
       <main className="flex min-h-screen items-center justify-center text-2xl text-muted">
         Connecting…
@@ -123,7 +137,7 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
   // E2 — a single key that changes on every screen change (advance, lobby↔phase↔
   // ended) to drive the cross-dissolve + per-change chime.
   const chromeHidden = present.active && present.controlsHidden;
-  const screenKey = state.ended ? "__ended__" : state.phaseId ?? "__lobby__";
+  const screenKey = state.ended ? "__ended__" : (state.phaseId ?? "__lobby__");
 
   return (
     <main
@@ -147,7 +161,8 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
             this phase AND it's above the privacy floor (the store gates both). */}
         {!state.ended && state.participation && (
           <span className="rounded-full bg-bg/70 px-3 py-1 text-sm text-muted backdrop-blur">
-            {state.participation.responded} of {state.participation.present} responded
+            {state.participation.responded} of {state.participation.present}{" "}
+            responded
           </span>
         )}
         <ConnectionChip conn={conn} />
@@ -171,16 +186,28 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
         {/* F2 — the live commitment board, when the facilitator promotes it. */}
         {!state.ended && state.actionItems && state.actionItems.length > 0 && (
           <div className="border-b-2 border-accent/40 bg-accent/5 px-10 py-5">
-            <p className="text-sm uppercase tracking-wide text-accent">Our commitments</p>
+            <p className="text-sm uppercase tracking-wide text-accent">
+              Our commitments
+            </p>
             <ul className="mt-2 grid gap-1.5 text-2xl text-white/90 sm:grid-cols-2">
               {state.actionItems.map((a, i) => (
                 <li key={i} className="flex items-baseline gap-2">
-                  <span className={a.status === "done" ? "text-accent" : "text-muted"}>
+                  <span
+                    className={
+                      a.status === "done" ? "text-accent" : "text-muted"
+                    }
+                  >
                     {a.status === "done" ? "✓" : "•"}
                   </span>
-                  <span className={a.status === "done" ? "text-muted line-through" : ""}>
+                  <span
+                    className={
+                      a.status === "done" ? "text-muted line-through" : ""
+                    }
+                  >
                     {a.text}
-                    {a.ownerName ? <span className="text-muted"> — {a.ownerName}</span> : null}
+                    {a.ownerName ? (
+                      <span className="text-muted"> — {a.ownerName}</span>
+                    ) : null}
                   </span>
                 </li>
               ))}
@@ -264,7 +291,13 @@ export function ProjectorApp({ apiBase }: { apiBase: string }) {
 // overflow. A gentle rise-in honours reduce-motion. An OPTIONAL attribution line
 // ("— Name") appears only for an explicitly-attributed literal spotlight (the
 // host opted in for a named, non-anonymous source); it's null for everything else.
-function SpotlightOverlay({ text, handle }: { text: string; handle?: string | null }) {
+function SpotlightOverlay({
+  text,
+  handle,
+}: {
+  text: string;
+  handle?: string | null;
+}) {
   // Three coarse type tiers so a one-liner fills the wall and a paragraph still fits.
   const size =
     text.length <= 80
@@ -275,7 +308,7 @@ function SpotlightOverlay({ text, handle }: { text: string; handle?: string | nu
   const long = text.length > 280;
   return (
     <div
-      className="absolute inset-0 z-20 flex items-center justify-center bg-bg/80 p-12 backdrop-blur-md animate-riseIn"
+      className="absolute inset-0 z-20 flex animate-riseIn items-center justify-center bg-bg/80 p-12 backdrop-blur-md"
       role="status"
       aria-live="polite"
     >

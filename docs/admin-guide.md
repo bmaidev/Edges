@@ -11,7 +11,7 @@ There are two ways in, depending on how you arrived:
 - **You're starting fresh.** Go to **`/start`**, give your workspace a name
   (your own name, a team, or an org like "ANU School of Applied Cybernetics"),
   and — if the instance asks for one — paste the **sign-up code** you were given.
-  You'll get a private **sign-in link** to bookmark. That link *is* your key.
+  You'll get a private **sign-in link** to bookmark. That link _is_ your key.
 - **Someone set one up for you.** They'll send you a **sign-in link** that looks
   like `…/admin#k=XXXX`. Click it once and **bookmark it**. You're in.
 
@@ -24,7 +24,7 @@ There are two ways in, depending on how you arrived:
 
 Already signed in on this device? `/admin` just opens — no re-entry.
 
-> **New to Edges entirely?** The fastest way to *get* it is the **sample room &
+> **New to Edges entirely?** The fastest way to _get_ it is the **sample room &
 > 5-minute tour** — see the section near the end of this guide. It spins up a
 > safe demo you can't break and walks you through driving a live session.
 
@@ -33,13 +33,13 @@ Already signed in on this device? `/admin` just opens — no re-entry.
 In **New room**, give it a name and an optional **topic**, then **Create room**.
 
 The topic matters: it grounds the AI features (cluster assist, devil's-advocate,
-synthesis, the session report, the design assistant) in *your* subject rather
+synthesis, the session report, the design assistant) in _your_ subject rather
 than a generic one. Set it if you can.
 
 You'll immediately get a one-time panel with:
 
 - **Three room passcodes** — `admin`, `facilitator`, `co-host`.
-- **Three URLs** — Join (`/r/<room>`), Host (`/r/<room>/host`), Screen
+- **Three URLs** — Join (`/r/<room>`), Facilitate (`/r/<room>/facilitate`), Screen
   (`/r/<room>/screen`).
 
 > **Save these now.** Room passcodes are shown once and stored only as hashes —
@@ -62,7 +62,7 @@ room of people in:
   door. People scan, pick a name (or stay anonymous), and they're in.
 - The **projector lobby** (`/r/<room>/screen`) also shows the join QR
   automatically while the room is gathering / between phases.
-- Give your **facilitator** the facilitator passcode + Host URL; a **co-host**
+- Give your **facilitator** the facilitator passcode + Facilitate URL; a **co-host**
   gets the co-host passcode.
 
 ## 4. Theme & brand the room (incl. the QR / lobby)
@@ -125,13 +125,13 @@ mid-flight. From `/admin`:
 - A pinned **DEMO** card sits at the top of the rooms list: a `sample-demo` room
   seeded with **seven fake participants**, real messy ideas, pre-clustered
   patterns, and a running timer — landed mid read-around.
-- **open host** drops you straight into a live-looking host console (no extra
+- **open facilitator** drops you straight into a live-looking facilitator portal (no extra
   passcode). Press **Advance** to move the room, open **What they see** to watch
   the participant view, and try **Content** and **Patterns**.
 - **open screen** shows the projector view.
 - **reset sample** re-seeds it from scratch (and rotates its passcodes).
 
-A short **guided tour** (the *Start tour* / *Replay tour* link in the header)
+A short **guided tour** (the _Start tour_ / _Replay tour_ link in the header)
 points at each of these in turn. It never blocks the UI — the real buttons stay
 clickable the whole time.
 

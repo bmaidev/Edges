@@ -1,10 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePolledState } from "@/components/usePolledState";
 import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
-import { useTimerMilestones, warnThresholds } from "@/components/useTimerMilestones";
+import {
+  useTimerMilestones,
+  warnThresholds,
+} from "@/components/useTimerMilestones";
 import {
   WelcomeBackCard,
   deriveOrientation,
@@ -45,11 +49,14 @@ function ParticipantInner({ apiBase }: { apiBase: string }) {
   const [joined, setJoined] = useState(false);
   const [handle, setHandle] = useState("Anonymous");
   const [token, setToken] = useState<string | undefined>(undefined);
-  const { state, error, lastAppliedAt } = usePolledState<PublicState>({
-    token,
-    endpoint: `${apiBase}/state`,
-    streamEndpoint: apiBase.startsWith("/api/r/") ? `${apiBase}/stream` : undefined,
-  });
+  const { state, error, httpStatus, lastAppliedAt } =
+    usePolledState<PublicState>({
+      token,
+      endpoint: `${apiBase}/state`,
+      streamEndpoint: apiBase.startsWith("/api/r/")
+        ? `${apiBase}/stream`
+        : undefined,
+    });
   // H1 — honest tri-state connection signal for this device.
   const conn = useConnection({ error, lastAppliedAt });
 
@@ -84,6 +91,22 @@ function ParticipantInner({ apiBase }: { apiBase: string }) {
   }, [apiBase, state?.ended, token]);
 
   if (!state) {
+    if (httpStatus === 404) {
+      return (
+        <Screen>
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+            <p className="text-xl font-medium text-white/90">Room not found</p>
+            <p className="max-w-xs text-sm leading-relaxed text-muted">
+              This link may be mistyped, or the room may have been removed. Ask
+              the organiser for a fresh join link.
+            </p>
+            <Link className="text-sm text-accent underline" href="/">
+              Return home
+            </Link>
+          </div>
+        </Screen>
+      );
+    }
     // H1 — never strand on an endless "Connecting…". If the device is offline
     // before the first state ever lands, say so honestly and hold calmly.
     return (
@@ -93,7 +116,8 @@ function ParticipantInner({ apiBase }: { apiBase: string }) {
             <>
               <p className="text-lg text-white/80">You&apos;re offline</p>
               <p className="text-sm">
-                We&apos;ll connect you to the room as soon as you&apos;re back online.
+                We&apos;ll connect you to the room as soon as you&apos;re back
+                online.
               </p>
             </>
           ) : (
@@ -195,7 +219,7 @@ function JoinScreen({
 
   return (
     <Screen>
-      <div className="relative flex flex-1 flex-col overflow-hidden px-6 py-8 animate-fadeInUp">
+      <div className="relative flex flex-1 animate-fadeInUp flex-col overflow-hidden px-6 py-8">
         {/* Atmosphere: a soft themeable bloom behind the header so the join screen
             reads as a designed space, not a flat form on a flat background. */}
         <div
@@ -210,7 +234,11 @@ function JoinScreen({
           <div className="flex flex-col items-start gap-4">
             {branding?.logoUrl && (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={branding.logoUrl} alt="" className="max-h-14 max-w-[60%] object-contain" />
+              <img
+                src={branding.logoUrl}
+                alt=""
+                className="max-h-14 max-w-[60%] object-contain"
+              />
             )}
             <div>
               <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/60 px-3 py-1 text-xs font-medium text-muted backdrop-blur-sm">
@@ -227,17 +255,25 @@ function JoinScreen({
             </div>
           </div>
 
-          <p className="text-sm leading-relaxed text-white/80">{STRINGS.joinBody}</p>
+          <p className="text-sm leading-relaxed text-white/80">
+            {STRINGS.joinBody}
+          </p>
 
           <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface/50 p-4 backdrop-blur-sm">
-            <label htmlFor="handle" className="text-sm font-medium text-white/85">
-              Choose a handle <span className="text-muted">(or stay anonymous)</span>
+            <label
+              htmlFor="handle"
+              className="text-sm font-medium text-white/85"
+            >
+              Choose a handle{" "}
+              <span className="text-muted">(or stay anonymous)</span>
             </label>
             <input
               id="handle"
               value={handle}
               onChange={(e) => setHandle(e.target.value)}
-              onFocus={(e) => e.target.value === "Anonymous" && e.target.select()}
+              onFocus={(e) =>
+                e.target.value === "Anonymous" && e.target.select()
+              }
               onKeyDown={(e) => e.key === "Enter" && !busy && join()}
               maxLength={40}
               className="rounded-xl border border-border bg-bg px-4 py-3 text-base transition-shadow focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
@@ -249,7 +285,9 @@ function JoinScreen({
               disabled={busy}
               className="mt-1 w-full"
             >
-              {busy ? "Joining…" : (
+              {busy ? (
+                "Joining…"
+              ) : (
                 <>
                   Join the room <ArrowRight />
                 </>
@@ -282,7 +320,8 @@ function StatusBar({ state }: { state: PublicState }) {
   // when audio isn't unlocked, so the tint is the guaranteed channel.
   // C6 — respect the room-wide timer-sound opt-out (the tint still carries the
   // signal; only the chime is silenced).
-  const soundOff = (state as { timerSoundOff?: boolean }).timerSoundOff === true;
+  const soundOff =
+    (state as { timerSoundOff?: boolean }).timerSoundOff === true;
   const onWarn = useCallback(() => {
     if (!soundOff) chime("warn");
   }, [soundOff, chime]);
@@ -313,8 +352,14 @@ function StatusBar({ state }: { state: PublicState }) {
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-bg/90 px-5 py-3 text-sm text-muted backdrop-blur">
       <span>{label}</span>
       {hasTimer && (
-        <span className={`flex items-center gap-2 font-mono ${timerColor} ${pulse ? "animate-pulseSoft" : ""}`}>
-          {paused && <span className="text-[10px] uppercase tracking-wide text-muted">paused</span>}
+        <span
+          className={`flex items-center gap-2 font-mono ${timerColor} ${pulse ? "animate-pulseSoft" : ""}`}
+        >
+          {paused && (
+            <span className="text-[10px] uppercase tracking-wide text-muted">
+              paused
+            </span>
+          )}
           {expired && !paused ? (
             "Time's up"
           ) : (
@@ -391,20 +436,22 @@ function PhaseScreen({
     return (
       <Screen>
         <ConnectionStrip conn={conn} pending={pending} />
-        <div className="relative flex flex-1 flex-col items-center justify-center gap-8 overflow-hidden p-8 text-center animate-riseIn">
+        <div className="relative flex flex-1 animate-riseIn flex-col items-center justify-center gap-8 overflow-hidden p-8 text-center">
           <div
             aria-hidden
             className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/10 blur-3xl"
           />
           <div className="relative h-16 w-16">
-            <div className="absolute inset-0 rounded-full bg-accent/30 blur-xl animate-pulseSoft" />
-            <div className="relative h-16 w-16 rounded-full bg-accent animate-pulseSoft" />
+            <div className="absolute inset-0 animate-pulseSoft rounded-full bg-accent/30 blur-xl" />
+            <div className="relative h-16 w-16 animate-pulseSoft rounded-full bg-accent" />
           </div>
-          <p className="font-display relative max-w-xs text-2xl leading-relaxed text-white/90">
+          <p className="relative max-w-xs font-display text-2xl leading-relaxed text-white/90">
             {message}
           </p>
           {preSession && state.branding?.tagline && (
-            <p className="relative max-w-xs text-sm text-muted">{state.branding.tagline}</p>
+            <p className="relative max-w-xs text-sm text-muted">
+              {state.branding.tagline}
+            </p>
           )}
         </div>
       </Screen>
@@ -418,14 +465,19 @@ function PhaseScreen({
         {announce}
       </div>
       {orientation && (
-        <WelcomeBackCard orientation={orientation} onDismiss={onDismissOrientation} />
+        <WelcomeBackCard
+          orientation={orientation}
+          onDismiss={onDismissOrientation}
+        />
       )}
       <StatusBar state={state} />
       <AttributionChip attribution={state.attribution} handle={handle} />
       {/* D1 — a guaranteed per-phase instruction band (a facilitator-authored line
           on the phase config), so the room always knows what to do this phase. */}
       {(() => {
-        const instruction = (state.config as { instruction?: string } | null)?.instruction?.trim();
+        const instruction = (
+          state.config as { instruction?: string } | null
+        )?.instruction?.trim();
         return instruction ? (
           <p className="border-b border-border bg-accent/5 px-5 py-2.5 text-sm leading-relaxed text-white/90">
             {instruction}

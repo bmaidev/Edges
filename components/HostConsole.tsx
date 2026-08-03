@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Fragment,
   useCallback,
@@ -156,11 +157,11 @@ export type Cmd = (
 export function HostConsole({
   apiBase,
   roomName,
-  cockpit = false,
+  initialSurface = "manage",
 }: {
   apiBase: string;
   roomName?: string;
-  cockpit?: boolean;
+  initialSurface?: "live" | "manage";
 }) {
   const [code, setCode] = useState("");
   const [codeInput, setCodeInput] = useState("");
@@ -181,7 +182,15 @@ export function HostConsole({
   const [nudgeMsg, setNudgeMsg] = useState<string | null>(null); // C2 nudge toast
   type Tab = "run" | "preview" | "content" | "patterns" | "session";
   const [tab, setTab] = useState<Tab>("run");
+  const [surface, setSurface] = useState<"live" | "manage">(initialSurface);
   const slug = apiBase.replace("/api/r/", "");
+  const showSurface = useCallback((next: "live" | "manage") => {
+    setSurface(next);
+    const url = new URL(window.location.href);
+    if (next === "manage") url.searchParams.set("view", "manage");
+    else url.searchParams.delete("view");
+    window.history.replaceState({}, "", url.toString());
+  }, []);
   // A2: a Facilitator/Co-host magic link opens already authed — read the `#k=`
   // token (or the tab's remembered one), scrub it from the URL, set the code. No
   // password box. Falls through to the manual passcode screen when absent.
@@ -194,7 +203,12 @@ export function HostConsole({
   // history.replaceState so the low-value disposable code never lingers in the bar.
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.get("tour") === "1") setTour(true);
+    if (url.searchParams.get("tour") === "1") {
+      setTour(true);
+      setSurface("manage");
+    } else if (url.searchParams.get("view") === "manage") {
+      setSurface("manage");
+    }
     const c = url.searchParams.get("code");
     if (c) {
       setCode(c);
@@ -204,14 +218,15 @@ export function HostConsole({
   }, []);
   // C5 — this console's co-facilitation identity (per-tab id + per-device name).
   const me = usePresence();
-  const { state, error, lastAppliedAt, refresh, apply } = usePolledState<
-    FacilitatorState & { role?: Role }
-  >({
-    code: code || undefined,
-    endpoint: `${apiBase}/state`,
-    streamEndpoint: `${apiBase}/stream`,
-    presence: me.presenceId ? { id: me.presenceId, name: me.name } : undefined,
-  });
+  const { state, error, httpStatus, lastAppliedAt, refresh, apply } =
+    usePolledState<FacilitatorState & { role?: Role }>({
+      code: code || undefined,
+      endpoint: `${apiBase}/state`,
+      streamEndpoint: `${apiBase}/stream`,
+      presence: me.presenceId
+        ? { id: me.presenceId, name: me.name }
+        : undefined,
+    });
   const conn = useConnection({ error, lastAppliedAt });
   // Forget the remembered token once the session is ended/wiped.
   useEffect(() => {
@@ -273,10 +288,27 @@ export function HostConsole({
     [apiBase, code, refresh, apply],
   );
 
+  if (httpStatus === 404) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-8 text-center">
+        <h1 className="text-xl font-semibold">Room not found</h1>
+        <p className="text-sm leading-relaxed text-muted">
+          This facilitator link may be mistyped, or the room may have been
+          removed. Ask the organiser for a fresh link.
+        </p>
+        <Link className="text-sm text-accent underline" href="/">
+          Return home
+        </Link>
+      </main>
+    );
+  }
+
   if (!authed) {
     return (
       <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-8">
-        <h1 className="text-xl font-semibold">{roomName ?? "Host console"}</h1>
+        <h1 className="text-xl font-semibold">
+          {roomName ?? "Facilitator portal"}
+        </h1>
         <p className="text-sm text-muted">
           Enter your passcode (facilitator or co-host).
         </p>
@@ -319,10 +351,18 @@ export function HostConsole({
     />
   ) : null;
 
-  // C1 — Facilitate mode: once a session is set up, the cockpit replaces the
-  // tabbed console. Falls through to the setup picker when nothing's prepared.
-  if (cockpit && (s.mode || (s.sequence && s.sequence.length > 0)))
-    return <FacilitateCockpit s={s} cmd={cmd} role={role} slug={slug} />;
+  // The Facilitator portal has one URL and two in-place views. Live is the calm,
+  // authoritative default; planning/settings stays one tap away without opening
+  // a second portal or creating another state subscription.
+  if (surface === "live" && (s.mode || (s.sequence && s.sequence.length > 0)))
+    return (
+      <FacilitateCockpit
+        s={s}
+        cmd={cmd}
+        role={role}
+        onManage={() => showSurface("manage")}
+      />
+    );
 
   // No sequence yet (no mode and no custom phases) → pick a starting point.
   if (!s.mode && (!s.sequence || s.sequence.length === 0))
@@ -516,20 +556,18 @@ export function HostConsole({
               {s.roomHealth && <RoomHealthChip health={s.roomHealth} />}
               {/* H1 — this device's honest connection state. */}
               <ConnectionChip conn={conn} />
-              {/* C1 — enter the full-screen Facilitate cockpit for live driving. */}
+              {/* Return to the live cockpit without navigating to another portal. */}
               <Tip
-                content="Open the full-screen cockpit — a distraction-free view for driving live"
+                content="Return to the live cockpit for driving the room"
                 side="bottom"
               >
                 <UiButton
-                  asChild
                   variant="outline"
                   size="sm"
                   className="border-accent/45 text-accent hover:bg-accent/10"
+                  onClick={() => showSurface("live")}
                 >
-                  <a href={`/r/${slug}/facilitate`}>
-                    <Maximize2 /> Facilitate
-                  </a>
+                  <Maximize2 /> Run live
                 </UiButton>
               </Tip>
             </div>
@@ -1594,22 +1632,18 @@ function PhaseStepper({
   const nav = phaseNav(state.sequence, state.phaseId);
   const { phases, index: idx, prev, next } = nav;
   // C5 — soft take-over: if a LIVE co-host is driving and it isn't me, a nav move
-  // arms first (a one-tap "tap again to take over"); the second tap moves AND
-  // claims the baton in one rev-bumped write. Controls never hard-block.
+  // advances and claims the baton in the same rev-bumped write. Controls never
+  // hard-block or consume a tap without moving the room.
   const liveDriver = state.driver && !state.driverStale ? state.driver : null;
   const someoneElseDriving = Boolean(
     liveDriver && me?.presenceId && liveDriver.driverId !== me.presenceId,
   );
-  const [armed, setArmed] = useState(false);
   // C3 — every nav move offers a 12s undo. Back no longer dumps queued content
   // (the server releases only on a forward move).
   const go = (p: { id: string; label: string }) => {
-    if (someoneElseDriving && !armed) {
-      setArmed(true);
-      window.setTimeout(() => setArmed(false), 4000);
-      return;
-    }
-    setArmed(false);
+    // A phase control must always move the room on its first tap. If another
+    // console currently holds the soft baton, claim it in the same authoritative
+    // write instead of silently turning the first tap into an "armed" state.
     cmd(
       "setPhase",
       someoneElseDriving && me
@@ -1624,12 +1658,6 @@ function PhaseStepper({
   };
   return (
     <div className="px-4 py-2">
-      {armed && someoneElseDriving && (
-        <p className="mb-1 text-xs text-[#ffb454]">
-          {liveDriver?.driverName || "A co-host"} is driving — tap again to take
-          over.
-        </p>
-      )}
       <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
         <Tip
           content={

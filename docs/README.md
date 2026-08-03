@@ -32,10 +32,10 @@ If you're **running a session** (driving the room live):
 2. You **sign in** at `/admin` — usually just by clicking your bookmarked link.
    This is your console: create rooms, brand them, invite teammates, see reports.
 3. Inside the console you create a **room** and get three room passcodes (admin /
-   facilitator / co-host) plus the join, host, and projector URLs — shown **once**.
+   facilitator / co-host) plus the join, facilitator, and projector URLs — shown **once**.
 4. **Participants** open the join URL on their phones (`/r/<room>`) and pick a
    handle (or stay anonymous). No app, no account.
-5. A **facilitator** opens `/r/<room>/host`, picks a template (or builds a custom
+5. A **facilitator** opens `/r/<room>/facilitate`, picks a template (or builds a custom
    session), and drives it phase by phase. The room watches the **projector** at
    `/r/<room>/screen`.
 6. A **session** is a sequence of **module** phases. Each module is one tool —

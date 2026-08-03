@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Countdown } from "@/components/Countdown";
 import { useChime } from "@/components/useChime";
-import { useTimerMilestones, warnThresholds } from "@/components/useTimerMilestones";
+import {
+  useTimerMilestones,
+  warnThresholds,
+} from "@/components/useTimerMilestones";
 import { useWakeLock } from "@/components/useWakeLock";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getClientRenderer } from "@/lib/modules/registry.client";
@@ -19,12 +22,12 @@ export function FacilitateCockpit({
   s,
   cmd,
   role,
-  slug,
+  onManage,
 }: {
   s: FacilitatorState;
   cmd: Cmd;
   role: Role;
-  slug: string;
+  onManage: () => void;
 }) {
   const running = s.timerEndsAt != null;
   const paused = s.timerEndsAt == null && s.timerRemainingMs != null;
@@ -105,12 +108,12 @@ export function FacilitateCockpit({
           ) : (
             <span className="tabular-nums">{s.participantCount} here</span>
           )}
-          <a
-            href={`/r/${slug}/host`}
+          <button
+            onClick={onManage}
             className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
           >
-            Exit
-          </a>
+            Plan &amp; settings
+          </button>
         </div>
       </header>
 
@@ -120,12 +123,14 @@ export function FacilitateCockpit({
           endsAt={s.timerEndsAt}
           remainingMs={s.timerRemainingMs}
           onElapsed={muted ? undefined : chime}
-          className={`font-mono text-[19vw] leading-none tracking-tight tabular-nums sm:text-[15vw] lg:text-[11rem] ${
+          className={`font-mono text-[19vw] tabular-nums leading-none tracking-tight sm:text-[15vw] lg:text-[11rem] ${
             paused ? "text-white/40" : running ? "text-accent" : "text-white/25"
           }`}
         />
         {paused && (
-          <p className="text-sm uppercase tracking-[0.3em] text-white/45">paused</p>
+          <p className="text-sm uppercase tracking-[0.3em] text-white/45">
+            paused
+          </p>
         )}
         {/* C6 — transient confirmation that the room was just warned. */}
         {warned && (
@@ -144,7 +149,9 @@ export function FacilitateCockpit({
               {[1, 2, 5].map((m) => (
                 <TimerBtn
                   key={m}
-                  onClick={() => cmd("setTimer", { endsAt: Date.now() + m * 60_000 })}
+                  onClick={() =>
+                    cmd("setTimer", { endsAt: Date.now() + m * 60_000 })
+                  }
                 >
                   Start {m}:00
                 </TimerBtn>
@@ -178,11 +185,12 @@ export function FacilitateCockpit({
         {/* C1 — the facilitator's private script line for this phase. Authored in
             the builder (config.scriptNote), stripped for every non-host role, so
             it's a cue only the person driving sees. */}
-        {typeof s.config?.scriptNote === "string" && s.config.scriptNote.trim() && (
-          <p className="max-w-3xl text-balance px-6 text-center text-lg leading-snug text-white/70">
-            {s.config.scriptNote}
-          </p>
-        )}
+        {typeof s.config?.scriptNote === "string" &&
+          s.config.scriptNote.trim() && (
+            <p className="max-w-3xl text-balance px-6 text-center text-lg leading-snug text-white/70">
+              {s.config.scriptNote}
+            </p>
+          )}
       </section>
 
       {/* C1 — jump-to-phase rail (tap any phase to go there) + chime mute. */}

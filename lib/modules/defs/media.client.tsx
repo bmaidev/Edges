@@ -21,8 +21,9 @@ const newId = () => globalThis.crypto.randomUUID();
 // ---- video embedding -------------------------------------------------------
 
 function youTubeId(url: string): string | null {
-  const m =
-    url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|live\/)|youtu\.be\/)([\w-]{6,})/i);
+  const m = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|live\/)|youtu\.be\/)([\w-]{6,})/i,
+  );
   return m ? m[1] : null;
 }
 function vimeoId(url: string): string | null {
@@ -65,7 +66,8 @@ function VideoEmbed({ url, big }: { url: string; big?: boolean }) {
     return <video className="h-full w-full" src={url} controls playsInline />;
   return (
     <div className="flex h-full items-center justify-center p-8 text-center text-white/70">
-      This video host is not supported. Use YouTube, Vimeo, or a direct media file.
+      This video host is not supported. Use YouTube, Vimeo, or a direct media
+      file.
     </div>
   );
 }
@@ -107,7 +109,9 @@ const MediaParticipant: Renderer = ({ view }) => {
       <div className="h-12 w-12 rounded-full bg-accent/15" />
       <p className="text-lg leading-relaxed text-white/90">Eyes up front</p>
       {v.card?.title && (
-        <p className="max-w-xs text-sm leading-relaxed text-muted">{v.card.title}</p>
+        <p className="max-w-xs text-sm leading-relaxed text-muted">
+          {v.card.title}
+        </p>
       )}
       {v.total > 0 && (
         <p className="text-xs uppercase tracking-wide text-muted">
@@ -164,8 +168,16 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
         canvas.toBlob(r, "image/jpeg", 0.85),
       );
       if (!blob) continue;
-      const url = await upload(new File([blob], `${base}-p${p}.jpg`, { type: "image/jpeg" }));
-      if (url) cards.push({ id: newId(), kind: "image", url, title: `${base} · p${p}` });
+      const url = await upload(
+        new File([blob], `${base}-p${p}.jpg`, { type: "image/jpeg" }),
+      );
+      if (url)
+        cards.push({
+          id: newId(),
+          kind: "image",
+          url,
+          title: `${base} · p${p}`,
+        });
     }
     return cards;
   }
@@ -180,7 +192,8 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
         } else if (file.type.startsWith("image/")) {
           setBusy(`Uploading ${file.name}…`);
           const url = await upload(file);
-          if (url) added.push({ id: newId(), kind: "image", url, title: file.name });
+          if (url)
+            added.push({ id: newId(), kind: "image", url, title: file.name });
         }
       }
       if (added.length) await pushDeck([...deck, ...added]);
@@ -217,7 +230,9 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
       {/* On-screen position + advance */}
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-muted">
-          {v.total > 0 ? `On screen: ${v.index + 1} of ${v.total}` : "Deck is empty"}
+          {v.total > 0
+            ? `On screen: ${v.index + 1} of ${v.total}`
+            : "Deck is empty"}
         </span>
         <div className="flex gap-2">
           <Button
@@ -238,7 +253,9 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
 
       {/* Add media */}
       <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
-        <label className="text-xs uppercase tracking-wide text-muted">Add slides</label>
+        <label className="text-xs uppercase tracking-wide text-muted">
+          Add slides
+        </label>
         {uploadable ? (
           <input
             type="file"
@@ -249,12 +266,13 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
           />
         ) : (
           <p className="text-xs text-muted">
-            Uploads aren&apos;t available here — open the host console to load slides.
+            Uploads aren&apos;t available here — open Plan &amp; settings in the
+            facilitator portal to load slides.
           </p>
         )}
         <p className="text-[11px] leading-relaxed text-muted">
-          Images, or a PDF (each page becomes a slide). Export slide decks to PDF
-          first.
+          Images, or a PDF (each page becomes a slide). Export slide decks to
+          PDF first.
         </p>
         <div className="mt-1 flex gap-2">
           <input
@@ -263,7 +281,11 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
             placeholder="Paste a YouTube / Vimeo / video URL"
             className="min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-white placeholder:text-muted"
           />
-          <Button variant="ghost" onClick={addVideo} disabled={!videoUrl.trim()}>
+          <Button
+            variant="ghost"
+            onClick={addVideo}
+            disabled={!videoUrl.trim()}
+          >
             Add
           </Button>
         </div>
@@ -279,7 +301,9 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
             <li
               key={c.id}
               className={`flex items-center gap-2 rounded-lg border p-2 ${
-                i === v.index ? "border-accent bg-accent/10" : "border-border bg-surface"
+                i === v.index
+                  ? "border-accent bg-accent/10"
+                  : "border-border bg-surface"
               }`}
             >
               <button
@@ -287,14 +311,22 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 title="Show on screen"
               >
-                <span className="w-6 shrink-0 text-xs text-muted tabular-nums">{i + 1}</span>
+                <span className="w-6 shrink-0 text-xs tabular-nums text-muted">
+                  {i + 1}
+                </span>
                 <span className="shrink-0 text-xs uppercase tracking-wide text-muted">
                   {c.kind}
                 </span>
-                <span className="truncate text-sm text-white/90">{c.title ?? c.url}</span>
+                <span className="truncate text-sm text-white/90">
+                  {c.title ?? c.url}
+                </span>
               </button>
               <div className="flex shrink-0 gap-1">
-                <IconBtn label="Move up" onClick={() => move(i, -1)} disabled={i === 0}>
+                <IconBtn
+                  label="Move up"
+                  onClick={() => move(i, -1)}
+                  disabled={i === 0}
+                >
                   ↑
                 </IconBtn>
                 <IconBtn
@@ -313,7 +345,9 @@ const MediaFacilitator: Renderer = ({ view, act, upload }) => {
         </ul>
       )}
       {status === "error" && (
-        <p className="text-xs text-[#ff8a8a]">Couldn&apos;t advance — try again.</p>
+        <p className="text-xs text-[#ff8a8a]">
+          Couldn&apos;t advance — try again.
+        </p>
       )}
     </div>
   );

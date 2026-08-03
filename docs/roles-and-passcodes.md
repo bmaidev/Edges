@@ -42,7 +42,7 @@ tag-team the same event. Each room is stamped with who created it.
 
 When you create a room it generates **three room passcodes**, shown **once** and
 stored only as hashes (they can't be recovered — if you lose one, make a new
-room). These set what someone can do in the *live* session:
+room). These set what someone can do in the _live_ session:
 
 - **Room admin** — can do everything in the room, including reconfiguring the
   session and launching a custom sequence from the builder.
@@ -59,17 +59,17 @@ room). These set what someone can do in the *live* session:
 
 ### What each room role can do
 
-| Capability | Room admin | Facilitator | Co-host | Projector | Participant |
-|---|:--:|:--:|:--:|:--:|:--:|
-| Join, contribute (submit / vote / etc.) | — | — | — | — | ✓ |
-| See the live projector view | ✓ | ✓ | ✓ | ✓ | — |
-| Advance / jump phases, set timers | ✓ | ✓ | ✓ | — | — |
-| Inject content, curate patterns, run AI generate | ✓ | ✓ | ✓ | — | — |
-| Pace the read-around | ✓ | ✓ | ✓ | — | — |
-| See **raw** submissions (facilitator-only data) | ✓ | ✓ | ✓ | — | — |
-| Reassign participants (lens/side) | ✓ | ✓ | — | — | — |
-| End / archive the session | ✓ | ✓ | — | — | — |
-| Reconfigure the session / launch a custom build | ✓ | ✓ | — | — | — |
+| Capability                                       | Room admin | Facilitator | Co-host | Projector | Participant |
+| ------------------------------------------------ | :--------: | :---------: | :-----: | :-------: | :---------: |
+| Join, contribute (submit / vote / etc.)          |     —      |      —      |    —    |     —     |      ✓      |
+| See the live projector view                      |     ✓      |      ✓      |    ✓    |     ✓     |      —      |
+| Advance / jump phases, set timers                |     ✓      |      ✓      |    ✓    |     —     |      —      |
+| Inject content, curate patterns, run AI generate |     ✓      |      ✓      |    ✓    |     —     |      —      |
+| Pace the read-around                             |     ✓      |      ✓      |    ✓    |     —     |      —      |
+| See **raw** submissions (facilitator-only data)  |     ✓      |      ✓      |    ✓    |     —     |      —      |
+| Reassign participants (lens/side)                |     ✓      |      ✓      |    —    |     —     |      —      |
+| End / archive the session                        |     ✓      |      ✓      |    —    |     —     |      —      |
+| Reconfigure the session / launch a custom build  |     ✓      |      ✓      |    —    |     —     |      —      |
 
 > The builder's AI design tools (Suggest / Critique) work with a **room admin or
 > facilitator** passcode; both can launch a custom-built session in that room.
@@ -78,14 +78,15 @@ room). These set what someone can do in the *live* session:
 
 ## Which URL uses which key
 
-| URL | Who | Key |
-|---|---|---|
-| `/start` | Anyone creating a workspace | the instance sign-up code (if required) |
-| `/admin` | You, managing your workspace | your **sign-in link** (`/admin#k=…`) |
-| `/r/<room>` | Participants | none (just a handle) |
-| `/r/<room>/host` | Facilitator / co-host | the room's facilitator or co-host code (room admin also works) |
-| `/r/<room>/screen` | The projector | none (read-only) |
-| `/r/<room>/build` | Room admin | the room's admin code (to launch) |
+| URL                    | Who                          | Key                                                            |
+| ---------------------- | ---------------------------- | -------------------------------------------------------------- |
+| `/start`               | Anyone creating a workspace  | the instance sign-up code (if required)                        |
+| `/admin`               | You, managing your workspace | your **sign-in link** (`/admin#k=…`)                           |
+| `/r/<room>`            | Participants                 | none (just a handle)                                           |
+| `/r/<room>/facilitate` | Facilitator / co-host        | the room's facilitator or co-host code (room admin also works) |
+| `/r/<room>/host`       | Legacy facilitator link      | compatibility alias for the same Facilitator portal            |
+| `/r/<room>/screen`     | The projector                | none (read-only)                                               |
+| `/r/<room>/build`      | Facilitator / room admin     | the remembered facilitator or room-admin key                   |
 
 Generated passcodes contain 128 bits of cryptographic randomness. They are
 compared in constant time and stored only as SHA-256 hashes; plaintext is shown

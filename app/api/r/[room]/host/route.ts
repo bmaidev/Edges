@@ -95,8 +95,9 @@ function excludeOf(a: Record<string, any>): string[] {
 const COMMAND_CAP: Record<string, Capability> = {
   setMode: "advance",
   setPhases: "configure",
-  // Launching a vetted built-in template is a normal facilitator action; only
-  // arbitrary custom phase-config (setPhases) needs the admin "configure" cap.
+  // Launching a vetted built-in template is a normal driving action. Arbitrary
+  // custom phase-config (setPhases) needs `configure` (facilitator/admin, not
+  // co-host).
   setTemplate: "advance",
   // Setup-phase AI assist (read-only — proposes/critiques, never applies).
   suggestSession: "advance",
@@ -254,8 +255,7 @@ export async function POST(
       const sessionName = a.sessionName ?? "Custom session";
       const written = await setPhases(phases, sessionName, room);
       // A5 — mirror the launched design into a durable blueprint so it survives
-      // the 24h wipe and can be duplicated. Only on the admin setPhases path (a
-      // cohost-driven setTemplate must NOT write durable records).
+      // the 24h wipe and can be duplicated.
       await saveBlueprint(room, { name: sessionName, phases }).catch(() => {});
       return NextResponse.json({
         ok: true,
@@ -266,9 +266,14 @@ export async function POST(
       const t = getTemplate(String(a.templateId ?? ""));
       if (!t)
         return NextResponse.json({ error: "Unknown template" }, { status: 400 });
+      const written = await setPhases(t.phases, t.name, room);
+      // The built-in template picker is the most common launch path. Persist it
+      // exactly like a custom or saved design; otherwise End/Archive wipes the
+      // only copy and reopening Builder presents an empty sequence.
+      await saveBlueprint(room, { name: t.name, phases: t.phases }).catch(() => {});
       return NextResponse.json({
         ok: true,
-        state: await navState(room, await setPhases(t.phases, t.name, room), role ?? "facilitator"),
+        state: await navState(room, written, role ?? "facilitator"),
       });
     }
     // B4 — launch a saved user template by id (no raw phases accepted here).

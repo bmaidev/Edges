@@ -1,15 +1,18 @@
 # Facilitator guide
 
-This is how you run a session from the host console. You need a room's
+This is how you run a session from the **Facilitator portal**. You need a room's
 **facilitator** (or **co-host**, or **admin**) passcode — someone in your
-workspace creates the room and shares the host link + code with you (see the
+workspace creates the room and shares the facilitator link + code with you (see the
 [Admin guide](admin-guide.md)). You don't need the admin console to run a room;
-the host URL and your passcode are enough.
+the facilitator URL and your passcode are enough.
 
 ## 1. Log in
 
-Open **`/r/<room>/host`** and enter your passcode. (You'll briefly see
+Open **`/r/<room>/facilitate`** and enter your passcode. (You'll briefly see
 "Checking…" while it verifies — that's normal. A genuinely wrong code says so.)
+
+Old `/host` bookmarks remain compatible and open this same portal; there is no
+separate Host experience to choose between.
 
 ## 2. Pick what to run
 
@@ -18,14 +21,21 @@ If no session is running yet, you'll see the **session picker**:
 - **Research-grounded templates** — ~21 one-tap sessions (pre-mortem, 1-2-4-All,
   World Café, idea marketplace, AI red-team, and more), each a complete sequence
   you can run as-is. See the [Templates catalog](templates.md).
-- **+ Build a custom session** — opens the builder (room-admin code needed to
-  launch).
+- **+ Build a custom session** — opens the builder. The facilitator can design
+  and launch it; a co-host cannot reconfigure the room.
 
 Tap a template and it loads into the room.
 
-## 3. The console, top to bottom
+## 3. The live cockpit
 
-**Header** — your bearings: session name · *phase X of Y* · the current phase's
+The portal opens directly in the calm live cockpit: current phase, timer,
+projector mirror, and one large **Next** action. Every phase move is authoritative
+on the first tap. Use **Plan & settings** when you need the deeper workspace;
+it opens in place, using the same connection and room state.
+
+## 4. Plan & settings
+
+**Header** — your bearings: session name · _phase X of Y_ · the current phase's
 label · how many have joined · the **timer**. Timer buttons (start the phase's
 preset, +1:00, +5:00, Clear) live here.
 
@@ -36,7 +46,7 @@ right after each action.)
 
 **Tabs** — the work area, so you're not scrolling a wall:
 
-- **Run** — the controls for the *current* phase only: AI "generate" buttons,
+- **Run** — the controls for the _current_ phase only: AI "generate" buttons,
   live results, allocation/read-around/submission panels as relevant. If a phase
   is display-only it tells you so.
 - **What they see** — a live, read-only preview of the participant phone view
@@ -46,9 +56,9 @@ right after each action.)
 - **Patterns** — curate named patterns from submissions (manually, or with AI
   "Suggest patterns").
 - **Session** — download an export, **Archive** (save a report + wipe), or **End**
-  (wipe). *(Co-hosts don't see End/Archive.)*
+  (wipe). _(Co-hosts don't see End/Archive.)_
 
-## 4. Running it
+## 5. Running it
 
 1. **Advance** through phases on the timeline as the conversation moves. Start a
    **timer** when you want a countdown (participants see it and hear a soft chime
@@ -68,8 +78,8 @@ right after each action.)
 
 ## Designing a custom session
 
-Open **`/r/<room>/build`** (you'll need the room's **admin** passcode to
-*launch*; the AI design tools work with the admin or facilitator code):
+Open **`/r/<room>/build`** from **Plan & settings**. A facilitator or room admin
+can design and launch a session; a co-host cannot reconfigure the room:
 
 - **✨ Suggest a session** — type your goal ("45 min, 12 people, decide between
   three options and leave with owners") and the AI proposes a full sequence of

@@ -104,7 +104,7 @@ function useSampleActions(code: string) {
     setBusy(null);
     if (fc)
       window.open(
-        `/r/${SAMPLE_SLUG}/host?tour=1#k=${encodeURIComponent(fc)}`,
+        `/r/${SAMPLE_SLUG}/facilitate?tour=1#k=${encodeURIComponent(fc)}`,
         "_blank",
         "noreferrer",
       );
@@ -1123,7 +1123,7 @@ function SampleCard({ code }: { code: string }) {
             onClick={openHost}
             disabled={busy !== null}
           >
-            {busy === "host" ? "opening…" : "open host"}
+            {busy === "host" ? "opening…" : "open facilitator"}
           </button>
           <button
             className="rounded-lg border border-border px-3 py-2 text-accent hover:border-accent"
@@ -1388,6 +1388,7 @@ function RoomCard({
   >(null);
   const [theme, setTheme] = useState<ThemeDraft>(EMPTY_THEME);
   const [report, setReport] = useState<any>(null);
+  const [reportLoading, setReportLoading] = useState(false);
   // A4 — inline-edit the display name (never the slug — that's the room's key).
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(room.name);
@@ -1502,12 +1503,21 @@ function RoomCard({
     setPanel(null);
   }
   async function openReport() {
-    setPanel(panel === "report" ? null : "report");
-    const res = await authFetch(`/api/admin/rooms/${room.slug}`, code, {
-      cache: "no-store",
-    });
-    const d = await res.json();
-    setReport(d.archive);
+    if (panel === "report") {
+      setPanel(null);
+      return;
+    }
+    setPanel("report");
+    setReportLoading(true);
+    try {
+      const res = await authFetch(`/api/admin/rooms/${room.slug}`, code, {
+        cache: "no-store",
+      });
+      const d = await res.json();
+      setReport(d.archive);
+    } finally {
+      setReportLoading(false);
+    }
   }
 
   return (
@@ -1598,11 +1608,11 @@ function RoomCard({
             className="col-span-2 sm:col-span-1"
           >
             <a
-              href={`/r/${room.slug}/host#k=${encodeURIComponent(code)}`}
+              href={`/r/${room.slug}/facilitate#k=${encodeURIComponent(code)}`}
               target="_blank"
               rel="noreferrer"
             >
-              <Play /> Open host
+              <Play /> Facilitate
             </a>
           </UiButton>
           <UiButton asChild variant="secondary" size="sm">
@@ -1779,10 +1789,12 @@ function RoomCard({
 
       {panel === "report" && (
         <div className="mt-3 border-t border-border pt-3 text-sm">
-          {!report ? (
+          {reportLoading ? (
+            <p className="text-muted">Loading report…</p>
+          ) : !report ? (
             <p className="text-muted">
-              No archive yet. Use “Archive” in the host console to snapshot a
-              session.
+              No archive yet. Use “Archive” in the facilitator portal to
+              snapshot a session.
             </p>
           ) : (
             <div className="space-y-3">

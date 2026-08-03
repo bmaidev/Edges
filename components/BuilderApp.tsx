@@ -445,9 +445,9 @@ function AdvancedJson({
   );
 }
 
-// Admin session builder: compose a custom phase sequence from any module, edit
-// each phase's config, and launch it into the room. Requires the admin tier
-// (server gates setPhases behind the "configure" capability).
+// Session builder: compose a custom phase sequence from any module, edit each
+// phase's config, and launch it into the room. Facilitators and room admins have
+// the server's `configure` capability; co-hosts intentionally do not.
 export function BuilderApp({
   apiBase,
   slug,
@@ -1022,8 +1022,8 @@ export function BuilderApp({
             ? `Your updated sequence is live in room ${slug}.`
             : `Your custom sequence is live in room ${slug}.`}
         </p>
-        <a className="text-accent underline" href={`/r/${slug}/host`}>
-          Open host console →
+        <a className="text-accent underline" href={`/r/${slug}/facilitate`}>
+          Open facilitator →
         </a>
         <a className="text-accent underline" href={`/r/${slug}/screen`}>
           Open projector →

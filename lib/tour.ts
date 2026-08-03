@@ -38,7 +38,7 @@ export const TOUR_STEPS: TourStep[] = [
     surface: "admin",
     anchor: "sample-card",
     title: "A workshop you can't break",
-    body: "Seven fake people, real messy ideas, a running timer. Hit “open host” to drive it — no extra passcode.",
+    body: "Seven fake people, real messy ideas, a running timer. Hit “open facilitator” to drive it — no extra passcode.",
   },
   // ---- host (the spine) ----
   {

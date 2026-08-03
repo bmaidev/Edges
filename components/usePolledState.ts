@@ -83,6 +83,10 @@ export function usePolledState<
 ) {
   const [state, setState] = useState<T | null>(null);
   const [error, setError] = useState(false);
+  // Preserve terminal HTTP responses separately from transport health. A 404 is
+  // not a slow connection: every surface should be able to explain that the room
+  // link is missing instead of waiting on "Connecting…" forever.
+  const [httpStatus, setHttpStatus] = useState<number | null>(null);
   // H1 — wall-clock of the last SUCCESSFUL poll round-trip (whether or not its rev
   // was applied). Feeds the connection indicator's staleness check: a genuine
   // network stall stops updating this and trips "reconnecting", but a run of
@@ -116,6 +120,7 @@ export function usePolledState<
     // New identity → forget the old response immediately.
     setState(null);
     setError(false);
+    setHttpStatus(null);
     setLastAppliedAt(null);
     appliedRef.current = 0;
     seqRef.current = 0;
@@ -143,7 +148,10 @@ export function usePolledState<
           headers,
         });
         if (!active) return;
-        if (!res.ok) throw new Error("bad status");
+        if (!res.ok) {
+          setHttpStatus(res.status);
+          throw new Error("bad status");
+        }
         const data = (await res.json()) as T;
         if (!active) return;
         // Liveness = a successful round-trip, NOT an applied rev. KV read replicas
@@ -153,6 +161,7 @@ export function usePolledState<
         // reads can't trip a FALSE "reconnecting" banner. Only a real fetch
         // error/timeout (the catch) flips error true.
         setError(false);
+        setHttpStatus(null);
         setLastAppliedAt(Date.now());
         // A4 — the room was renamed; the state route hands back the new address.
         // Follow it once (replace, so Back doesn't loop onto the dead slug).
@@ -165,12 +174,14 @@ export function usePolledState<
         if (mySeq < appliedRef.current) return;
         // Stale data: ignore any state older than what we've already shown. This
         // is what stops the screens flashing between phases under KV lag.
-        const rev = typeof (data as { rev?: unknown }).rev === "number"
-          ? ((data as { rev: number }).rev)
-          : null;
+        const rev =
+          typeof (data as { rev?: unknown }).rev === "number"
+            ? (data as { rev: number }).rev
+            : null;
         if (rev !== null && rev < lastRevRef.current) return;
         appliedRef.current = mySeq;
-        if (rev !== null) lastRevRef.current = Math.max(lastRevRef.current, rev);
+        if (rev !== null)
+          lastRevRef.current = Math.max(lastRevRef.current, rev);
         setState(data);
       } catch {
         if (active) setError(true);
@@ -250,18 +261,15 @@ export function usePolledState<
   // (e.g. Advance) looks dead. Bounded so a missed write can't spin forever; the
   // interval poll remains the backstop. The monotonic rev guard means a stale
   // read in between is simply ignored.
-  const refreshUntil = useCallback(
-    async (minRev: number, timeoutMs = 4000) => {
-      if (!Number.isFinite(minRev)) return pollRef.current();
-      const start = Date.now();
-      while (lastRevRef.current < minRev && Date.now() - start < timeoutMs) {
-        await pollRef.current();
-        if (lastRevRef.current >= minRev) break;
-        await new Promise((r) => setTimeout(r, 250));
-      }
-    },
-    [],
-  );
+  const refreshUntil = useCallback(async (minRev: number, timeoutMs = 4000) => {
+    if (!Number.isFinite(minRev)) return pollRef.current();
+    const start = Date.now();
+    while (lastRevRef.current < minRev && Date.now() - start < timeoutMs) {
+      await pollRef.current();
+      if (lastRevRef.current >= minRev) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }, []);
 
   // Apply an authoritative state the server returned from a write (a command
   // response built from the just-written state). Goes through the same monotonic
@@ -277,8 +285,17 @@ export function usePolledState<
     appliedRef.current = seqRef.current;
     setState(next);
     setError(false);
+    setHttpStatus(null);
     setLastAppliedAt(Date.now());
   }, []);
 
-  return { state, error, lastAppliedAt, refresh, refreshUntil, apply };
+  return {
+    state,
+    error,
+    httpStatus,
+    lastAppliedAt,
+    refresh,
+    refreshUntil,
+    apply,
+  };
 }

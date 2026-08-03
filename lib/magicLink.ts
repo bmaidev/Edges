@@ -9,7 +9,7 @@ export type LinkRole = "facilitator" | "cohost" | "projector" | "join";
 export function surfaceFor(role: LinkRole): string {
   if (role === "join") return "";
   if (role === "projector") return "/screen";
-  return "/host"; // facilitator + cohost share the host console (role gates UI)
+  return "/facilitate"; // facilitator + cohost share one role-gated portal
 }
 
 // Build a shareable link. Join carries no code; the others carry `#k=<code>`.
@@ -25,9 +25,17 @@ export function buildLink(
 }
 
 // Per-room sessionStorage key for a remembered token (tab-scoped; never
-// localStorage; cleared on End/logout).
-export function tokenKey(slug: string): string {
-  return `edges:k:${slug}`;
+// localStorage; cleared on End/logout). Control surfaces intentionally share the
+// default slot so Facilitate → Builder keeps working. The read-only projector
+// gets its own slot: opening a big-screen link in the facilitator's tab must not
+// replace their control credential.
+export function tokenKey(
+  slug: string,
+  scope: "control" | "projector" = "control",
+): string {
+  return scope === "projector"
+    ? `edges:k:projector:${slug}`
+    : `edges:k:${slug}`;
 }
 
 // Phase B — a workspace's bookmarkable sign-in link for the admin portal. The
@@ -53,29 +61,35 @@ export function readAndScrubToken(): string | null {
 
 // Resolve a remembered token: a fresh `#k=` wins; else the tab's sessionStorage.
 // Persists a fresh token for reloads. Returns null when neither exists.
-export function bootToken(slug: string): string | null {
+export function bootToken(
+  slug: string,
+  scope: "control" | "projector" = "control",
+): string | null {
   if (typeof window === "undefined") return null;
   const fromUrl = readAndScrubToken();
   if (fromUrl) {
     try {
-      sessionStorage.setItem(tokenKey(slug), fromUrl);
+      sessionStorage.setItem(tokenKey(slug, scope), fromUrl);
     } catch {
       /* private mode / disabled storage — fine, just won't survive reload */
     }
     return fromUrl;
   }
   try {
-    return sessionStorage.getItem(tokenKey(slug));
+    return sessionStorage.getItem(tokenKey(slug, scope));
   } catch {
     return null;
   }
 }
 
 // Forget a remembered token (call on End-session / logout).
-export function clearToken(slug: string): void {
+export function clearToken(
+  slug: string,
+  scope: "control" | "projector" = "control",
+): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.removeItem(tokenKey(slug));
+    sessionStorage.removeItem(tokenKey(slug, scope));
   } catch {
     /* ignore */
   }

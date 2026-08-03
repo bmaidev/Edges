@@ -66,34 +66,47 @@ export function TakeawayReview({
 
   return (
     <>
-      <UiButton variant="secondary" onClick={load} className="w-full justify-center">
+      <UiButton
+        variant="secondary"
+        onClick={load}
+        className="w-full justify-center"
+      >
         <Eye /> Review what the room keeps
       </UiButton>
       {open && (
-        <Modal title="The take-away — review & curate" onClose={() => setOpen(false)}>
+        <Modal
+          title="The take-away — review & curate"
+          onClose={() => setOpen(false)}
+        >
           {busy && !preview ? (
             <p className="text-sm text-muted">Preparing the recap…</p>
           ) : !preview ? (
-            <p className="text-sm text-[#ff8a8a]">Couldn&apos;t build the preview.</p>
+            <p className="text-sm text-[#ff8a8a]">
+              Couldn&apos;t build the preview.
+            </p>
           ) : (
             <div className="flex flex-col gap-4 text-sm">
               <p className="text-xs text-muted">
-                This is exactly what each participant keeps. Their own contributions are
-                added privately, per person — you only see the shared body.
+                This is exactly what each participant keeps. Their own
+                contributions are added privately, per person — you only see the
+                shared body.
               </p>
 
               {meta && meta.anonymousPhaseCount > 0 && (
                 <p className="rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-accent">
                   🙈 {meta.anonymousPhaseCount} anonymous phase
-                  {meta.anonymousPhaseCount === 1 ? "" : "s"} — those {meta.excludedContributionCount}{" "}
-                  contribution{meta.excludedContributionCount === 1 ? "" : "s"} are kept private and
-                  never enter the recap.
+                  {meta.anonymousPhaseCount === 1 ? "" : "s"} — those{" "}
+                  {meta.excludedContributionCount} contribution
+                  {meta.excludedContributionCount === 1 ? "" : "s"} are kept
+                  private and never enter the recap.
                 </p>
               )}
 
               {preview.report?.summary && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">Summary</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Summary
+                  </p>
                   <p className="mt-1 text-white/90">{preview.report.summary}</p>
                 </div>
               )}
@@ -101,7 +114,10 @@ export function TakeawayReview({
               {items.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Action items <span className="text-muted/60">(uncheck to leave out)</span>
+                    Action items{" "}
+                    <span className="text-muted/60">
+                      (uncheck to leave out)
+                    </span>
                   </p>
                   <ul className="mt-1 flex flex-col gap-1">
                     {items.map((a) => (
@@ -111,7 +127,11 @@ export function TakeawayReview({
                           checked={!excluded.has(a.id)}
                           onChange={() => toggle(a.id)}
                         />
-                        <span className={excluded.has(a.id) ? "text-muted line-through" : ""}>
+                        <span
+                          className={
+                            excluded.has(a.id) ? "text-muted line-through" : ""
+                          }
+                        >
                           {a.text}
                           {a.ownerName ? ` — ${a.ownerName}` : ""}
                         </span>
@@ -122,7 +142,9 @@ export function TakeawayReview({
               )}
 
               <p className="text-xs text-muted">
-                {preview.participantCount} people · {preview.submissionCount} contributions ·{" "}
+                {preview.participantCount}{" "}
+                {preview.participantCount === 1 ? "person" : "people"} ·{" "}
+                {preview.submissionCount} contributions ·{" "}
                 {preview.patterns.length} themes curated
               </p>
 
@@ -130,7 +152,13 @@ export function TakeawayReview({
                 <UiButton
                   variant="danger"
                   onClick={() => {
-                    cmd("end", { excludeActionItems: Array.from(excluded) });
+                    // Publishing the kept recap is an intentional close-out, so
+                    // preserve the de-identified report and move the room out of
+                    // "Live now" just like the default End flow does.
+                    cmd("end", {
+                      alsoArchive: true,
+                      excludeActionItems: Array.from(excluded),
+                    });
                     setOpen(false);
                   }}
                 >

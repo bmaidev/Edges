@@ -12,7 +12,13 @@ export default function HostPage({
   const p = use(params);
   return (
     <A11yProvider>
-      <HostConsole apiBase={`/api/r/${p.room}`} roomName={`Room ${p.room}`} />
+      {/* Compatibility alias: old Host bookmarks now open the same single
+          Facilitator portal and reliable live cockpit as /facilitate. */}
+      <HostConsole
+        apiBase={`/api/r/${p.room}`}
+        roomName={`Room ${p.room}`}
+        initialSurface="live"
+      />
     </A11yProvider>
   );
 }

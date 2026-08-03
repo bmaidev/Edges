@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { NextRequest } from "next/server";
+import { POST as hostPOST } from "@/app/api/r/[room]/host/route";
 import {
   blueprintSummary,
   createRoom,
@@ -15,8 +17,16 @@ import type { PhaseInstance } from "@/lib/types";
 // survives the 24h live-state wipe.
 
 const PHASES: PhaseInstance[] = [
-  { id: "p1", moduleId: "capture", config: { label: "Brainstorm", prompt: "Go" } },
-  { id: "p2", moduleId: "poll", config: { label: "Vote", options: ["a", "b"] } },
+  {
+    id: "p1",
+    moduleId: "capture",
+    config: { label: "Brainstorm", prompt: "Go" },
+  },
+  {
+    id: "p2",
+    moduleId: "poll",
+    config: { label: "Vote", options: ["a", "b"] },
+  },
 ];
 
 describe("stripCopy", () => {
@@ -30,7 +40,9 @@ describe("stripCopy", () => {
 describe("blueprintSummary", () => {
   it("labels each phase by its config label, falling back to module id", () => {
     expect(blueprintSummary(PHASES)).toEqual(["Brainstorm", "Vote"]);
-    expect(blueprintSummary([{ id: "x", moduleId: "lobby", config: {} }])).toEqual(["lobby"]);
+    expect(
+      blueprintSummary([{ id: "x", moduleId: "lobby", config: {} }]),
+    ).toEqual(["lobby"]);
   });
 });
 
@@ -41,6 +53,25 @@ describe("saveBlueprint", () => {
     const r = await getRoom(room.slug);
     expect(r?.blueprint?.name).toBe("My session");
     expect(r?.blueprint?.phases).toHaveLength(2);
+  });
+
+  it("persists a built-in template launched from the facilitator picker", async () => {
+    const { room, passcodes } = await createRoom("Template room", "t");
+    const req = new NextRequest(`http://x/api/r/${room.slug}/host`, {
+      method: "POST",
+      body: JSON.stringify({
+        command: "setTemplate",
+        templateId: "one-two-four-all",
+        code: passcodes.facilitator,
+      }),
+    });
+    const res = await hostPOST(req, {
+      params: Promise.resolve({ room: room.slug }),
+    });
+    expect(res.status).toBe(200);
+    const saved = await getRoom(room.slug);
+    expect(saved?.blueprint?.name).toBeTruthy();
+    expect(saved?.blueprint?.phases.length).toBeGreaterThan(0);
   });
 });
 

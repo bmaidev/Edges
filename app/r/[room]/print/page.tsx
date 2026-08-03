@@ -55,7 +55,7 @@ export default function PrintPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-white p-8 text-center text-[#555]">
         <p className="max-w-sm">
-          Open the run-sheet from the host console&apos;s Session tab.
+          Open the run-sheet from Plan &amp; settings in the facilitator portal.
         </p>
       </main>
     );
@@ -67,14 +67,21 @@ export default function PrintPage() {
       style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
     >
       <header className="border-b pb-3" style={{ borderColor: "#ddd" }}>
-        <h1 className="text-2xl font-semibold">{data.sessionName || "Run-sheet"}</h1>
+        <h1 className="text-2xl font-semibold">
+          {data.sessionName || "Run-sheet"}
+        </h1>
         <p className="text-sm text-[#666]">
-          {data.phases.length} phases · ~{data.totalMinutes} minutes · facilitator run-sheet
+          {data.phases.length} phases · ~{data.totalMinutes} minutes ·
+          facilitator run-sheet
         </p>
       </header>
       <ol className="mt-4 flex flex-col gap-4">
         {data.phases.map((p) => (
-          <li key={p.n} className="break-inside-avoid border-b pb-3" style={{ borderColor: "#eee" }}>
+          <li
+            key={p.n}
+            className="break-inside-avoid border-b pb-3"
+            style={{ borderColor: "#eee" }}
+          >
             <div className="flex items-baseline justify-between">
               <p className="font-semibold">
                 {p.n}. {p.label}
@@ -84,9 +91,11 @@ export default function PrintPage() {
             {p.script && <p className="mt-1 leading-relaxed">{p.script}</p>}
             {p.talkingPoints && p.talkingPoints.length > 0 && (
               <ul className="mt-1 list-inside list-disc text-sm text-[#444]">
-                {p.talkingPoints.filter((t) => t.trim()).map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
+                {p.talkingPoints
+                  .filter((t) => t.trim())
+                  .map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
               </ul>
             )}
             {p.contingency && (
